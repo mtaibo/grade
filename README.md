@@ -2,7 +2,7 @@
 
 # 🧮 Mark
 
-**A tracker for your university subjects, grades and assignments — and what you need on what's left.**
+**A tracker for your subjects, grades and assignments.**
 
 <br/>
 
@@ -14,7 +14,7 @@
 
 ---
 
-Mark is a tracker for university students: subjects, grades, assignments and deadlines in one place, built to model **any** grading scheme instead of a generic one. It's my first project aimed at the App Store: a minimal version first, tested with real students, then grown into something I'd pay for myself.
+Mark is a tracker for your subjects, grades, assignments and deadlines in one place, built to model **any** grading scheme instead of a generic one. It's my first project aimed at the App Store: a minimal version first, tested with real students, then grown into something I'd pay for myself.
 
 ## Why I'm building it
 
