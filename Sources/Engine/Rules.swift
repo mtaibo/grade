@@ -2,8 +2,8 @@
 ///
 /// Can live on any node. `capAt` caps the *parent's* result, matching guides where
 /// e.g. failing the final exam caps the whole subject at 4.5 regardless of the rest.
-public struct Minimum: Sendable, Equatable {
-    public enum Consequence: Sendable, Equatable {
+public struct Minimum: Sendable, Equatable, Codable {
+    public enum Consequence: Sendable, Equatable, Codable {
         case doesNotAverage
         case capAt(Double)
         case fails
@@ -19,7 +19,7 @@ public struct Minimum: Sendable, Equatable {
 }
 
 /// How a node's grade carries over to the extraordinary session or beyond.
-public enum Recovery: Sendable, Equatable {
+public enum Recovery: Sendable, Equatable, Codable {
     case recoverableInExtraordinary
     case notRecoverable
     case partiallyRecoverableInFinal

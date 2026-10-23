@@ -4,7 +4,7 @@
 /// exam's weight varies continuously with another grade" (Estadística, Matemática Discreta — see
 /// `docs/modelo.md`), general enough to not force those guides into `Group`'s fixed weights or
 /// `Alternatives`'s discrete branches.
-public indirect enum Expression: Sendable, Equatable {
+public indirect enum Expression: Sendable, Equatable, Codable {
     case constant(Double)
     case variable(String)
     case add(Expression, Expression)

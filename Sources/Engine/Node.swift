@@ -1,5 +1,7 @@
+import Foundation
+
 /// A node in a subject's evaluation tree. See `docs/modelo.md` for the model this implements.
-public indirect enum Node: Sendable, Equatable {
+public indirect enum Node: Sendable, Equatable, Codable {
     case grade(Grade)
     case group(Group)
     case alternatives(Alternatives)
@@ -9,23 +11,58 @@ public indirect enum Node: Sendable, Equatable {
 }
 
 /// A leaf grade entered by the user, on its own scale.
-public struct Grade: Sendable, Equatable {
+public struct Grade: Sendable, Equatable, Codable {
     public var name: String
     public var scaleMax: Double
     public var minimum: Minimum?
     public var recovery: Recovery?
+    /// When it's due or taken (a lab hand-in, an exam). Not used by the calculation — it's the
+    /// "fecha" the brief's data model (§6) puts on each node, so it travels with its grade.
+    public var date: Date?
+    /// How the teacher gives this grade — points, a percentage or letters. Presentation only: the
+    /// app converts what's typed to `scaleMax` before the engine sees it. `nil` means points.
+    public var inputStyle: GradeInputStyle?
 
-    public init(name: String, scaleMax: Double = 10, minimum: Minimum? = nil, recovery: Recovery? = nil) {
+    public init(
+        name: String,
+        scaleMax: Double = 10,
+        minimum: Minimum? = nil,
+        recovery: Recovery? = nil,
+        date: Date? = nil,
+        inputStyle: GradeInputStyle? = nil
+    ) {
         self.name = name
         self.scaleMax = scaleMax
         self.minimum = minimum
         self.recovery = recovery
+        self.date = date
+        self.inputStyle = inputStyle
+    }
+}
+
+public enum GradeInputStyle: Sendable, Equatable, Codable {
+    case points
+    case percent
+    /// Letter grades and what each is worth, out of 10.
+    case letters([LetterGrade])
+}
+
+public struct LetterGrade: Sendable, Equatable, Codable, Hashable, Identifiable {
+    public var id: UUID
+    public var letter: String
+    /// Out of 10, whatever the grade's own scale.
+    public var value: Double
+
+    public init(id: UUID = UUID(), letter: String, value: Double) {
+        self.id = id
+        self.letter = letter
+        self.value = value
     }
 }
 
 /// A node combined from weighted children.
-public struct Group: Sendable, Equatable {
-    public enum Combination: Sendable, Equatable {
+public struct Group: Sendable, Equatable, Codable {
+    public enum Combination: Sendable, Equatable, Codable {
         case weightedAverage
         case sum
         case max
@@ -46,11 +83,15 @@ public struct Group: Sendable, Equatable {
     }
 }
 
-public struct WeightedChild: Sendable, Equatable {
+/// `id` is a stable identity for a child slot, so an editor can list, reorder and delete children
+/// without keying on their (editable) names.
+public struct WeightedChild: Sendable, Equatable, Codable, Identifiable {
+    public var id: UUID
     public var weight: Double
     public var node: Node
 
-    public init(weight: Double, node: Node) {
+    public init(id: UUID = UUID(), weight: Double, node: Node) {
+        self.id = id
         self.weight = weight
         self.node = node
     }
@@ -60,8 +101,8 @@ public struct WeightedChild: Sendable, Equatable {
 ///
 /// `condition` is a free-form description for now (e.g. "Controles >= 4"), not yet a structured
 /// expression — the 3 reference guides don't need more than picking a branch to validate the shape.
-public struct Alternatives: Sendable, Equatable {
-    public struct Branch: Sendable, Equatable {
+public struct Alternatives: Sendable, Equatable, Codable {
+    public struct Branch: Sendable, Equatable, Codable {
         public var condition: String?
         public var node: Node
 
@@ -83,7 +124,7 @@ public struct Alternatives: Sendable, Equatable {
 }
 
 /// Points added to the parent's total, capped.
-public struct Bonus: Sendable, Equatable {
+public struct Bonus: Sendable, Equatable, Codable {
     public var name: String
     public var scaleMax: Double
     public var parentCap: Double
@@ -96,7 +137,7 @@ public struct Bonus: Sendable, Equatable {
 }
 
 /// A gradeless condition that blocks passing when unmet (e.g. mandatory attendance).
-public struct Requirement: Sendable, Equatable {
+public struct Requirement: Sendable, Equatable, Codable {
     public var name: String
     public var description: String
 
@@ -113,7 +154,7 @@ public struct Requirement: Sendable, Equatable {
 /// `Alternatives` can express — see `docs/modelo.md`. Each variable is still a full `Node`, so its
 /// own rules (e.g. `recovery`) are expressed normally; `minimum` is the pass threshold on the
 /// formula's own computed result, the same role `Group.minimum` plays for a weighted average.
-public struct Formula: Sendable, Equatable {
+public struct Formula: Sendable, Equatable, Codable {
     public var name: String
     public var expression: Expression
     public var variables: [String: Node]
@@ -128,7 +169,7 @@ public struct Formula: Sendable, Equatable {
 }
 
 /// The root of a subject's evaluation tree, one per session (ordinary, extraordinary, early).
-public struct Subject: Sendable, Equatable {
+public struct Subject: Sendable, Equatable, Codable {
     public var name: String
     public var ectsCredits: Double
     public var root: Node

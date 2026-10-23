@@ -42,23 +42,24 @@ extension Node {
                 guard max > 0 else { return 0 }
                 return child.node.evaluate(inputs, pendingFraction: pendingFraction) / max
             }
+            let combined: Double
             switch group.combination {
             case .weightedAverage:
                 let totalWeight = group.children.reduce(0) { $0 + $1.weight }
-                guard totalWeight > 0 else { return 0 }
                 let weighted = group.children.reduce(0) { $0 + $1.weight * fraction($1) }
-                return (weighted / totalWeight) * 10
+                combined = totalWeight > 0 ? (weighted / totalWeight) * 10 : 0
             case .sum:
-                return group.children.reduce(0) { $0 + $1.weight * fraction($1) } * 10
+                combined = group.children.reduce(0) { $0 + $1.weight * fraction($1) } * 10
             case .max:
-                return (group.children.map(fraction).max() ?? 0) * 10
+                combined = (group.children.map(fraction).max() ?? 0) * 10
             case .min:
-                return (group.children.map(fraction).min() ?? 0) * 10
+                combined = (group.children.map(fraction).min() ?? 0) * 10
             case .bestOf(let n):
                 let count = Swift.max(n, 1)
                 let best = group.children.map(fraction).sorted(by: >).prefix(count)
-                return best.isEmpty ? 0 : (best.reduce(0, +) / Double(best.count)) * 10
+                combined = best.isEmpty ? 0 : (best.reduce(0, +) / Double(best.count)) * 10
             }
+            return Self.applyingCaps(combined, from: group.children.map(\.node), inputs, pendingFraction)
         case .alternatives(let alternatives):
             return Self.defaultBranch(alternatives)?.node.evaluate(inputs, pendingFraction: pendingFraction) ?? 0
         case .bonus(let bonus):
@@ -69,7 +70,7 @@ extension Node {
             return 0
         case .formula(let formula):
             let values = formula.variables.mapValues { $0.evaluate(inputs, pendingFraction: pendingFraction) }
-            return formula.expression.evaluate(values)
+            return Self.applyingCaps(formula.expression.evaluate(values), from: Array(formula.variables.values), inputs, pendingFraction)
         }
     }
 
@@ -116,39 +117,79 @@ extension Node {
 
     /// The pass threshold on this node's own computed result, if it declares one.
     public var minimumThreshold: Double? {
+        ownMinimum?.threshold
+    }
+
+    private var ownMinimum: Minimum? {
         switch self {
-        case .group(let group): return group.minimum?.threshold
-        case .formula(let formula): return formula.minimum?.threshold
-        case .grade(let grade): return grade.minimum?.threshold
-        default: return nil
+        case .group(let group): group.minimum
+        case .formula(let formula): formula.minimum
+        case .grade(let grade): grade.minimum
+        default: nil
+        }
+    }
+
+    /// Whether every `Minimum` with a `.fails` consequence in this subtree is met — e.g. "at least
+    /// 40% on the exam or the subject is failed", which no average can make up for. Monotonic in
+    /// `pendingFraction` like `evaluate`, so it can share the same binary search.
+    /// `.capAt` is handled by `evaluate` instead (it changes the number, not just pass/fail), and
+    /// `.doesNotAverage` isn't wired in: no reference guide needs it yet.
+    public func meetsMinimums(_ inputs: [String: Double], pendingFraction: Double) -> Bool {
+        if let minimum = ownMinimum, minimum.consequence == .fails,
+           evaluate(inputs, pendingFraction: pendingFraction) < minimum.threshold {
+            return false
+        }
+        switch self {
+        case .group(let group):
+            return group.children.allSatisfy { $0.node.meetsMinimums(inputs, pendingFraction: pendingFraction) }
+        case .formula(let formula):
+            return formula.variables.values.allSatisfy { $0.meetsMinimums(inputs, pendingFraction: pendingFraction) }
+        case .alternatives(let alternatives):
+            return Self.defaultBranch(alternatives)?.node.meetsMinimums(inputs, pendingFraction: pendingFraction) ?? true
+        case .grade, .bonus, .requirement:
+            return true
         }
     }
 
     /// The uniform fraction (0...1) every pending leaf would need of its own scale for this
-    /// node's value to reach `target` — `nil` if `target` is out of [worst, best] reach.
-    /// "Misma nota en todos los pendientes" per the brief: later, a simulator could fix some and
-    /// solve only the rest, but that's not needed yet.
+    /// node's value to reach `target` *and* every failing minimum to be met — `nil` if that's out
+    /// of reach even with full marks. "Misma nota en todos los pendientes" per the brief: later, a
+    /// simulator could fix some and solve only the rest, but that's not needed yet.
     public func neededFraction(_ inputs: [String: Double], target: Double, tolerance: Double = 0.0001) -> Double? {
-        let worst = evaluate(inputs, pendingFraction: 0)
-        let best = evaluate(inputs, pendingFraction: 1)
-        guard target >= worst, target <= best else { return nil }
+        func reaches(_ fraction: Double) -> Bool {
+            evaluate(inputs, pendingFraction: fraction) >= target && meetsMinimums(inputs, pendingFraction: fraction)
+        }
+        guard reaches(1) else { return nil }
+        guard !reaches(0) else { return 0 }
         var low = 0.0
         var high = 1.0
         while high - low > tolerance {
             let mid = (low + high) / 2
-            if evaluate(inputs, pendingFraction: mid) < target {
-                low = mid
-            } else {
+            if reaches(mid) {
                 high = mid
+            } else {
+                low = mid
             }
         }
         return high
     }
 
+    /// A child whose `Minimum` has a `.capAt` consequence and isn't met caps its parent's result —
+    /// "si no llegas a un 4 en el examen, la nota final no pasa de 4,5". Monotonic: raising the
+    /// child past its threshold only ever lifts the cap.
+    private static func applyingCaps(_ value: Double, from children: [Node], _ inputs: [String: Double], _ pendingFraction: Double) -> Double {
+        children.reduce(value) { result, child in
+            guard let minimum = child.ownMinimum, case .capAt(let cap) = minimum.consequence,
+                  child.evaluate(inputs, pendingFraction: pendingFraction) < minimum.threshold
+            else { return result }
+            return Swift.min(result, cap)
+        }
+    }
+
     /// `Alternatives` picks a branch "by condition or the best" per the brief — but a branch's
     /// `condition` is still a free, unevaluated string (see docs/modelo.md), so until that's
     /// resolved this can only pick the explicit default branch (no condition) or fall back to
-    /// the first one. Not exercised by any of the 3 reference guides yet.
+    /// the first one. Not exercised by any of the reference guides yet.
     private static func defaultBranch(_ alternatives: Alternatives) -> Alternatives.Branch? {
         alternatives.branches.first(where: { $0.condition == nil }) ?? alternatives.branches.first
     }
@@ -167,12 +208,14 @@ public enum PassStatus: Sendable, Equatable {
 extension Node {
     /// Status against this node's own `minimumThreshold`, or 5 (out of 10) if it doesn't declare
     /// one — the universal default for the Spanish grading scale the brief targets.
+    /// A failed minimum anywhere (e.g. under 4 on an exam that needs it) also counts.
     public func status(_ inputs: [String: Double]) -> PassStatus {
         let threshold = minimumThreshold ?? 5
-        let worst = evaluate(inputs, pendingFraction: 0)
-        let best = evaluate(inputs, pendingFraction: 1)
-        if worst >= threshold { return .guaranteed }
-        if best < threshold { return .impossible }
+        func passes(_ fraction: Double) -> Bool {
+            evaluate(inputs, pendingFraction: fraction) >= threshold && meetsMinimums(inputs, pendingFraction: fraction)
+        }
+        if passes(0) { return .guaranteed }
+        if !passes(1) { return .impossible }
         return .possible
     }
 }
