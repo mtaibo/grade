@@ -4,7 +4,7 @@ import SwiftUI
 struct MarkApp: App {
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            SubjectListView()
         }
     }
 }

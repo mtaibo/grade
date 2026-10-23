@@ -1,8 +1,10 @@
 # Modelo de evaluación
 
-Primera versión del árbol de evaluación (`Sources/Engine/`), validada contra las 3 guías de
-`guide/` (extraídas en `guide/extracted/*.json`). Todavía no hay motor de cálculo, solo los tipos
-del árbol — ver "Qué falta" al final.
+Árbol de evaluación (`Sources/Engine/`) y motor de cálculo (`Sources/Engine/Calculation.swift`),
+validados contra las 3 guías de `guide/` (extraídas en `guide/extracted/*.json`, construidas en
+Swift en `Sources/Engine/ReferenceSubjects.swift`). Hay una UI mínima en SwiftUI
+(`App/Sources/SubjectListView.swift`) que lo deja ver funcionando — ver "Qué falta" al final para
+lo que sigue sin existir.
 
 ## Tipos
 
@@ -40,6 +42,44 @@ con el mismo efecto sería una segunda fuente de verdad para la misma regla. `Fo
 para el umbral de aprobado sobre el resultado ya calculado (`F >= 5`), el mismo papel que
 `Group.minimum`, no para lógica que ya está dentro de la expresión.
 
+## Motor de cálculo (`Calculation.swift`)
+
+Implementa el §5 del brief sobre el árbol `Node` directamente, sin un tipo "`Subject` con notas"
+aparte:
+
+- **`Node.evaluate(_:pendingFraction:)`**: el valor de un nodo dadas las notas ya introducidas
+  (`[String: Double]`, por nombre de hoja) y una fracción `0...1` de su propia escala para
+  cualquier hoja sin nota — `0` da el peor caso (como si lo pendiente sacara un 0), `1` el mejor.
+  Es monótona en `pendingFraction` por construcción (toda combinación es una suma de pesos no
+  negativos), comprobado explícitamente en `CalculationTests` con una muestra en `[0, 1]` sobre
+  las 3 asignaturas — es la propiedad que pide el brief para poder buscar binariamente.
+- **`Node.neededFraction(_:target:)`**: búsqueda binaria sobre esa fracción para encontrar la nota
+  necesaria — "la misma nota en todos los pendientes", tal como describe el brief para esta
+  primera versión (fijar solo algunas y resolver el resto queda para el simulador, más adelante).
+- **`Node.status(_:)`**: `guaranteed` / `possible` / `impossible`, comparando el peor y el mejor
+  caso contra `minimumThreshold` (el `Minimum` del nodo, o 5 por defecto).
+- **`Node.scaleMax`**: casi siempre 10, salvo un `Group` con `combination: .sum` cuyas hijas no
+  cubren toda la escala — su propio máximo queda en `Σ pesos * 10`, para que al ponderarlo un
+  `Group` ancestro dé el porcentaje correcto. Así es como "Solución de problemas" (dos pruebas al
+  20% cada una, es decir 40% del total) encaja sin inventar un tipo de nodo nuevo.
+
+No está wireado: `Requirement` (sin valor numérico, no bloquea nada todavía) ni ninguna condición
+real en `Alternatives` (usa la rama por defecto o la primera) — ninguna de las 3 guías de
+referencia lo necesita aún, igual que con `Formula` antes de que `Expression` existiera.
+
+## UI mínima (`SubjectListView.swift`)
+
+Una lista de las 3 asignaturas de referencia (`Subject.all`) → detalle con un `Slider` por nota
+(rango `0...scaleMax` de esa hoja), y debajo el resultado en vivo: nota si no entra nada más, mejor
+nota posible, una etiqueta de estado (asegurado/posible/imposible) y, si es `possible`, la media
+que hace falta en lo pendiente. Nada de SwiftData ni persistencia — las notas viven en `@State`
+mientras la vista está en pantalla, se pierden al salir. Probada en el simulador (build +
+`xcrun simctl launch`): la lista carga datos reales de `Engine` correctamente. No pude verificar
+visualmente la pantalla de detalle (sliders, resultado) porque este entorno no tiene una ventana de
+Simulator.app real a la que hacer tap — solo el framebuffer vía `simctl screenshot`. El código en sí
+es SwiftUI estándar (`Form`/`Slider`/`LabeledContent`) y la lógica que muestra está cubierta por los
+18 tests de `EngineTests`; aun así, revísalo tú en tu Mac antes de darlo por bueno.
+
 ## Otras decisiones
 
 - **Estructura del repo**: `Package.swift` en la raíz (no en `Engine/` como sugería el brief
@@ -53,13 +93,16 @@ para el umbral de aprobado sobre el resultado ya calculado (`F >= 5`), el mismo 
 
 ## Qué falta (no es para ahora)
 
-- Motor de cálculo completo: nota actual, nota proyectada, nota necesaria (búsqueda binaria, §5
-  del brief) recorriendo todo el árbol (`Group`, `Alternatives`, `Bonus`...) a partir de notas
-  introducidas por el usuario. Por ahora solo `Expression.evaluate` calcula algo, y solo dentro de
-  un `Formula` aislado — no hay todavía un "calcula esta `Subject` con estas notas".
-- `Alternatives.Branch.condition` sigue siendo un `String` libre, sin evaluar — mismo tipo de hueco
-  que tenía `Formula` antes de esta vuelta. Aún no hizo falta resolverlo porque ninguna de las 3
-  guías de referencia fuerza una condición real (eligen rama por sesión, no por nota).
+- **Persistencia**: SwiftData, sin ella no hay forma de guardar una asignatura o una nota entre
+  aperturas de la app. La UI actual es solo una demo de la lógica.
+- **`Alternatives.Branch.condition`** sigue siendo un `String` libre, sin evaluar — mismo tipo de
+  hueco que tenía `Formula` antes de esta vuelta. Aún no hizo falta resolverlo porque ninguna de
+  las 3 guías de referencia fuerza una condición real (eligen rama por sesión, no por nota).
+- **`Requirement`** no está wireado a ningún booleano de entrada — no hay forma de marcar "esto se
+  cumple" ni de que bloquee el aprobado. Ninguna de las 3 guías de referencia lo necesita todavía.
+- **Simulador de "fija algunas, resuelve el resto"**: `neededFraction` asume la misma nota en
+  todos los componentes pendientes (tal como pide esta primera versión del brief); fijar unos y
+  resolver solo otros es trabajo futuro explícito.
 - Casos dudosos ya anotados en cada JSON de `guide/extracted/` (régimen de matrícula a tiempo
   parcial en Estadística, componente opcional de prácticas en la oportunidad adelantada de
   Estructura de Computadores) — ninguno de los dos está modelado.
