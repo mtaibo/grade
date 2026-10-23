@@ -6,7 +6,7 @@
 
 <br/>
 
-![Status](https://img.shields.io/badge/status-planning-yellow)
+![Status](https://img.shields.io/badge/status-prototype-orange)
 ![Made with](https://img.shields.io/badge/made%20with-Swift-orange)
 ![Platform](https://img.shields.io/badge/platform-iOS-lightgrey)
 
@@ -18,61 +18,144 @@ Mark is a tracker for your subjects, grades, assignments and deadlines in one pl
 
 ## Why I'm building it
 
-The grade-tracking apps that exist are generic agendas, usually in English, that don't understand how Spanish universities actually grade: minimum scores to average in, exam parts that exempt you from the final, non-recoverable coursework, ordinary and extraordinary sessions, weights that change depending on another part's grade.
+The grade-tracking apps that exist are generic agendas, usually in English, that don't understand how Spanish universities actually grade: minimum scores to average in, exam parts that exempt you from the final, non-recoverable coursework, ordinary and extraordinary sittings, weights that change depending on another part's grade.
 
 - **Validate fast** — a minimal version tested with real students before building months of features nobody asked for
 - **A real portfolio piece** — published, with real users, built with clean architecture, tests and native Apple frameworks
 - **Modest income** — free with a small paid tier, enough to cover the Apple Developer Program fee
 - **My own use** — I track my own subjects with it every day
 
-## What it does
+## The app
 
-For each subject, it answers one question: **"what do I need on the final?"** It models a subject's grading as a tree of components (grades, groups, alternative schemes, bonuses, requirements), so it can express real cases a generic agenda can't:
+For each subject, it answers one question: **"what do I need on the final?"**
+
+<table>
+<tr>
+<td width="50%" valign="top">
+
+### 📚 Subjects
+The home screen, one course at a time (switched from the title). A card per subject with the grade secured so far, a 0–10 bar from worst to best case with the pass mark, and what's still needed: "Necesitas un 4,2 en lo que falta".
+
+**SwiftUI · Observation**
+
+</td>
+<td width="50%" valign="top">
+
+### 📝 Subject
+Ordinary and extraordinary sittings, each with its exam date. One card per part showing its weight and the points it has earned, with an input that matches how the teacher grades it: points out of anything, a percentage, letters (A, B, C…), or a compact grid for many small tests.
+
+**SwiftUI**
+
+</td>
+</tr>
+<tr>
+<td width="50%" valign="top">
+
+### 🧩 Editor
+Reshape any subject to match its real syllabus: parts and nested groups, weights, how they combine (weighted average, sum, best N…), scale, pass mark, input style, whether a grade carries over to the extraordinary sitting, and due dates.
+
+**SwiftUI**
+
+</td>
+<td width="50%" valign="top">
+
+### 📅 Calendar
+A month view with a dot on every day something is due — lab hand-ins and both exam sittings — and the list of what's coming, each with the grade if it's in or how many days are left.
+
+**SwiftUI · UICalendarView**
+
+</td>
+</tr>
+<tr>
+<td width="50%" valign="top">
+
+### 🎓 Record
+The credit-weighted average and credits passed, over the subjects whose grades are all in.
+
+**SwiftUI**
+
+</td>
+<td width="50%" valign="top">
+
+### ⚙️ [`Engine`](Sources/Engine/)
+The calculation library: the evaluation tree, current grade, best case, pass status and grade needed (binary search). No UI dependency, value types only, tested against 9 real syllabi.
+
+**Swift Package · Swift Testing**
+
+</td>
+</tr>
+</table>
+
+## Architecture
 
 ```
-Subject
-└─ Alternatives (by condition)
-   ├─ If midterms ≥ 4:  Final 40% · Midterms 40% · Labs 20%
-   └─ Otherwise:        Final 80% · Labs 20%
+┌─────────────────────── App (SwiftUI) ───────────────────────┐
+│  Calendar   ·   Subjects   ·   Subject / Editor   ·  Record  │
+│                         │                                   │
+│                 Library (@Observable)                       │
+│    courses → subjects → tree + grades per sitting           │
+│                 saved as one JSON file                      │
+└─────────────────────────┬───────────────────────────────────┘
+                          │  grades converted to each part's scale
+┌─────────────────────────▼───────────────────────────────────┐
+│  Engine (Swift Package, no SwiftUI)                         │
+│  Node tree: Grade · Group · Formula · Alternatives · …      │
+│  evaluate · neededFraction · status · minimums · caps       │
+└─────────────────────────────────────────────────────────────┘
 ```
 
-- **Flexible model, simple interface** — all the complexity lives in the calculation engine, the user never sees a formula
-- **Local first** — SwiftData, with iCloud sync (CloudKit) planned, no backend or accounts
-- **Built for the Spanish system** — 0–10 scale, ordinary/extraordinary sessions, ECTS credits
-- **Native feel** — minimal, following Apple's Human Interface Guidelines
+The engine knows nothing about screens or storage: it takes a subject's tree and the grades entered so far and returns numbers. Everything about how a grade is typed (out of 2, 85 %, a "B") is converted in the app before it gets there. Persistence is a local JSON file for now; the plan is SwiftData with iCloud sync once subjects can be created from scratch.
 
-## Status
-
-Still at the modelling stage: the evaluation tree (`Sources/Engine/`) exists as types only, validated with tests against the 3 reference syllabi in `guide/`, but there's no calculation engine yet. Two of the three syllabi need a weight that varies continuously with another grade, which the model doesn't cover — see [`docs/modelo.md`](docs/modelo.md) for what that gap is and what's next. The plan is to add syllabi in batches of 5 until 10 in a row stop forcing model changes.
-
-The first milestone is a minimal TestFlight build — create subjects, enter grades, see what's needed to pass — tried with ~20 students before January exams. Full details and the complete plan are in [`guide/proyect.md`](guide/proyect.md) (in Spanish).
-
-## Structure
+## How it works
 
 ```
-mark/
-├── README.md
-├── Package.swift                           Engine, the calculation library
-├── Sources/Engine/                          evaluation tree types (no calculation yet)
-├── Tests/EngineTests/                       one case per reference syllabus
-├── App/                                     Xcode project, generated with XcodeGen
-│   ├── project.yml
-│   └── Sources/                             SwiftUI app shell
-├── docs/
-│   └── modelo.md                            model decisions and open questions
-└── guide/
-    ├── proyect.md                           project brief: goals, model, roadmap
-    ├── extracted/                           syllabi evaluation rules, as JSON
-    ├── guiaDocente_estadistica.pdf           reference syllabus
-    ├── guiaDocente_estructuraComputadores.pdf
-    └── guiaDocente_matematicaDiscreta.pdf
+Syllabus (guía docente, PDF)
+        │  read the evaluation section
+        ▼
+Evaluation rules as JSON (guide/extracted/), citing the original text
+        │  build the tree in Swift
+        ▼
+Subject tree  ──►  tests with hand-calculated grades
+        │
+        ▼
+Grades entered (ordinary / extraordinary)
+        │
+        ▼
+evaluate(pending = 0) → what you have     evaluate(pending = 1) → best case
+        │
+        ▼
+binary search over "same grade on everything pending" → what you need
 ```
+
+### Modelling real syllabi
+
+Every rule found so far comes from an actual syllabus in [`guide/`](guide/): continuous weights that depend on another grade (`Formula`, e.g. Estadística's `P + C + 0.1 · (8 − C) · F`), minimums on one part that fail the subject regardless of the average (Sistemas Operativos), and minimums that cap the final grade at 4.5 or 4.9 (Diseño Software, Informática Básica). When a syllabus doesn't fit, the model changes instead of the syllabus being forced into it. The plan is to keep adding syllabi in batches until 10 in a row need no change. Decisions and open gaps are in [`docs/modelo.md`](docs/modelo.md) (in Spanish).
+
+### Ordinary and extraordinary sittings
+
+Each subject keeps both sittings' grades. In the extraordinary one, parts the syllabus keeps (labs, usually) carry over and can be overridden; the rest, usually the exam, starts empty. 🚧 Both sittings share one structure, so a syllabus that reweights the exam in the extraordinary sitting is approximated.
 
 ## Tech stack
 
 | Layer | Technology |
 |---|---|
 | **Engine** | Swift Package, no SwiftUI/SwiftData dependency, value types |
-| **Persistence** | SwiftData, iCloud sync via CloudKit (planned) |
-| **UI** | SwiftUI |
-| **Tests** | Swift Testing, one case per syllabus plus edge cases |
+| **UI** | SwiftUI, UIKit's `UICalendarView` for the month view |
+| **Persistence** | Local JSON for now; SwiftData with iCloud sync via CloudKit planned |
+| **Project** | XcodeGen (`App/project.yml`), the `.xcodeproj` is generated |
+| **Tests** | Swift Testing, one suite per syllabus plus engine tests |
+
+## How to run
+
+Requires Xcode and [XcodeGen](https://github.com/yonaskolb/XcodeGen).
+
+```bash
+git clone https://github.com/mtaibo/mark.git
+cd mark
+make test                                              # engine tests
+cp App/Config/Local.xcconfig.example App/Config/Local.xcconfig
+# set DEVELOPMENT_TEAM in Local.xcconfig to your Apple team ID
+make open                                              # generates and opens the Xcode project
+```
+
+The full brief and roadmap are in [`guide/proyect.md`](guide/proyect.md) (in Spanish). The first milestone is a TestFlight build tried with ~20 students before the January exams.

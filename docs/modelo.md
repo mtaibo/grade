@@ -1,7 +1,7 @@
 # Modelo de evaluación
 
 Árbol de evaluación (`Sources/Engine/`) y motor de cálculo (`Sources/Engine/Calculation.swift`),
-validados contra las 3 guías de `guide/` (extraídas en `guide/extracted/*.json`, construidas en
+validados contra las 9 guías de `guide/` (extraídas en `guide/extracted/*.json`, construidas en
 Swift en `Sources/Engine/ReferenceSubjects.swift`). Hay una UI mínima en SwiftUI
 (`App/Sources/SubjectListView.swift`) que lo deja ver funcionando — ver "Qué falta" al final para
 lo que sigue sin existir.
@@ -52,7 +52,7 @@ aparte:
   cualquier hoja sin nota — `0` da el peor caso (como si lo pendiente sacara un 0), `1` el mejor.
   Es monótona en `pendingFraction` por construcción (toda combinación es una suma de pesos no
   negativos), comprobado explícitamente en `CalculationTests` con una muestra en `[0, 1]` sobre
-  las 3 asignaturas — es la propiedad que pide el brief para poder buscar binariamente.
+  todas las asignaturas de referencia — es la propiedad que pide el brief para poder buscar binariamente.
 - **`Node.neededFraction(_:target:)`**: búsqueda binaria sobre esa fracción para encontrar la nota
   necesaria — "la misma nota en todos los pendientes", tal como describe el brief para esta
   primera versión (fijar solo algunas y resolver el resto queda para el simulador, más adelante).
@@ -63,46 +63,217 @@ aparte:
   `Group` ancestro dé el porcentaje correcto. Así es como "Solución de problemas" (dos pruebas al
   20% cada una, es decir 40% del total) encaja sin inventar un tipo de nodo nuevo.
 
+**Mínimos que suspenden** (`Node.meetsMinimums`): un `Minimum` con consecuencia `.fails` en
+cualquier parte (p. ej. "al menos un 40 % del examen para aprobar", Sistemas Operativos) bloquea el
+aprobado aunque la media llegue al 5. Entra en `status` y en `neededFraction`: la nota necesaria es
+la que alcanza la media *y* todos esos mínimos. Es monótono igual que `evaluate`, así que comparte la
+misma búsqueda binaria. El modelo ya lo expresaba desde el principio; el motor no lo comprobaba hasta
+que la cuarta guía lo hizo necesario — con un 10 en prácticas y un 3,8 en el examen decía "Aprobada".
+**Mínimos con tope** (`capAt`): si una parte no llega a su mínimo y la consecuencia es un tope, el
+resultado de su padre se limita a ese valor — "si no llegas a un 4, la nota final no pasa de 4,5"
+(Diseño Software) o "de 4,9" (Informática Básica). Se aplica dentro de `evaluate`, porque cambia el
+número que se ve y no solo el aprobado. También es monótono: subir esa parte por encima de su
+mínimo solo puede levantar el tope. Lo pidió la segunda tanda de guías.
+`.doesNotAverage` sigue sin conectarse: ninguna guía lo necesita todavía.
+
 No está wireado: `Requirement` (sin valor numérico, no bloquea nada todavía) ni ninguna condición
-real en `Alternatives` (usa la rama por defecto o la primera) — ninguna de las 3 guías de
+real en `Alternatives` (usa la rama por defecto o la primera) — ninguna de las guías de
 referencia lo necesita aún, igual que con `Formula` antes de que `Expression` existiera.
 
-## UI mínima (`SubjectListView.swift`)
+## Estructura de la app
 
-Una lista de las 3 asignaturas de referencia (`Subject.all`) → detalle con dos `TextField`
-numéricos por nota (teclado `.decimalPad`, como un PIN: solo dígitos y coma/punto, sin teclado
-completo): el valor y el "sobre cuánto" te la dieron. Debajo, el resultado en vivo: nota si no
-entra nada más, mejor nota posible, una etiqueta de estado (asegurado/posible/imposible) y, si es
-`possible`, la media que hace falta en lo pendiente.
+Un `TabView` con cuatro pestañas: **Calendario**, **Asignaturas**, **Expediente** y **Ajustes**.
+Calendario va a la izquierda del todo, pero la app abre en Asignaturas (`TabView(selection:)`).
+El "Hoy" del brief (§10) queda cubierto de momento por el Calendario.
 
-Probada en el simulador (build + `xcrun simctl launch` + `simctl io screenshot`): tanto la lista de
-asignaturas como el icono en la pantalla de inicio se ven correctamente. No pude verificar
-visualmente la pantalla de detalle (campos de texto, resultado) porque este entorno no tiene una
-ventana de Simulator.app real a la que hacer tap — solo el framebuffer vía `simctl screenshot`. El
-código en sí es SwiftUI estándar (`Form`/`TextField`/`LabeledContent`) y la lógica que muestra está
-cubierta por los 18 tests de `EngineTests`; aun así, revísalo tú en tu Mac antes de darlo por bueno.
+La app se declara en español (`CFBundleDevelopmentRegion` y `developmentLanguage: es`), para que
+los componentes del sistema (calendario, selectores de fecha) no caigan al inglés.
+
+### Calendario (`CalendarView.swift`)
+
+- **Arriba**, el calendario mensual nativo de iOS (`UICalendarView`, envuelto porque SwiftUI no
+  tiene uno que pueda marcar días), con un punto naranja en cada día con entrega o examen.
+- **Debajo**, la lista de próximas entregas. Si tocas un día, solo las de ese día ("Ver todas"
+  vuelve a la lista completa).
+- **Cada fila**: fecha, parte y asignatura, y a la derecha la nota si ya está puesta o cuánto falta
+  ("Mañana", "En 5 días", "Hace 2 días" en rojo). Al tocarla se abre la asignatura.
+
+Los días se comparan con un tipo propio (`CalendarDay`: año, mes, día), no con `DateComponents`:
+los que devuelve UIKit y los construidos desde un `Date` son iguales pero pueden tener un hash
+distinto, y los puntos aparecían o no según la ejecución. Comprobado en tres ejecuciones seguidas.
+
+### Fechas en las partes
+
+`Grade` gana una `date` opcional en `Engine`: es la "fecha" que el brief pone en cada nodo (§6),
+y así va pegada a su nota (si la renombras o la mueves, la fecha va con ella). El cálculo no la
+usa. Solo las notas llevan fecha, no los grupos: lo que se entrega o se examina es una nota
+concreta. Un test comprueba que un `library.json` guardado antes (sin fechas) sigue cargando.
+
+En el editor, cada nota tiene "Fecha de entrega o examen": desactivada por defecto, y al activarla
+empieza en hoy a las 23:59 (la hora típica de una entrega). En el detalle se ve debajo del nombre.
+
+### Inicio (`HomeView.swift`)
+
+- **Selector de curso** en el título (`toolbarTitleMenu`), el patrón nativo de iOS para cambiar de
+  contexto. Título en modo `inline` a propósito: con título grande, iOS no dibuja la flecha del
+  menú y el selector no se ve. El curso elegido se recuerda por dispositivo (`@AppStorage`).
+- **Resumen del curso**: cuántas asignaturas hay aseguradas, en juego y sin opción.
+- **Una tarjeta por asignatura**: nombre grande, la nota actual (peor caso, lo ya asegurado), una
+  barra 0–10 (relleno sólido hasta lo asegurado, tenue hasta el mejor caso, marca en el umbral) y
+  una línea de estado ("Aprobada", "Necesitas un X en lo que falta"…). Debajo del nombre, la
+  convocatoria y la fecha del examen cuando aportan algo (extraordinaria, o examen con fecha). Sin
+  créditos ni "x de y notas": Miguel los vio como ruido.
+- **Editar** cada asignatura deslizando la tarjeta o con pulsación larga.
+
+Los cursos de ejemplo agrupan las asignaturas según el curso que indica su guía: 1.º (Estadística,
+Matemática Discreta, Álgebra, Administración y Gestión de Organizaciones, Informática Básica) y 2.º
+(Estructura de Computadores, Sistemas Operativos, Diseño Software, Paradigmas de Programación). Añadir asignaturas o cursos todavía no
+existe, a propósito.
+
+### Editor de asignatura (`SubjectEditorView.swift`) — la parte modular
+
+Una hoja con borrador ("Cancelar"/"Guardar"); la biblioteca solo cambia al guardar.
+
+- **Asignatura**: nombre, créditos, nota para aprobar (el `Minimum` del nodo raíz).
+- **Grupos**: cómo se combinan (media ponderada, suma, la mejor, la peor, las mejores N) y sus
+  partes, cada una con nombre, peso en % y escala. Se añaden partes (nota o grupo) y se borran
+  deslizando. Un grupo dentro de otro se edita igual, de forma recursiva.
+- **Fórmulas** (Estadística, Matemática Discreta): se muestra la fórmula legible y se editan sus
+  variables (nombre y escala), pero no la fórmula — editar un `Expression` desde la UI es un
+  problema de diseño aparte.
+- **Renombrar una nota mueve su calificación guardada** con ella; las calificaciones de partes
+  borradas se descartan al guardar. Dos notas con el mismo nombre bloquean el guardado (las notas
+  se guardan por nombre de hoja).
+
+Para poder listar, borrar y editar partes sin identificarlas por su nombre (que es editable),
+`WeightedChild` gana un `id: UUID` en `Engine`. Es el único cambio de modelo que pidió el editor.
+
+### Asignatura (`SubjectDetailView.swift`)
+
+Rehecha como tarjetas (antes era un `Form` que parecía la app de Ajustes y era incómoda de rellenar):
+
+- **Nombre** en grande y **selector Ordinaria / Extraordinaria**. Abre en la convocatoria activa
+  (la extraordinaria en cuanto tenga alguna nota).
+- **Resumen**: "Llevas X / 10", estado (Aprobada / En juego / Sin opción / Sin notas), barra de
+  rango, máximo posible, nota para aprobar y la media que hace falta en lo pendiente.
+- **Examen de esa convocatoria**: fecha y hora, cuánto falta ("En 40 días"), y sale en el Calendario.
+- **Una tarjeta por parte**: nombre, peso y los puntos que aporta de los que puede dar ("1,6 / 2").
+  La entrada depende de cómo se pone la nota:
+  - **Nota**: valor y "sobre".
+  - **Porcentaje**: "85 %".
+  - **Letras**: botones A B C…
+  - **Grupo de 4 o más notas sueltas** (p. ej. 10 pruebas de prácticas): cuadrícula compacta de
+    casillas ("P1", "P2"…), no una lista.
+  - **Otros grupos**: filas con nombre.
+- **Fórmulas**: una tarjeta por variable y la fórmula legible debajo.
+
+### Convocatorias: ordinaria y extraordinaria
+
+Cada asignatura guarda las notas de las dos convocatorias por separado (`entries` y
+`extraordinaryEntries` en `SubjectRecord`, más la fecha del examen de cada una). Es la "Calificación
+separada del nodo, por convocatoria" del brief (§6), en versión JSON.
+
+La extraordinaria usa la misma estructura que la ordinaria, y la `recovery` de cada nota decide qué
+pasa:
+
+- **Se guarda** (`notRecoverable`, `savedForExtraordinary`, `savedForNextYear`,
+  `partiallyRecoverableInFinal`): aparece ya puesta con la nota de la ordinaria ("De la ordinaria").
+  Si la cambias, se guarda como nota de la extraordinaria, y "Volver a la de la ordinaria" la
+  deshace.
+- **Se repite** (sin `recovery` o `recoverableInExtraordinary`, lo normal en un examen): empieza vacía.
+
+En el editor es un único interruptor por nota: "Se guarda para la extraordinaria". Al ajustar las
+asignaturas de ejemplo, Estructura de Computadores pasa a tener las prácticas no recuperables e
+Informática Básica las conserva, como dicen sus guías.
+
+Limitación conocida: no hay una estructura distinta para la extraordinaria. Una guía que cambia los
+pesos en la extraordinaria (Estructura de Computadores: examen al 80 %) queda aproximada. Tener dos
+árboles por asignatura complicaría bastante el editor y todavía no compensa.
+
+### Formas de poner una nota (`Grade.inputStyle`)
+
+`Grade` gana un `inputStyle` opcional en `Engine`: nota (por defecto), porcentaje o letras con su
+equivalencia sobre 10. Es la "escala" que el brief pone en cada nodo (§4/§6); el motor no la usa,
+porque la app convierte lo que escribes (`GradeEntry`) a la escala del nodo antes de calcular. Un
+porcentaje se guarda sobre 100, y una letra como su valor sobre 10 junto a la letra, para volver a
+mostrarla. Equivalencia por defecto: A 10, B 7,5, C 5, D 2,5, E 0, editable por nota en el editor.
+Cada letra tiene un `id` estable para poder editar la tabla sin identificar filas por su contenido.
+
+En el editor también se pueden añadir **varias notas de golpe** ("10 notas" → Prueba 1…10, con el
+mismo peso), pensado para prácticas con muchas pruebas cortas.
 
 ### Nota sobre otra escala: `GradeEntry` (valor + "sobre cuánto")
 
 Un profesor puede dar una nota sobre una escala distinta a la del nodo del modelo (p. ej. sobre 2
-en vez de sobre 10, como en "Prueba objetiva" de Estructura de Computadores). En vez de obligar a
-convertir a mano, cada entrada guarda `{ value, outOf }` (`GradeStore.swift`) y `SubjectDetailView`
-la convierte a la escala del nodo (`value / outOf * node.scaleMax`) antes de pasársela al motor —
-el motor en sí no sabe nada de esto, sigue viendo solo `[String: Double]` ya en su propia escala.
-El campo "sobre" se precarga con la escala del nodo y es editable; cuando no coincide con la del
-nodo, la fila muestra la conversión ("= 7.5/10") para que no sea una caja negra.
+en vez de sobre 10). Cada entrada guarda `{ value, outOf, letter? }` y `SubjectProgress` la convierte a la
+escala del nodo (`value / outOf * node.scaleMax`) antes de pasársela al motor — el motor sigue
+viendo solo `[String: Double]` en su propia escala. Cuando el "sobre" no coincide con el del nodo,
+la fila muestra la conversión ("= 7,5/10").
 
-### Persistencia: `GradeStore.swift`, un puente antes de SwiftData
+### Expediente (`RecordView.swift`) y Ajustes (`SettingsView.swift`)
 
-Las notas que se escriben en la UI se guardan con `UserDefaults` (`GradeStore.load`/`save`), como
-JSON por asignatura (`[String: GradeEntry]`), clave `com.migueltaibo.mark.grades.<nombre>`. Es
-deliberadamente provisional: el brief ya tiene un modelo de datos pensado para SwiftData (§6 —
-Calificación separada del nodo, reglas como JSON versionado, restricciones de CloudKit desde el
-principio), pero construirlo ahora sería adelantarse a un diseño que todavía no se ha validado con
-asignaturas reales creadas por un usuario (hoy solo hay las 3 de referencia, fijas en el código).
-`UserDefaults` cubre lo que se pidió — "que se quede guardado" — sin comprometer esa decisión de
-antemano. Cuando llegue SwiftData, solo `GradeStore.swift` cambia; `SubjectDetailView` ya solo
-conoce `load`/`save`.
+- **Expediente**: media ponderada por créditos (brief §2) de las asignaturas con todas las notas
+  puestas, créditos superados, y cada asignatura por curso con su nota final o "En curso".
+- **Ajustes**: borrar todas las notas, restaurar las asignaturas de ejemplo (con confirmación) y
+  la versión.
+
+### Estado y persistencia: `Library.swift`, un puente antes de SwiftData
+
+Cursos, asignaturas (árbol editable) y notas viven en un `Library` (`@Observable`, inyectado por
+entorno) y se guardan en un único JSON en Application Support. Todos los tipos de `Engine` son
+`Codable`, con un test que comprueba que las asignaturas de referencia sobreviven a la ida y vuelta por JSON.
+Toda mutación pasa por un método de `Library`, así que solo hay un sitio que guarda.
+
+Sustituye al `UserDefaults` de antes, que solo guardaba notas: al poder editar la estructura, hay
+que guardar también el árbol. La primera vez migra las notas que hubiera en `UserDefaults`.
+
+El fichero recuerda qué asignaturas de ejemplo ya se ofrecieron (`offeredExamples`). Así, una
+asignatura de referencia nueva (Sistemas Operativos y luego otras cinco) llega sola a una instalación existente, sin
+tocar sus notas ni sus cambios, y sin volver a meter una que ya estaba. Los ficheros del formato
+anterior (una lista de cursos sin más) se siguen leyendo: se da por ofrecido lo que contienen.
+Comprobado en el simulador con un fichero antiguo con notas.
+
+Sigue siendo provisional: el brief tiene pensado un modelo SwiftData (§6, con CloudKit). Todavía no
+compensa construirlo — no existen asignaturas creadas por un usuario, solo las 3 de ejemplo.
+`SubjectProgress` junta lo que el motor dice de una asignatura y lo usan las tres pantallas.
+
+### Verificación
+
+Comprobado con capturas en el simulador: la pantalla de asignatura nueva (ordinaria con cuadrícula
+de 10 pruebas, letras y porcentaje; extraordinaria con notas que pasan de la ordinaria), el editor
+de letras, inicio (con selector de curso y pestañas), editores,
+Expediente, Ajustes, Calendario con fechas de ejemplo (también en oscuro), la fecha en el editor de
+una parte y en el detalle. Como en este entorno no se puede tocar el simulador, las pantallas que no
+son la inicial se abrieron con un selector temporal por variable de entorno, que se quitó después.
+Lo que no se ha podido probar es la interacción: abrir el menú de curso, deslizar para editar,
+guardar un cambio y escribir notas.
+
+## Guías de referencia
+
+9 guías, todas del Grado en Ingeniería Informática de la UDC salvo Matemática Discreta (Grado en
+Ciencia e Ingeniería de Datos). Cada una tiene su PDF en `guide/`, su extracción en
+`guide/extracted/` citando el texto original y su árbol en `ReferenceSubjects.swift`, con tests.
+
+| Guía | Forma | Qué aportó al modelo |
+| --- | --- | --- |
+| Estructura de Computadores | Media ponderada con un subgrupo de suma | `scaleMax` de un grupo `.sum` |
+| Estadística | Fórmula, peso del examen variable | `Formula` + `Expression` |
+| Matemática Discreta | Fórmula con tope condicional | condicional en `Expression` |
+| Sistemas Operativos | Media + mínimo del 40 % en el examen | mínimos que suspenden (`meetsMinimums`) |
+| Álgebra | Media ponderada | nada (encaja) |
+| Administración y Gestión de Organizaciones | Media ponderada de 4 partes | nada (encaja) |
+| Informática Básica | Media en puntos + tope de 4,9 bajo el mínimo | `capAt` conectado al motor |
+| Diseño Software | Media + tope de 4,5 bajo el mínimo de cualquier parte | (`capAt`, igual) |
+| Paradigmas de Programación | Fórmula, igual que Estadística | nada (encaja) |
+
+El brief pide seguir añadiendo guías hasta que 10 seguidas no obliguen a cambiar el modelo. De esta
+segunda tanda de 5, tres encajaron sin cambios y dos pidieron conectar `capAt`, que el modelo ya
+tenía pero el motor no aplicaba. El contador vuelve a empezar desde Paradigmas de Programación.
+
+Dudas abiertas de esta tanda (detalle en cada JSON): Álgebra tiene dos descripciones cortadas con
+"[...]" en la propia guía, que podrían esconder una regla. En Diseño Software, la tabla dice "no hace
+media" pero el texto concreta un tope de 4,5 (se modela el tope), y las notas se guardan para la
+segunda oportunidad solo si son ≥ 4, un matiz que el modelo de recuperación no tiene.
 
 ## Icono de la app
 
@@ -121,17 +292,18 @@ simulador, se lee bien incluso en miniatura.
 - **App de un solo target** (`Mark-iOS`, sin macOS) — el README solo anuncia iOS.
 - **`Alternatives.Branch.condition`** es un `String?` libre (p. ej. `"Controles >= 4"`), no una
   expresión estructurada. El brief tampoco lo especifica todavía; no hacía falta más para que las
-  3 guías de referencia encajaran.
+  guías de referencia encajaran.
 
 ## Qué falta (no es para ahora)
 
-- **Persistencia**: SwiftData, sin ella no hay forma de guardar una asignatura o una nota entre
-  aperturas de la app. La UI actual es solo una demo de la lógica.
+- **SwiftData** en lugar del JSON de `Library` (brief §6), cuando haya asignaturas creadas por
+  usuarios.
+- **Añadir asignaturas y cursos** (pedido explícitamente para más adelante) y **editar fórmulas**.
 - **`Alternatives.Branch.condition`** sigue siendo un `String` libre, sin evaluar — mismo tipo de
   hueco que tenía `Formula` antes de esta vuelta. Aún no hizo falta resolverlo porque ninguna de
-  las 3 guías de referencia fuerza una condición real (eligen rama por sesión, no por nota).
+  las guías de referencia fuerza una condición real (eligen rama por sesión, no por nota).
 - **`Requirement`** no está wireado a ningún booleano de entrada — no hay forma de marcar "esto se
-  cumple" ni de que bloquee el aprobado. Ninguna de las 3 guías de referencia lo necesita todavía.
+  cumple" ni de que bloquee el aprobado. Ninguna de las guías de referencia lo necesita todavía.
 - **Simulador de "fija algunas, resuelve el resto"**: `neededFraction` asume la misma nota en
   todos los componentes pendientes (tal como pide esta primera versión del brief); fijar unos y
   resolver solo otros es trabajo futuro explícito.
