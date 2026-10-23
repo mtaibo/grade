@@ -1,0 +1,70 @@
+{
+  "subject": "Informática Básica",
+  "code": "202304",
+  "degree": "Grado en Ingeniería Informática",
+  "academicYear": "2025/26",
+  "course": 1,
+  "ects": 6.0,
+  "period": "Primer cuatrimestre",
+  "source": "guiaDocente_informaticaBasica.pdf",
+  "sessions": {
+    "ordinary": {
+      "label": "Primera oportunidad",
+      "node": {
+        "type": "group",
+        "name": "Nota final",
+        "combination": "weightedAverage",
+        "children": [
+          {
+            "type": "grade",
+            "name": "Prácticas de laboratorio",
+            "weight": 0.4,
+            "scaleMax": 4,
+            "recovery": "recoverableInExtraordinary",
+            "citation": "Puntuación máxima: 4.0 puntos - Nota mínima: no requerida"
+          },
+          {
+            "type": "grade",
+            "name": "Prueba mixta",
+            "weight": 0.6,
+            "scaleMax": 6,
+            "recovery": "recoverableInExtraordinary",
+            "rules": {
+              "minimum": {
+                "threshold": 2.4,
+                "scale": 6,
+                "consequence": "capAt",
+                "capAt": 4.9,
+                "citation": "Será además obligatorio, obtener como mínimo el 40% de la nota máxima en la prueba mixta. En caso contrario ... la nota máxima GLOBAL en la materia será como máximo 4.9"
+              }
+            },
+            "citation": "Puntuación máxima: 6.0 puntos - Nota mínima: 2.4 (sobre 6.0)"
+          }
+        ],
+        "rules": {
+          "minimum": {
+            "threshold": 5.0,
+            "scale": 10,
+            "consequence": "fails"
+          }
+        }
+      }
+    },
+    "extraordinary": {
+      "label": "Segunda oportunidad",
+      "node": {
+        "sameAsOrdinary": true,
+        "citation": "Durante la segunda oportunidad será posible recuperar el 100% de la nota tanto de las prácticas de laboratorio como de la prueba mixta ... Se conservan las calificaciones [de prácticas] de la primera oportunidad, pero es posible realizar un examen de prácticas opcional"
+      }
+    },
+    "earlyOpportunity": {
+      "label": "Oportunidad adelantada",
+      "node": {
+        "sameAsExtraordinary": true,
+        "citation": "Se siguen los mismos criterios que para la segunda oportunidad."
+      }
+    }
+  },
+  "doubtfulCases": [],
+  "modelNote": "Notas en puntos como en la guía (prácticas sobre 4, examen sobre 6). El tope de 4,9 bajo el mínimo del examen es Minimum con consecuencia capAt, que el motor aplica desde esta tanda de guías."
+}

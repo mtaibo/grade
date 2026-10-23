@@ -1,0 +1,74 @@
+{
+  "subject": "Administración y Gestión de Organizaciones",
+  "code": "202311",
+  "degree": "Grado en Ingeniería Informática",
+  "academicYear": "2025/26",
+  "course": 1,
+  "ects": 6.0,
+  "period": "Primer cuatrimestre",
+  "source": "guiaDocente_administracionGestionOrganizaciones.pdf",
+  "sessions": {
+    "ordinary": {
+      "label": "Primera oportunidad",
+      "node": {
+        "type": "group",
+        "name": "Nota final",
+        "combination": "weightedAverage",
+        "children": [
+          {
+            "type": "grade",
+            "name": "Prácticas a través de TIC",
+            "weight": 0.1,
+            "recovery": "savedForExtraordinary",
+            "citation": "ejercicios prácticos planteados en las clases de docencia interactiva ... 10,00"
+          },
+          {
+            "type": "grade",
+            "name": "Seminario",
+            "weight": 0.1,
+            "recovery": "savedForExtraordinary",
+            "citation": "resultados de las pruebas establecidas en los seminarios ... 10,00"
+          },
+          {
+            "type": "grade",
+            "name": "Solución de problemas",
+            "weight": 0.1,
+            "recovery": "savedForExtraordinary",
+            "citation": "pruebas prácticas establecidas en el grupo de docencia expositiva ... 10,00"
+          },
+          {
+            "type": "grade",
+            "name": "Prueba mixta",
+            "weight": 0.7,
+            "citation": "Es el examen final de la asignatura y contemplará todo su contenido. 70,00"
+          }
+        ],
+        "rules": {
+          "minimum": {
+            "threshold": 5.0,
+            "scale": 10,
+            "consequence": "fails"
+          }
+        }
+      }
+    },
+    "extraordinary": {
+      "label": "Segunda oportunidad",
+      "node": {
+        "sameAsOrdinary": true,
+        "citation": "La calificación final obtenida se calculará sumando la calificación evaluación continua realizada, que tendrá una ponderación del 30%, y la calificación obtenida en el examen final de la segunda convocatoria, que valdrá un 70% de la nota."
+      }
+    },
+    "earlyOpportunity": {
+      "label": "Oportunidad adelantada",
+      "node": {
+        "type": "grade",
+        "name": "Prueba mixta específica",
+        "citation": "una prueba mixta específica que abarcará toda la materia y que supondrá el 100% de la calificación final"
+      }
+    }
+  },
+  "doubtfulCases": [
+    "Dispensa académica: la evaluación continua se sustituye por una prueba adicional escrita junto al examen — no modelado (depende del régimen del alumno)."
+  ]
+}

@@ -1,0 +1,79 @@
+{
+  "subject": "Diseño Software",
+  "code": "202317",
+  "degree": "Grado en Ingeniería Informática",
+  "academicYear": "2025/26",
+  "course": 2,
+  "ects": 6.0,
+  "period": "Primer cuatrimestre",
+  "source": "guiaDocente_disenoSoftware.pdf",
+  "sessions": {
+    "ordinary": {
+      "label": "Primera oportunidad",
+      "node": {
+        "type": "group",
+        "name": "Nota final",
+        "combination": "weightedAverage",
+        "children": [
+          {
+            "type": "grade",
+            "name": "Prácticas de laboratorio",
+            "weight": 0.33,
+            "recovery": "savedForExtraordinary",
+            "rules": {
+              "minimum": {
+                "threshold": 4.0,
+                "scale": 10,
+                "consequence": "capAt",
+                "capAt": 4.5,
+                "citation": "En caso de no llegar a la nota mínima de 4 en la prueba objetiva y en las prácticas de laboratorio en cualquiera de las oportunidades, implicará que no se pueda obtener más de un 4,5 en la nota final"
+              }
+            },
+            "citation": "Es obligatorio obtener una nota mínima de 4 para poder hacer media con los otros elementos evaluables. 33,00"
+          },
+          {
+            "type": "grade",
+            "name": "Prueba objetiva",
+            "weight": 0.67,
+            "recovery": "savedForExtraordinary",
+            "rules": {
+              "minimum": {
+                "threshold": 4.0,
+                "scale": 10,
+                "consequence": "capAt",
+                "capAt": 4.5
+              }
+            },
+            "citation": "La prueba objetiva es obligatoria para aprobar la asignatura y también es obligatorio obtener una nota mínima de 4 ... 67,00"
+          }
+        ],
+        "rules": {
+          "minimum": {
+            "threshold": 5.0,
+            "scale": 10,
+            "consequence": "fails"
+          }
+        }
+      }
+    },
+    "extraordinary": {
+      "label": "Segunda oportunidad",
+      "node": {
+        "sameAsOrdinary": true,
+        "citation": "Los porcentajes son los mismos que los de la 1ª Oportunidad ... La nota de la prueba objetiva y de las prácticas de laboratorio de la primera oportunidad se guardan para la segunda oportunidad si son iguales o superiores a 4. Si te presentas a alguna parte en la 2ª oportunidad anulas la nota de la primera en esa parte."
+      }
+    },
+    "earlyOpportunity": {
+      "label": "Oportunidad adelantada",
+      "node": {
+        "sameAsOrdinary": true,
+        "citation": "La nota de prácticas de la oportunidad adelantada saldrá de las prácticas realizadas hasta ese momento"
+      }
+    }
+  },
+  "doubtfulCases": [
+    "La tabla dice \"nota mínima de 4 para poder hacer media\" (sugiere no hace media), pero la sección 5.1 concreta la consecuencia: tope de 4,5 en la nota final. Se modela el tope.",
+    "Las notas se guardan para la segunda oportunidad solo si son ≥ 4 — el modelo de recuperación no tiene ese matiz condicional.",
+    "Seminario (0%) no evaluable: no se incluye."
+  ]
+}

@@ -1,0 +1,68 @@
+{
+  "subject": "Álgebra",
+  "code": "202312",
+  "degree": "Grado en Ingeniería Informática",
+  "academicYear": "2025/26",
+  "course": 1,
+  "ects": 6.0,
+  "period": "Segundo cuatrimestre",
+  "source": "guiaDocente_algebra.pdf",
+  "sessions": {
+    "ordinary": {
+      "label": "Primera oportunidad",
+      "node": {
+        "type": "group",
+        "name": "Nota final",
+        "combination": "weightedAverage",
+        "children": [
+          {
+            "type": "grade",
+            "name": "Prácticas de laboratorio",
+            "weight": 0.3,
+            "recovery": "savedForExtraordinary",
+            "citation": "Prácticas de laboratorio [SEG21] ... 30,00. La nota obtenida en este apartado será la misma en las dos [oportunidades]"
+          },
+          {
+            "type": "grade",
+            "name": "Prueba objetiva",
+            "weight": 0.7,
+            "citation": "Al final del curso se realizará una prueba escrita ... 70,00"
+          }
+        ],
+        "rules": {
+          "minimum": {
+            "threshold": 5.0,
+            "scale": 10,
+            "consequence": "fails"
+          }
+        }
+      }
+    },
+    "extraordinary": {
+      "label": "Segunda oportunidad",
+      "node": {
+        "sameAsOrdinary": true,
+        "citation": "La nota de evaluación continua obtenida será la misma en las dos oportunidades de la convocatoria del curso académico"
+      }
+    },
+    "earlyOpportunity": {
+      "label": "Oportunidad adelantada",
+      "node": {
+        "type": "grade",
+        "name": "Examen único",
+        "rules": {
+          "minimum": {
+            "threshold": 5.0,
+            "scale": 10,
+            "consequence": "fails"
+          }
+        },
+        "citation": "El examen se calificará sobre diez puntos. Será necesario obtener al menos un cinco para aprobar."
+      }
+    }
+  },
+  "doubtfulCases": [
+    "La guía corta dos descripciones con \"[...]\" (la de prácticas y la de la prueba objetiva: \"La presentación a la prueba final del curso [...]\"). Lo que falta podría incluir una regla (p. ej. un mínimo o qué significa presentarse); no se ha inventado nada.",
+    "Alumnado a tiempo parcial: las pruebas se ajustan caso por caso con el profesorado — no modelable."
+  ]
+}

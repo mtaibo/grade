@@ -1,0 +1,64 @@
+{
+  "subject": "Paradigmas de Programación",
+  "code": "202316",
+  "degree": "Grado en Ingeniería Informática",
+  "academicYear": "2025/26",
+  "course": 2,
+  "ects": 6.0,
+  "period": "Primer cuatrimestre",
+  "source": "guiaDocente_paradigmasProgramacion.pdf",
+  "sessions": {
+    "ordinary": {
+      "label": "Primera oportunidad",
+      "node": {
+        "type": "formula",
+        "expression": "L + P + 0.1 * (8 - P) * E",
+        "variables": {
+          "L": {
+            "type": "grade",
+            "name": "Prácticas de laboratorio",
+            "scaleMax": 2,
+            "recovery": "savedForExtraordinary",
+            "citation": "Asistencia, realización y entrega de prácticas de laboratorio. 20,00"
+          },
+          "P": {
+            "type": "grade",
+            "name": "Pruebas prácticas",
+            "scaleMax": 2,
+            "recovery": "savedForExtraordinary",
+            "citation": "Con la realización de las pruebas prácticas periódicas se podrá consolidar hasta un 20% de la nota final."
+          },
+          "E": {
+            "type": "grade",
+            "name": "Prueba objetiva",
+            "citation": "El porcentaje no consolidado pasará a computarse en la prueba objetiva. La valoración del examen escrito se realizará por el porcentaje que reste hasta el 80%."
+          }
+        },
+        "rules": {
+          "minimum": {
+            "threshold": 5.0,
+            "scale": 10,
+            "consequence": "fails"
+          }
+        }
+      }
+    },
+    "extraordinary": {
+      "label": "Segunda oportunidad",
+      "node": {
+        "sameAsOrdinary": true,
+        "citation": "Para la Segunda Oportunidad, se mantendrán los resultados obtenidos en cada sección de la Primera Oportunidad."
+      }
+    },
+    "earlyOpportunity": {
+      "label": "Oportunidad adelantada",
+      "node": {
+        "citation": "Para la evaluación adelantada se conservará la nota de prácticas obtenida en el curso anterior."
+      }
+    }
+  },
+  "doubtfulCases": [
+    "Copia o plagio: puede suponer perder todos los puntos de prácticas y pruebas prácticas — regla de integridad, no un nodo."
+  ],
+  "modelNote": "Mismo patrón que Estadística: las pruebas prácticas consolidan hasta 2 puntos y el examen vale lo que quede hasta 8. Resuelto con Formula/Expression, sin cambios en el modelo."
+}

@@ -1,0 +1,67 @@
+{
+  "subject": "Sistemas Operativos",
+  "code": "202318",
+  "degree": "Grado en Ingeniería Informática",
+  "academicYear": "2025/26",
+  "ects": 6.0,
+  "period": "Primer cuatrimestre",
+  "source": "guiaDocente_sistemasOperativos.pdf",
+  "sessions": {
+    "ordinary": {
+      "label": "Primera oportunidad",
+      "node": {
+        "type": "group",
+        "name": "Nota final",
+        "combination": "weightedAverage",
+        "children": [
+          {
+            "type": "grade",
+            "name": "Prácticas de laboratorio",
+            "weight": 0.25,
+            "recovery": "savedForExtraordinary",
+            "citation": "Entrega y defensa de trabajos prácticos realizados en horario de clases prácticas de laboratorio. Computa hasta un máximo de 2.5 puntos sobre los 10 del total."
+          },
+          {
+            "type": "grade",
+            "name": "Prueba objetiva",
+            "weight": 0.75,
+            "rules": {
+              "minimum": {
+                "threshold": 4.0,
+                "scale": 10,
+                "consequence": "fails",
+                "citation": "Es necesario alcanzar un 40% de la puntuación de esta parte para superar la materia."
+              }
+            },
+            "citation": "Examen escrito: computa un máximo 7.5 puntos sobre 10 del total."
+          }
+        ],
+        "rules": {
+          "minimum": { "threshold": 5.0, "scale": 10, "consequence": "fails" }
+        }
+      }
+    },
+    "extraordinary": {
+      "label": "Segunda oportunidad",
+      "node": {
+        "type": "group",
+        "name": "Nota final",
+        "combination": "weightedAverage",
+        "sameAsOrdinary": true,
+        "citation": "En segunda oportunidad se aplican los criterios de evaluación de la sección 5. En segunda oportunidad se guarda la nota de prácticas. En el examen de segunda oportunidad se realiza la prueba objetiva."
+      }
+    },
+    "earlyOpportunity": {
+      "label": "Oportunidad adelantada",
+      "node": {
+        "type": "group",
+        "name": "Nota final",
+        "combination": "weightedAverage",
+        "sameAsOrdinary": true,
+        "citation": "En la oportunidad adelantada se aplican los criterios de evaluación de la sección 5. En la oportunidad adelantada se guarda la nota de prácticas."
+      }
+    }
+  },
+  "doubtfulCases": [],
+  "modelNote": "Primera guía con un mínimo en una parte (40% del examen) que suspende la asignatura aunque la media llegue al 5. El modelo ya lo expresaba (Minimum con consecuencia .fails en la nota del examen), pero el motor no lo comprobaba: ahora sí (Node.meetsMinimums)."
+}
