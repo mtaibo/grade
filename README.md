@@ -43,7 +43,7 @@ Subject
 
 ## Status
 
-Still at the modelling stage: validating the evaluation tree against real course syllabi (`guide/`) before writing any app code. The plan is to start with 3 very different syllabi, build a calculation engine with tests against them, then add syllabi in batches of 5 until 10 in a row stop forcing model changes.
+Still at the modelling stage: the evaluation tree (`Sources/Engine/`) exists as types only, validated with tests against the 3 reference syllabi in `guide/`, but there's no calculation engine yet. Two of the three syllabi need a weight that varies continuously with another grade, which the model doesn't cover — see [`docs/modelo.md`](docs/modelo.md) for what that gap is and what's next. The plan is to add syllabi in batches of 5 until 10 in a row stop forcing model changes.
 
 The first milestone is a minimal TestFlight build — create subjects, enter grades, see what's needed to pass — tried with ~20 students before January exams. Full details and the complete plan are in [`guide/proyect.md`](guide/proyect.md) (in Spanish).
 
@@ -52,9 +52,18 @@ The first milestone is a minimal TestFlight build — create subjects, enter gra
 ```
 mark/
 ├── README.md
+├── Package.swift                           Engine, the calculation library
+├── Sources/Engine/                          evaluation tree types (no calculation yet)
+├── Tests/EngineTests/                       one case per reference syllabus
+├── App/                                     Xcode project, generated with XcodeGen
+│   ├── project.yml
+│   └── Sources/                             SwiftUI app shell
+├── docs/
+│   └── modelo.md                            model decisions and open questions
 └── guide/
-    ├── proyect.md                          project brief: goals, model, roadmap
-    ├── guiaDocente_estadistica.pdf          reference syllabus
+    ├── proyect.md                           project brief: goals, model, roadmap
+    ├── extracted/                           syllabi evaluation rules, as JSON
+    ├── guiaDocente_estadistica.pdf           reference syllabus
     ├── guiaDocente_estructuraComputadores.pdf
     └── guiaDocente_matematicaDiscreta.pdf
 ```
