@@ -2,8 +2,9 @@ import Engine
 import SwiftUI
 
 /// The app's one real screen for now: pick one of the 3 reference subjects and see the engine
-/// work on it. No persistence, no SwiftData yet — `Subject.all` is the fixed reference data from
-/// `Sources/Engine/ReferenceSubjects.swift`, the same trees `EngineTests` checks against.
+/// work on it. No SwiftData yet — `Subject.all` is the fixed reference data from
+/// `Sources/Engine/ReferenceSubjects.swift`, the same trees `EngineTests` checks against. Entered
+/// grades persist via `GradeStore` (`UserDefaults`), keyed by subject name.
 struct SubjectListView: View {
     var body: some View {
         NavigationStack {
@@ -20,11 +21,13 @@ struct SubjectListView: View {
 struct SubjectDetailView: View {
     let subject: Subject
 
+    /// Only the leaves with a valid, parsed number — what the engine sees as "entered".
     @State private var values: [String: Double] = [:]
-    @State private var entered: Set<String> = []
+    /// What's actually in each text field, kept separately so a half-typed "7." isn't erased.
+    @State private var texts: [String: String] = [:]
+    @FocusState private var focusedLeaf: String?
 
     private var leafNames: [String] { subject.root.allLeafNames() }
-    private var inputs: [String: Double] { values.filter { entered.contains($0.key) } }
 
     var body: some View {
         Form {
@@ -32,51 +35,73 @@ struct SubjectDetailView: View {
                 ForEach(leafNames, id: \.self) { name in
                     GradeRow(
                         name: name,
-                        scaleMax: subject.root.leaf(named: name)?.scaleMax ?? 10,
-                        value: binding(for: name),
-                        isEntered: entered.contains(name)
+                        scaleMax: scaleMax(for: name),
+                        text: textBinding(for: name)
                     )
+                    .focused($focusedLeaf, equals: name)
                 }
             }
 
             Section("Resultado") {
-                ResultSummary(root: subject.root, inputs: inputs)
+                ResultSummary(root: subject.root, inputs: values)
             }
         }
         .navigationTitle(subject.name)
+        .toolbar {
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button("Hecho") { focusedLeaf = nil }
+            }
+        }
+        .onAppear(perform: load)
     }
 
-    private func binding(for name: String) -> Binding<Double> {
+    private func scaleMax(for name: String) -> Double {
+        subject.root.leaf(named: name)?.scaleMax ?? 10
+    }
+
+    private func load() {
+        values = GradeStore.load(for: subject.name)
+        texts = values.mapValues(Self.format)
+    }
+
+    private func textBinding(for name: String) -> Binding<String> {
         Binding(
-            get: { values[name] ?? 0 },
+            get: { texts[name] ?? "" },
             set: { newValue in
-                values[name] = newValue
-                entered.insert(name)
+                texts[name] = newValue
+                if let parsed = Double(newValue.replacingOccurrences(of: ",", with: ".")) {
+                    values[name] = min(max(parsed, 0), scaleMax(for: name))
+                } else {
+                    values.removeValue(forKey: name)
+                }
+                GradeStore.save(values, for: subject.name)
             }
         )
+    }
+
+    private static func format(_ value: Double) -> String {
+        value.truncatingRemainder(dividingBy: 1) == 0 ? String(Int(value)) : String(value)
     }
 }
 
 private struct GradeRow: View {
     let name: String
     let scaleMax: Double
-    @Binding var value: Double
-    let isEntered: Bool
+    @Binding var text: String
 
     var body: some View {
-        VStack(alignment: .leading) {
-            HStack {
-                Text(name)
-                Spacer()
-                if isEntered {
-                    Text(value, format: .number.precision(.fractionLength(1)))
-                        .foregroundStyle(.secondary)
-                } else {
-                    Text("sin nota")
-                        .foregroundStyle(.tertiary)
-                }
-            }
-            Slider(value: $value, in: 0...scaleMax, step: 0.1)
+        HStack {
+            Text(name)
+            Spacer()
+            TextField("—", text: $text)
+                .keyboardType(.decimalPad)
+                .multilineTextAlignment(.trailing)
+                .font(.title3.monospacedDigit())
+                .frame(width: 56)
+            Text("/ \(scaleMax.formatted())")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
     }
 }

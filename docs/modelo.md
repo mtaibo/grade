@@ -69,16 +69,28 @@ referencia lo necesita aún, igual que con `Formula` antes de que `Expression` e
 
 ## UI mínima (`SubjectListView.swift`)
 
-Una lista de las 3 asignaturas de referencia (`Subject.all`) → detalle con un `Slider` por nota
-(rango `0...scaleMax` de esa hoja), y debajo el resultado en vivo: nota si no entra nada más, mejor
-nota posible, una etiqueta de estado (asegurado/posible/imposible) y, si es `possible`, la media
-que hace falta en lo pendiente. Nada de SwiftData ni persistencia — las notas viven en `@State`
-mientras la vista está en pantalla, se pierden al salir. Probada en el simulador (build +
-`xcrun simctl launch`): la lista carga datos reales de `Engine` correctamente. No pude verificar
-visualmente la pantalla de detalle (sliders, resultado) porque este entorno no tiene una ventana de
-Simulator.app real a la que hacer tap — solo el framebuffer vía `simctl screenshot`. El código en sí
-es SwiftUI estándar (`Form`/`Slider`/`LabeledContent`) y la lógica que muestra está cubierta por los
-18 tests de `EngineTests`; aun así, revísalo tú en tu Mac antes de darlo por bueno.
+Una lista de las 3 asignaturas de referencia (`Subject.all`) → detalle con un `TextField` numérico
+por nota (teclado `.decimalPad`, como un PIN: solo dígitos y coma/punto, sin teclado completo), y
+debajo el resultado en vivo: nota si no entra nada más, mejor nota posible, una etiqueta de estado
+(asegurado/posible/imposible) y, si es `possible`, la media que hace falta en lo pendiente.
+
+Probada en el simulador (build + `xcrun simctl launch`): la lista carga datos reales de `Engine`
+correctamente. No pude verificar visualmente la pantalla de detalle (campos de texto, resultado)
+porque este entorno no tiene una ventana de Simulator.app real a la que hacer tap — solo el
+framebuffer vía `simctl screenshot`. El código en sí es SwiftUI estándar (`Form`/`TextField`
+/`LabeledContent`) y la lógica que muestra está cubierta por los 18 tests de `EngineTests`; aun así,
+revísalo tú en tu Mac antes de darlo por bueno.
+
+### Persistencia: `GradeStore.swift`, un puente antes de SwiftData
+
+Las notas que se escriben en la UI se guardan con `UserDefaults` (`GradeStore.load`/`save`), como
+JSON por asignatura, clave `com.migueltaibo.mark.grades.<nombre>`. Es deliberadamente provisional:
+el brief ya tiene un modelo de datos pensado para SwiftData (§6 — Calificación separada del nodo,
+reglas como JSON versionado, restricciones de CloudKit desde el principio), pero construirlo ahora
+sería adelantarse a un diseño que todavía no se ha validado con asignaturas reales creadas por un
+usuario (hoy solo hay las 3 de referencia, fijas en el código). `UserDefaults` cubre lo que se pidió
+— "que se quede guardado" — sin comprometer esa decisión de antemano. Cuando llegue SwiftData, solo
+`GradeStore.swift` cambia; `SubjectDetailView` ya solo conoce `load`/`save`.
 
 ## Otras decisiones
 
