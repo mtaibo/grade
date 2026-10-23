@@ -1,0 +1,106 @@
+{
+  "subject": "Estructura de Computadores",
+  "code": "202314",
+  "degree": "Grado en Ingeniería Informática",
+  "academicYear": "2026/27",
+  "ects": 6.0,
+  "period": "Primer cuatrimestre",
+  "source": "guiaDocente_estructuraComputadores.pdf",
+  "sessions": {
+    "ordinary": {
+      "label": "Primera oportunidad",
+      "node": {
+        "type": "group",
+        "name": "Nota final",
+        "combination": "weightedAverage",
+        "children": [
+          {
+            "type": "grade",
+            "name": "Prácticas de laboratorio",
+            "weight": 0.20,
+            "citation": "Prácticas de laboratorio [SEG21] ... 20,00%"
+          },
+          {
+            "type": "group",
+            "name": "Solución de problemas",
+            "combination": "sum",
+            "weight": 0.40,
+            "children": [
+              { "type": "grade", "name": "Prueba 1", "weight": 0.20 },
+              { "type": "grade", "name": "Prueba 2", "weight": 0.20 }
+            ],
+            "citation": "se obtendrá en dos pruebas realizadas a lo largo del curso (20% cada una)"
+          },
+          {
+            "type": "grade",
+            "name": "Prueba objetiva (examen final)",
+            "weight": 0.40,
+            "citation": "se realizará una prueba objetiva, con un peso del 40%, que cubrirá los contenidos teóricos y prácticos no evaluados en las pruebas de evaluación continua"
+          }
+        ],
+        "rules": {
+          "minimum": {
+            "threshold": 5.0,
+            "scale": 10,
+            "consequence": "fails",
+            "citation": "Para superar la asignatura será necesario obtener al menos el 50% de la calificación total"
+          }
+        }
+      }
+    },
+    "extraordinary": {
+      "label": "Segunda oportunidad",
+      "node": {
+        "type": "group",
+        "name": "Nota final",
+        "combination": "weightedAverage",
+        "children": [
+          {
+            "type": "grade",
+            "name": "Prácticas de laboratorio",
+            "weight": 0.20,
+            "recovery": "notRecoverable",
+            "citation": "la calificación de las prácticas de laboratorio (20%) no es recuperable"
+          },
+          {
+            "type": "grade",
+            "name": "Prueba objetiva",
+            "weight": 0.80,
+            "citation": "La prueba objetiva tendrá un peso total del 80% y será similar al conjunto de pruebas de la primera oportunidad"
+          }
+        ],
+        "rules": {
+          "minimum": { "threshold": 5.0, "scale": 10, "consequence": "fails" }
+        }
+      }
+    },
+    "earlyOpportunity": {
+      "label": "Oportunidad adelantada",
+      "node": {
+        "type": "group",
+        "name": "Nota final",
+        "combination": "weightedAverage",
+        "doubtful": true,
+        "children": [
+          {
+            "type": "grade",
+            "name": "Prueba objetiva",
+            "weight": 0.80,
+            "citation": "La oportunidad adelantada consistirá en una prueba objetiva con un peso del 80% de la nota de la asignatura"
+          },
+          {
+            "type": "grade",
+            "name": "Prácticas de laboratorio (equivalente)",
+            "weight": 0.20,
+            "optional": true,
+            "citation": "y, opcionalmente, una prueba equivalente a la prueba de prácticas de laboratorio (20%)"
+          }
+        ],
+        "modelNote": "El componente de prácticas en la oportunidad adelantada es opcional; la guía no dice qué pasa con el 20% si el alumno no se presenta a esa prueba equivalente (¿se reparte sobre el resto, o la nota máxima posible queda en 80%?). No modelado."
+      }
+    }
+  },
+  "doubtfulCases": [
+    "Oportunidad adelantada: componente de prácticas opcional, efecto sobre el denominador no especificado en la guía."
+  ]
+}

@@ -1,0 +1,79 @@
+{
+  "subject": "Matemática Discreta",
+  "code": "200229",
+  "degree": "Grado en Ciencia e Ingeniería de Datos",
+  "academicYear": "2025/26",
+  "ects": 6.0,
+  "period": "Primer cuatrimestre",
+  "source": "guiaDocente_matematicaDiscreta.pdf",
+  "sessions": {
+    "ordinary": {
+      "label": "Primera oportunidad",
+      "node": {
+        "type": "formula",
+        "expression": "N = P + M + 0.1 * (7 - M) * E; F = N if E >= 4 else min(N, 4.5)",
+        "variables": {
+          "P": {
+            "type": "grade",
+            "name": "Prácticas de laboratorio",
+            "scaleMax": 3,
+            "recovery": "notRecoverable",
+            "citation": "La calificación de las pruebas de laboratorio no se podrá recuperar."
+          },
+          "M": {
+            "type": "grade",
+            "name": "Prueba Moodle",
+            "scaleMax": 2,
+            "recovery": "partiallyRecoverableInFinal",
+            "citation": "la nota obtenida el día del examen final se re-escalará de forma que el alumno tenga la oportunidad de recuperar el 20% de la calificación correspondiente a la prueba de Moodle"
+          },
+          "E": {
+            "type": "grade",
+            "name": "Examen final",
+            "scaleMax": 10,
+            "citation": "siendo necesario obtener, al menos 4 puntos sobre 10, para poder superar la materia"
+          }
+        },
+        "citation": "N = P + M + 0'1 * (7-M) * E ... Si el valor de E es mayor o igual que 4, la calificación final (F) será el valor de N. Si el valor de E es menor que 4, la calificación final (F) será el valor mínimo entre N y 4,5.",
+        "rules": {
+          "minimum": {
+            "threshold": 5.0,
+            "scale": 10,
+            "consequence": "fails",
+            "citation": "Para superar la materia, el valor de F ha de ser mayor o igual que 5."
+          }
+        },
+        "modelNote": "Combina dos patrones: (a) peso continuo del examen final dependiente de M, igual que en Estadística; (b) tope condicional F = min(N, 4.5) si E < 4. Ambos resueltos en el mismo Expression (Sources/Engine/Expression.swift): el 'ifGreaterOrEqual' representa directamente la condición E>=4, sin necesitar un Minimum/capAt aparte en la variable E — tener las dos cosas sería duplicar la misma regla en dos sitios. Ver docs/modelo.md."
+      }
+    },
+    "extraordinary": {
+      "label": "Segunda oportunidad",
+      "node": {
+        "type": "formula",
+        "expression": "N = P + M + 0.1 * (7 - M) * E; F = N if E >= 4 else min(N, 4.5)",
+        "citation": "el cálculo de la nota final (F) se realizará de la misma manera que en la primera sustituyendo el valor de E por el obtenido en la nueva prueba escrita",
+        "rules": {
+          "minimum": { "threshold": 5.0, "scale": 10, "consequence": "fails" }
+        }
+      }
+    },
+    "earlyOpportunity": {
+      "label": "Oportunidad adelantada",
+      "node": {
+        "type": "grade",
+        "name": "Examen único",
+        "scaleMax": 10,
+        "rules": {
+          "minimum": {
+            "threshold": 5.0,
+            "scale": 10,
+            "consequence": "fails",
+            "citation": "siendo necesario obtener por lo menos un cinco para aprobar la materia"
+          }
+        },
+        "citation": "El examen se calificará sobre diez puntos, siendo necesario obtener por lo menos un cinco para aprobar la materia."
+      }
+    }
+  },
+  "doubtfulCases": []
+}

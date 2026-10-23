@@ -1,0 +1,64 @@
+{
+  "subject": "Estadística",
+  "code": "202310",
+  "degree": "Grado en Ingeniería Informática",
+  "academicYear": "2025/26",
+  "ects": 6.0,
+  "period": "Segundo cuatrimestre",
+  "source": "guiaDocente_estadistica.pdf",
+  "sessions": {
+    "ordinary": {
+      "label": "Primera oportunidad",
+      "node": {
+        "type": "formula",
+        "expression": "P + C + 0.1 * (8 - C) * F",
+        "variables": {
+          "P": {
+            "type": "grade",
+            "name": "Prácticas de laboratorio",
+            "scaleMax": 2,
+            "recovery": "notRecoverable",
+            "citation": "la nota de prácticas no es recuperable mediante la realización de otra prueba"
+          },
+          "C": {
+            "type": "grade",
+            "name": "Controles (temas 1 y 2)",
+            "scaleMax": 2,
+            "recovery": "partiallyRecoverableInFinal",
+            "citation": "Aquellos alumnos que no obtuvieran el máximo del 20% ... podrán recuperar la parte faltante al realizar el examen final de la asignatura"
+          },
+          "F": {
+            "type": "grade",
+            "name": "Examen final",
+            "scaleMax": 10,
+            "citation": "el examen final, con un valor entre el 60 y el 80% (dependiendo de la calificación obtenida en los controles de los temas 1 e 2)"
+          }
+        },
+        "citation": "la calificación final de la asignatura es P+C+0'1*(8-C)*F",
+        "modelNote": "El peso efectivo del examen final varía de forma continua según C (entre 60% y 80%), no es una elección discreta entre esquemas fijos: ni Group ni Alternatives lo cubren. Resuelto con Expression, un árbol aritmético evaluable sobre las variables (Sources/Engine/Expression.swift) — ver docs/modelo.md."
+      }
+    },
+    "extraordinary": {
+      "label": "Segunda oportunidad",
+      "node": {
+        "type": "formula",
+        "expression": "P + C + 0.1 * (8 - C) * F",
+        "citation": "se aplicará la misma fórmula para calcular la nota final, pero ahora F es la nota que el alumno haya obtenido en el examen final de segunda oportunidad",
+        "modelNote": "P y C se mantienen de la evaluación continua (no recuperables salvo lo ya indicado); solo F cambia por la nota del examen de segunda oportunidad."
+      }
+    },
+    "earlyOpportunity": {
+      "label": "Oportunidad adelantada",
+      "node": {
+        "type": "grade",
+        "name": "Examen único teórico-práctico",
+        "scaleMax": 10,
+        "citation": "Se evaluará al estudiante con un único examen teórico-práctico de la asignatura."
+      }
+    }
+  },
+  "doubtfulCases": [
+    "Alumnado a tiempo parcial tiene una regla distinta para prácticas (prueba específica de recuperación) que depende del régimen de matrícula, no de ninguna nota — no modelado actualmente (el modelo no distingue tipos de matrícula).",
+    "La realización fraudulenta de una prueba implica directamente un 0 en la asignatura — regla de integridad académica, no es un nodo de evaluación."
+  ]
+}
