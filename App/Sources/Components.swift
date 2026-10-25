@@ -36,6 +36,39 @@ struct GradeRangeBar: View {
     }
 }
 
+/// The key to `GradeRangeBar`, so the solid part, the faint part and the tick read without
+/// having to guess: what's secured, what's still reachable, and the grade that passes.
+struct GradeRangeLegend: View {
+    let worst: Double
+    let best: Double
+    let threshold: Double
+    let tint: Color
+
+    var body: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 14) { items }
+            VStack(alignment: .leading, spacing: 6) { items }
+        }
+        .font(.footnote)
+        .foregroundStyle(.secondary)
+    }
+
+    @ViewBuilder
+    private var items: some View {
+        item(Capsule().fill(tint), "Asegurado", worst)
+        item(Capsule().fill(tint.opacity(0.25)), "Hasta", best)
+        item(Rectangle().fill(.primary.opacity(0.6)).frame(width: 2), "Apruebas con", threshold)
+    }
+
+    private func item(_ swatch: some View, _ label: String, _ value: Double) -> some View {
+        HStack(spacing: 6) {
+            swatch.frame(width: 12, height: 8)
+            Text("\(label) **\(value.formatted(.number.precision(.fractionLength(0...2))))**")
+        }
+        .accessibilityElement(children: .combine)
+    }
+}
+
 extension PassStatus {
     var tint: Color {
         switch self {

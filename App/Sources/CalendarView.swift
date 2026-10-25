@@ -66,7 +66,7 @@ struct CalendarView: View {
         if let selectedDay, let day = calendar.date(from: selectedDay.components) {
             return day.formatted(.dateTime.weekday(.wide).day().month(.wide))
         }
-        return "Próximas entregas"
+        return "Próximas fechas"
     }
 
     var body: some View {
@@ -81,10 +81,10 @@ struct CalendarView: View {
                         ContentUnavailableView(
                             "Sin fechas todavía",
                             systemImage: "calendar.badge.plus",
-                            description: Text("Añade la fecha de una entrega o un examen desde Editar asignatura.")
+                            description: Text("Pon la fecha del examen en la ficha de cada asignatura, o la de una entrega desde Editar.")
                         )
                     } else if visible.isEmpty {
-                        Text(selectedDay == nil ? "No queda nada pendiente." : "Nada este día.")
+                        Text(selectedDay == nil ? "No queda nada pendiente. 🎉" : "Nada este día.")
                             .foregroundStyle(.secondary)
                     } else {
                         ForEach(visible) { deadline in

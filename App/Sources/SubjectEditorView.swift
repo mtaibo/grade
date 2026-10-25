@@ -127,7 +127,7 @@ private struct GroupSections: View {
 
     var body: some View {
         Section {
-            Picker("Cómo se combina", selection: combinationKind) {
+            Picker("Cómo se calcula", selection: combinationKind) {
                 ForEach(CombinationKind.allCases) { kind in
                     Text(kind.label).tag(kind)
                 }
@@ -137,6 +137,8 @@ private struct GroupSections: View {
                     LabeledContent("Cuántas cuentan", value: count.formatted())
                 }
             }
+        } footer: {
+            Text(group.combination.kind.explanation)
         }
 
         Section {
@@ -150,7 +152,7 @@ private struct GroupSections: View {
             .onDelete { group.children.remove(atOffsets: $0) }
 
             Menu {
-                Button("Nota", systemImage: "number") { add(.grade(Grade(name: uniqueName("Nota nueva")))) }
+                Button("Una nota", systemImage: "number") { add(.grade(Grade(name: uniqueName("Nota nueva")))) }
                 Menu("Varias notas", systemImage: "square.grid.3x2") {
                     ForEach([3, 4, 5, 6, 8, 10, 12], id: \.self) { count in
                         Button("\(count) notas") { addMany(count) }
@@ -165,22 +167,34 @@ private struct GroupSections: View {
         } header: {
             Text("Partes")
         } footer: {
-            if !group.children.isEmpty {
-                Text(weightFooter)
+            VStack(alignment: .leading, spacing: 6) {
+                if !group.children.isEmpty, group.combination == .weightedAverage {
+                    if weightsAreOff {
+                        Label("Los pesos suman \(totalPercent) %. Normalmente suman 100 %; si no, se reparten en proporción.", systemImage: "exclamationmark.triangle.fill")
+                            .foregroundStyle(.orange)
+                    } else {
+                        Label("Los pesos suman 100 %.", systemImage: "checkmark.circle.fill")
+                            .foregroundStyle(.green)
+                    }
+                }
+                Text(group.children.isEmpty
+                     ? "Añade las partes que aparecen en la guía docente: exámenes, prácticas, trabajos…"
+                     : "Toca una parte para cambiar su nombre, su peso o cómo se pone la nota. Desliza a la izquierda para borrarla.")
             }
         }
     }
 
-    private var weightFooter: String {
-        let total = (totalWeight * 100).formatted(.number.precision(.fractionLength(0...1)))
-        if group.combination == .weightedAverage, abs(totalWeight - 1) > 0.001 {
-            return "Los pesos suman \(total) %. Se reparten en proporción, pero lo normal es que sumen 100 %."
-        }
-        return "Los pesos suman \(total) %."
+    private var weightsAreOff: Bool { abs(totalWeight - 1) > 0.001 }
+
+    private var totalPercent: String {
+        (totalWeight * 100).formatted(.number.precision(.fractionLength(0...1)))
     }
 
+    /// A new part takes whatever weight is still unassigned, so adding one rarely leaves the
+    /// weights summing to something other than 100 %.
     private func add(_ node: Node) {
-        group.children.append(WeightedChild(weight: 0, node: node))
+        let remaining = group.combination == .weightedAverage ? max(0, 1 - totalWeight) : 0
+        group.children.append(WeightedChild(weight: remaining, node: node))
     }
 
     /// "Prueba 1" … "Prueba N", weighted equally — the usual "media de las prácticas".
@@ -377,7 +391,7 @@ private struct GradeSettingsSections: View {
 
     var body: some View {
         Section {
-            Picker("Cómo se pone", selection: style) {
+            Picker("Cómo te la dan", selection: style) {
                 ForEach(InputStyleKind.allCases) { kind in
                     Text(kind.label).tag(kind)
                 }
@@ -385,9 +399,9 @@ private struct GradeSettingsSections: View {
             .pickerStyle(.segmented)
             ScaleField(scaleMax: $grade.scaleMax)
         } header: {
-            Text("Cómo se pone la nota")
+            Text("Cómo te dan la nota")
         } footer: {
-            Text("\"Sobre\" es la escala del modelo. Al meter la nota puedes darla sobre otra, en porcentaje o en letras según elijas aquí.")
+            Text("Elige cómo la escribirás: en puntos (puedes cambiar sobre cuánto al ponerla), en porcentaje o con letras.")
         }
 
         if case .letters = grade.inputStyle {
@@ -424,7 +438,7 @@ private struct GradeSettingsSections: View {
         Section {
             DateFields(date: $grade.date)
         } footer: {
-            Text("Aparece en el Calendario.")
+            Text("Si tiene fecha, aparece en el Calendario.")
         }
     }
 }
@@ -436,7 +450,7 @@ private enum InputStyleKind: String, CaseIterable, Identifiable {
 
     var label: String {
         switch self {
-        case .points: "Nota"
+        case .points: "Puntos"
         case .percent: "Porcentaje"
         case .letters: "Letras"
         }
@@ -447,7 +461,7 @@ private struct ScaleField: View {
     @Binding var scaleMax: Double
 
     var body: some View {
-        LabeledContent("Sobre") {
+        LabeledContent("Nota máxima") {
             TextField("10", value: $scaleMax, format: .number)
                 .keyboardType(.decimalPad)
                 .multilineTextAlignment(.trailing)

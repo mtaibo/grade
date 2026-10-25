@@ -108,6 +108,16 @@ enum CombinationKind: String, CaseIterable, Identifiable {
         case .bestOf: "Las mejores N"
         }
     }
+
+    var explanation: String {
+        switch self {
+        case .weightedAverage: "Cada parte cuenta según su peso. Es lo más habitual."
+        case .sum: "Se suman los puntos de todas las partes."
+        case .max: "Cuenta solo la mejor de las partes."
+        case .min: "Cuenta solo la peor de las partes."
+        case .bestOf: "Cuentan solo las mejores, haciendo la media entre ellas."
+        }
+    }
 }
 
 extension Group.Combination {

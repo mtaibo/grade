@@ -38,16 +38,30 @@ struct SubjectDetailView: View {
 
                 SummaryCard(progress: progress)
 
+                if progress.enteredCount == 0 {
+                    GettingStartedTip()
+                }
+
                 ExamCard(session: session, date: Binding(
                     get: { record.examDate(for: session) },
                     set: { library.setExamDate($0, for: session, in: recordID) }
                 ))
 
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Tus notas")
+                        .font(.title3.bold())
+                    Text("Toca una casilla para escribir la nota que te han puesto. Lo que dejes vacío cuenta como pendiente.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.top, 8)
+                .padding(.horizontal, 4)
+
                 PartsSection(record: record, session: session, progress: progress, focus: $focusedField) { leaf, entry in
                     library.setEntry(entry, forLeaf: leaf, in: recordID, session: session)
                 }
 
-                Text("Para cambiar las partes, sus pesos o cómo se pone cada nota, toca Editar.")
+                Text("¿No coincide con tu guía docente? Toca Editar para cambiar las partes, sus pesos o cómo se pone cada nota.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 4)
@@ -61,6 +75,7 @@ struct SubjectDetailView: View {
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button("Editar") { isEditing = true }
+                    .accessibilityHint("Cambia las partes y los pesos de la evaluación")
             }
             ToolbarItemGroup(placement: .keyboard) {
                 Spacer()
@@ -85,11 +100,12 @@ private struct SummaryCard: View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 0) {
-                    Text("Llevas")
+                    Text(hasGrades ? "Llevas asegurado" : "Todavía sin notas")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                     HStack(alignment: .firstTextBaseline, spacing: 4) {
                         Text(progress.worst, format: .number.precision(.fractionLength(0...2)))
+                            .foregroundStyle(hasGrades ? .primary : .tertiary)
                             .font(.system(size: 52, weight: .bold, design: .rounded))
                             .monospacedDigit()
                             .contentTransition(.numericText())
@@ -104,25 +120,71 @@ private struct SummaryCard: View {
 
             GradeRangeBar(worst: progress.worst, best: hasGrades ? progress.best : 0, threshold: progress.threshold, tint: tint)
 
-            HStack {
-                Text("Máximo posible \(progress.best.formatted(.number.precision(.fractionLength(0...2))))")
-                Spacer()
-                Text("Aprobado con \(progress.threshold.formatted())")
+            if hasGrades {
+                GradeRangeLegend(worst: progress.worst, best: progress.best, threshold: progress.threshold, tint: tint)
+            } else {
+                Text("Apruebas con un \(progress.threshold.formatted())")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
             }
-            .font(.footnote)
-            .foregroundStyle(.secondary)
 
-            if let needed = progress.neededAverage {
+            if let message = verdict {
                 Label {
-                    Text("Necesitas un **\(needed.formatted(.number.precision(.fractionLength(1))))** de media en lo que falta.")
+                    Text(message)
+                        .fixedSize(horizontal: false, vertical: true)
                 } icon: {
-                    Image(systemName: "target")
+                    Image(systemName: verdictIcon)
                 }
                 .font(.subheadline)
-                .foregroundStyle(.orange)
+                .foregroundStyle(tint)
+                .padding(12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(tint.opacity(0.1), in: .rect(cornerRadius: 12))
             }
         }
         .card(padding: 18)
+    }
+
+    /// The one sentence that answers "and so what?" for the numbers above it.
+    private var verdict: LocalizedStringKey? {
+        guard hasGrades else { return nil }
+        switch progress.status {
+        case .guaranteed:
+            return "Ya tienes el aprobado, pase lo que pase en lo que falta."
+        case .impossible:
+            return "Aunque saques un 10 en todo lo que falta, no llegas al \(progress.threshold.formatted())."
+        case .possible:
+            guard let needed = progress.neededAverage else { return nil }
+            return "Para aprobar necesitas un **\(needed.formatted(.number.precision(.fractionLength(1))))** de media en lo que falta."
+        }
+    }
+
+    private var verdictIcon: String {
+        switch progress.status {
+        case .guaranteed: "checkmark.seal.fill"
+        case .impossible: "exclamationmark.triangle.fill"
+        case .possible: "target"
+        }
+    }
+}
+
+/// Shown until the first grade is in: what to do here and what the app gives back.
+private struct GettingStartedTip: View {
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: "hand.tap.fill")
+                .font(.title3)
+                .foregroundStyle(Color.accentColor)
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Empieza por tus notas")
+                    .font(.headline)
+                Text("Ve poniendo abajo cada nota según la sepas. Mark calcula al momento lo que llevas y cuánto te hace falta en lo que queda para aprobar.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .card()
     }
 }
 
@@ -137,7 +199,7 @@ private struct StatusPill: View {
             switch status {
             case .guaranteed: ("Aprobada", "checkmark.circle.fill", .green)
             case .possible: ("En juego", "hourglass", .orange)
-            case .impossible: ("Sin opción", "xmark.circle.fill", .red)
+            case .impossible: ("No llega", "xmark.circle.fill", .red)
             }
         }
         Label(text, systemImage: icon)
@@ -322,7 +384,7 @@ private struct PartContent: View {
                             }
                             .padding(.vertical, 8)
                             .frame(maxWidth: .infinity)
-                            .background(Color(.tertiarySystemFill), in: .rect(cornerRadius: 12))
+                            .background(Color(.quaternarySystemFill), in: .rect(cornerRadius: 12))
                             .accessibilityElement(children: .contain)
                             .accessibilityLabel(grade.name)
                         }
@@ -378,6 +440,7 @@ private struct LeafInput: View {
     @State private var outOfText = ""
 
     private var fieldID: String { "\(context.session.rawValue)/\(grade.name)" }
+    private var isFocused: Bool { context.focus.wrappedValue == fieldID }
     private var entry: GradeEntry? { context.record.entry(for: grade.name, in: context.session) }
     private var isCarriedOver: Bool { context.record.isCarriedOver(grade.name, in: context.session) }
     private var overridesKeptGrade: Bool {
@@ -423,12 +486,15 @@ private struct LeafInput: View {
             } else {
                 HStack(spacing: 4) {
                     valueField
-                    Text("/").foregroundStyle(.tertiary)
+                    Text("sobre").font(.subheadline).foregroundStyle(.secondary)
                     TextField("10", text: $outOfText)
                         .keyboardType(.decimalPad)
+                        .multilineTextAlignment(.center)
                         .font(.subheadline.monospacedDigit())
                         .foregroundStyle(.secondary)
-                        .frame(width: 34)
+                        .frame(width: 44, height: 36)
+                        .background(Color(.quaternarySystemFill), in: .rect(cornerRadius: 8))
+                        .accessibilityLabel("Sobre cuánto es la nota")
                         .focused(context.focus, equals: fieldID + "/outOf")
                         .onChange(of: outOfText) {
                             guard context.focus.wrappedValue == fieldID + "/outOf" else { return }
@@ -445,9 +511,13 @@ private struct LeafInput: View {
             .multilineTextAlignment(compact ? .center : .trailing)
             .font(compact ? .title3.monospacedDigit().weight(.semibold) : .title2.monospacedDigit().weight(.semibold))
             .foregroundStyle(isCarriedOver ? .secondary : .primary)
-            .frame(width: compact ? 56 : 72)
-            .padding(.vertical, compact ? 0 : 4)
-            .background(compact ? Color.clear : Color(.tertiarySystemFill), in: .rect(cornerRadius: 10))
+            .frame(width: compact ? 56 : 72, height: compact ? 36 : 44)
+            .background(Color(.tertiarySystemFill), in: .rect(cornerRadius: 10))
+            .overlay {
+                RoundedRectangle(cornerRadius: 10)
+                    .strokeBorder(Color.accentColor, lineWidth: isFocused ? 2 : 0)
+            }
+            .accessibilityLabel(grade.name)
             .focused(context.focus, equals: fieldID)
             .onChange(of: text) {
                 guard context.focus.wrappedValue == fieldID else { return }

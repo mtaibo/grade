@@ -114,16 +114,19 @@ empieza en hoy a las 23:59 (la hora típica de una entrega). En el detalle se ve
 
 ### Inicio (`HomeView.swift`)
 
-- **Selector de curso** en el título (`toolbarTitleMenu`), el patrón nativo de iOS para cambiar de
-  contexto. Título en modo `inline` a propósito: con título grande, iOS no dibuja la flecha del
-  menú y el selector no se ve. El curso elegido se recuerda por dispositivo (`@AppStorage`).
-- **Resumen del curso**: cuántas asignaturas hay aseguradas, en juego y sin opción.
-- **Una tarjeta por asignatura**: nombre grande, la nota actual (peor caso, lo ya asegurado), una
+- **Selector de curso** como fila de cápsulas bajo el título grande (el nombre del curso). Antes
+  estaba en el menú del título (`toolbarTitleMenu`), pero la flecha apenas se ve y no se
+  descubría. El curso elegido se recuerda por dispositivo (`@AppStorage`).
+- **Resumen del curso** ("Cómo va el curso"): cuántas asignaturas están aprobadas, en juego y no
+  llegan.
+- **Una tarjeta por asignatura**: nombre grande, la nota actual (peor caso, lo ya asegurado, "—"
+  si no hay ninguna nota, con "de 10" debajo), una
   barra 0–10 (relleno sólido hasta lo asegurado, tenue hasta el mejor caso, marca en el umbral) y
   una línea de estado ("Aprobada", "Necesitas un X en lo que falta"…). Debajo del nombre, la
   convocatoria y la fecha del examen cuando aportan algo (extraordinaria, o examen con fecha). Sin
   créditos ni "x de y notas": Miguel los vio como ruido.
-- **Editar** cada asignatura deslizando la tarjeta o con pulsación larga.
+- **Editar** cada asignatura deslizando la tarjeta o con pulsación larga; el pie de la lista lo
+  dice, porque un gesto oculto no se descubre solo.
 
 Los cursos de ejemplo agrupan las asignaturas según el curso que indica su guía: 1.º (Estadística,
 Matemática Discreta, Álgebra, Administración y Gestión de Organizaciones, Informática Básica) y 2.º
@@ -136,8 +139,10 @@ Una hoja con borrador ("Cancelar"/"Guardar"); la biblioteca solo cambia al guard
 
 - **Asignatura**: nombre, créditos, nota para aprobar (el `Minimum` del nodo raíz).
 - **Grupos**: cómo se combinan (media ponderada, suma, la mejor, la peor, las mejores N) y sus
-  partes, cada una con nombre, peso en % y escala. Se añaden partes (nota o grupo) y se borran
-  deslizando. Un grupo dentro de otro se edita igual, de forma recursiva.
+  partes, cada una con nombre, peso en % y escala. Cada forma de combinar se explica en el pie.
+  Una parte nueva se lleva el peso que falte para el 100 % (antes empezaba en 0 %), y el pie avisa
+  en naranja si los pesos no suman 100 % o confirma en verde si sí. Se añaden partes (nota o grupo)
+  y se borran deslizando. Un grupo dentro de otro se edita igual, de forma recursiva.
 - **Fórmulas** (Estadística, Matemática Discreta): se muestra la fórmula legible y se editan sus
   variables (nombre y escala), pero no la fórmula — editar un `Expression` desde la UI es un
   problema de diseño aparte.
@@ -154,9 +159,15 @@ Rehecha como tarjetas (antes era un `Form` que parecía la app de Ajustes y era 
 
 - **Nombre** en grande y **selector Ordinaria / Extraordinaria**. Abre en la convocatoria activa
   (la extraordinaria en cuanto tenga alguna nota).
-- **Resumen**: "Llevas X / 10", estado (Aprobada / En juego / Sin opción / Sin notas), barra de
-  rango, máximo posible, nota para aprobar y la media que hace falta en lo pendiente.
+- **Resumen**: "Llevas asegurado X / 10", estado (Aprobada / En juego / No llega / Sin notas),
+  barra de rango con leyenda (asegurado, hasta dónde puede llegar, con cuánto se aprueba) y una
+  frase de conclusión en el color del estado: la media que hace falta en lo pendiente, que ya está
+  aprobada o que ya no llega.
+- **Pista inicial** mientras no hay ninguna nota: qué hacer en la pantalla y qué devuelve la app.
 - **Examen de esa convocatoria**: fecha y hora, cuánto falta ("En 40 días"), y sale en el Calendario.
+- **"Tus notas"**: encabezado con la instrucción (tocar una casilla, lo vacío cuenta como
+  pendiente). Las casillas miden 44 pt de alto, se resaltan al escribir en ellas y el "sobre" es
+  una casilla visible, no un número suelto tras una barra.
 - **Una tarjeta por parte**: nombre, peso y los puntos que aporta de los que puede dar ("1,6 / 2").
   La entrada depende de cómo se pone la nota:
   - **Nota**: valor y "sobre".
