@@ -642,6 +642,18 @@ private struct PartSummary {
     }
 }
 
+/// A due date in small type, like "27/06/26", struck through once it has passed.
+private struct DueDateLabel: View {
+    let date: Date
+
+    var body: some View {
+        Text(date, format: .dateTime.day(.twoDigits).month(.twoDigits).year(.twoDigits))
+            .font(.footnote.monospacedDigit())
+            .strikethrough(date < .now)
+            .foregroundStyle(.secondary)
+    }
+}
+
 private struct WeightChip: View {
     let percent: Double
     var isMaximum = false
@@ -674,6 +686,9 @@ private struct PartCard: View {
                     WeightChip(percent: weightPercent, isMaximum: item.isMaximum)
                 }
                 Spacer(minLength: 8)
+                if let date = item.node.asGrade?.date {
+                    DueDateLabel(date: date)
+                }
                 Text(summary.text)
                     .font(.title3.weight(.semibold).monospacedDigit())
                     .foregroundStyle(summary.hasAnyGrade ? .primary : .tertiary)
@@ -686,12 +701,16 @@ private struct PartCard: View {
                 VStack(spacing: 6) {
                     ForEach(group.children) { child in
                         if let grade = child.node.asGrade {
-                            HStack {
+                            HStack(spacing: 12) {
                                 Text(grade.name)
                                     .foregroundStyle(.secondary)
                                 Spacer()
+                                if let date = grade.date {
+                                    DueDateLabel(date: date)
+                                }
                                 Text(PartSummary.display(of: grade, record: record, session: session))
                                     .monospacedDigit()
+                                    .frame(minWidth: 36, alignment: .trailing)
                             }
                             .font(.subheadline)
                         }
