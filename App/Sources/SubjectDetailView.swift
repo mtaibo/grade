@@ -698,19 +698,26 @@ private struct PartCard: View {
             }
             ProgressBar(fraction: summary.fraction, tint: summary.tint)
             if let group = item.node.asGroup, group.children.allSatisfy({ $0.node.asGrade != nil }) {
-                VStack(spacing: 6) {
+                // A grid, so the dates and the values line up in columns whatever their width
+                // ("8,3" above "0,83 / 2").
+                let hasDates = group.children.contains { $0.node.asGrade?.date != nil }
+                Grid(alignment: .trailing, horizontalSpacing: 12, verticalSpacing: 6) {
                     ForEach(group.children) { child in
                         if let grade = child.node.asGrade {
-                            HStack(spacing: 12) {
+                            GridRow {
                                 Text(grade.name)
                                     .foregroundStyle(.secondary)
-                                Spacer()
-                                if let date = grade.date {
-                                    DueDateLabel(date: date)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .gridColumnAlignment(.leading)
+                                if hasDates {
+                                    if let date = grade.date {
+                                        DueDateLabel(date: date)
+                                    } else {
+                                        Color.clear.frame(width: 0, height: 0)
+                                    }
                                 }
                                 Text(PartSummary.display(of: grade, record: record, session: session))
                                     .monospacedDigit()
-                                    .frame(minWidth: 36, alignment: .trailing)
                             }
                             .font(.subheadline)
                         }
