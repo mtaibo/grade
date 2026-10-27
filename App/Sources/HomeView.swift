@@ -284,18 +284,25 @@ struct SubjectTile: View {
     let tint: Color
     /// Grades entered and grades in total, recomputed from the subject each time. `nil` hides the ring.
     let count: (entered: Int, total: Int)?
+    /// The subject's grade once every grade is in; it takes the ring's place.
+    let finalGrade: Double?
 
     init(record: SubjectRecord) {
         let style = SubjectStyle(record)
         let progress = SubjectProgress(record)
-        self.init(name: record.subject.name, symbol: style.symbol, tint: style.tint, count: (progress.enteredCount, progress.leafCount))
+        self.init(
+            name: record.subject.name, symbol: style.symbol, tint: style.tint,
+            count: (progress.enteredCount, progress.leafCount),
+            finalGrade: progress.isComplete ? progress.worst : nil
+        )
     }
 
-    init(name: String, symbol: String, tint: Color, count: (entered: Int, total: Int)? = nil) {
+    init(name: String, symbol: String, tint: Color, count: (entered: Int, total: Int)? = nil, finalGrade: Double? = nil) {
         self.name = name
         self.symbol = symbol
         self.tint = tint
         self.count = count
+        self.finalGrade = finalGrade
     }
 
     var body: some View {
@@ -317,7 +324,10 @@ struct SubjectTile: View {
         .frame(height: 156)
         .background(Color(.secondarySystemGroupedBackground), in: .rect(cornerRadius: 22))
         .overlay(alignment: .topTrailing) {
-            if let count, count.total > 0 {
+            if let finalGrade {
+                FinalGradeBadge(grade: finalGrade)
+                    .padding(14)
+            } else if let count, count.total > 0 {
                 CompletionRing(entered: count.entered, total: count.total)
                     .padding(16)
             }
@@ -327,7 +337,23 @@ struct SubjectTile: View {
     }
 }
 
-/// A small circle that fills as grades are entered, turning green with a tick once they all are.
+/// The final grade, in the colour of its band, once the ring would be full.
+private struct FinalGradeBadge: View {
+    let grade: Double
+
+    var body: some View {
+        let tint = GradeBand.color(for: grade)
+        Text(grade, format: .number.precision(.fractionLength(0...2)))
+            .font(.subheadline.weight(.bold).monospacedDigit())
+            .foregroundStyle(tint == .yellow ? Color.orange : tint)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 4)
+            .background(tint.opacity(0.18), in: Capsule())
+            .accessibilityLabel("Nota final \(grade.formatted(.number.precision(.fractionLength(0...2))))")
+    }
+}
+
+/// A small circle that fills as grades are entered.
 private struct CompletionRing: View {
     let entered: Int
     let total: Int
