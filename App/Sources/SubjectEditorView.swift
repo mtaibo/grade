@@ -641,6 +641,17 @@ private struct GradeSettingsSections: View {
         }
 
         Section {
+            Picker("Tipo", selection: $grade.category) {
+                Text("Automático (\(grade.kind.singular))").tag(GradeCategory?.none)
+                ForEach(GradeCategory.allCases, id: \.self) { kind in
+                    Text(kind.singular).tag(GradeCategory?.some(kind))
+                }
+            }
+        } footer: {
+            Text("Trabajo, control o examen: es el color con el que sale en el Calendario y lo que filtra.")
+        }
+
+        Section {
             Toggle("Es el examen final", isOn: Binding(
                 get: { grade.isFinalExam == true },
                 set: { grade.isFinalExam = $0 ? true : nil }

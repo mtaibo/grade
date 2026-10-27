@@ -8,6 +8,10 @@ struct Deadline: Identifiable {
     let subjectName: String
     let leafName: String
     let date: Date
+    let kind: GradeCategory
+    /// The subject's own icon and colour.
+    let symbol: String
+    let tint: Color
     /// The grade already entered for it, converted to its own scale, if any.
     let grade: Double?
     let scaleMax: Double
@@ -15,23 +19,63 @@ struct Deadline: Identifiable {
     var id: String { "\(recordID.uuidString)/\(leafName)" }
 }
 
+extension GradeCategory {
+    var title: String {
+        switch self {
+        case .work: "Trabajos"
+        case .quiz: "Controles"
+        case .exam: "Exámenes"
+        }
+    }
+
+    var singular: String {
+        switch self {
+        case .work: "Trabajo"
+        case .quiz: "Control"
+        case .exam: "Examen"
+        }
+    }
+
+    var color: Color {
+        switch self {
+        case .work: .blue
+        case .quiz: .orange
+        case .exam: .red
+        }
+    }
+
+    /// When several things fall on one day, the calendar dot takes the most important one's colour.
+    var priority: Int {
+        switch self {
+        case .exam: 2
+        case .quiz: 1
+        case .work: 0
+        }
+    }
+}
+
 extension Library {
     var deadlines: [Deadline] {
         courses.flatMap(\.subjects).flatMap { record in
             let progress = SubjectProgress(record, session: .ordinary)
+            let style = SubjectStyle(record)
             let parts = record.subject.root.datedGrades.map { item in
-                Deadline(
+                let grade = record.subject.root.leaf(named: item.name)?.asGrade
+                return Deadline(
                     recordID: record.id,
                     subjectName: record.subject.name,
                     leafName: item.name,
                     date: item.date,
+                    kind: grade?.kind ?? .work,
+                    symbol: style.symbol,
+                    tint: style.tint,
                     grade: progress.inputs[item.name],
-                    scaleMax: record.subject.root.leaf(named: item.name)?.scaleMax ?? 10
+                    scaleMax: grade?.scaleMax ?? 10
                 )
             }
             let exams = Convocatoria.allCases.compactMap { session in
                 record.examDate(for: session).map { date in
-                    Deadline(recordID: record.id, subjectName: record.subject.name, leafName: "Examen · \(session.label)", date: date, grade: nil, scaleMax: 10)
+                    Deadline(recordID: record.id, subjectName: record.subject.name, leafName: "Examen · \(session.label)", date: date, kind: .exam, symbol: style.symbol, tint: style.tint, grade: nil, scaleMax: 10)
                 }
             }
             return parts + exams
@@ -40,18 +84,34 @@ extension Library {
     }
 }
 
-/// "Calendario": a month view with a dot on every day something is due, and below it either the
-/// selected day's deadlines or everything still to come.
+/// "Calendario": a compact month with a coloured dot on every day something is due, and below it the
+/// next three things (or the selected day's). The filter at the top right picks which kinds show.
 struct CalendarView: View {
     @Environment(Library.self) private var library
     @State private var selectedDay: CalendarDay?
+    @State private var isFiltering = false
+    @ScaledMetric(relativeTo: .largeTitle) private var titleSize = 40
+    /// Per-device: which kinds are shown, stored as their raw values.
+    @AppStorage("calendarKinds") private var storedKinds = GradeCategory.allCases.map(\.rawValue).joined(separator: ",")
 
     private var calendar: Calendar { .current }
 
-    private var deadlines: [Deadline] { library.deadlines }
+    private var shownKinds: Set<GradeCategory> {
+        Set(storedKinds.split(separator: ",").compactMap { GradeCategory(rawValue: String($0)) })
+    }
 
-    private var markedDays: Set<CalendarDay> {
-        Set(deadlines.map { CalendarDay($0.date, calendar: calendar) })
+    private var isFiltered: Bool { shownKinds.count < GradeCategory.allCases.count }
+
+    private var allDeadlines: [Deadline] { library.deadlines }
+    private var deadlines: [Deadline] { allDeadlines.filter { shownKinds.contains($0.kind) } }
+
+    /// The kind whose colour each marked day's dot takes.
+    private var dayKinds: [CalendarDay: GradeCategory] {
+        deadlines.reduce(into: [:]) { result, deadline in
+            let day = CalendarDay(deadline.date, calendar: calendar)
+            if let current = result[day], current.priority >= deadline.kind.priority { return }
+            result[day] = deadline.kind
+        }
     }
 
     private var visible: [Deadline] {
@@ -59,7 +119,7 @@ struct CalendarView: View {
             return deadlines.filter { CalendarDay($0.date, calendar: calendar) == selectedDay }
         }
         let today = calendar.startOfDay(for: .now)
-        return deadlines.filter { $0.date >= today }
+        return Array(deadlines.filter { $0.date >= today }.prefix(3))
     }
 
     private var listTitle: String {
@@ -69,47 +129,116 @@ struct CalendarView: View {
         return "Próximas fechas"
     }
 
+    private func toggle(_ kind: GradeCategory) {
+        var kinds = shownKinds
+        if kinds.contains(kind) { kinds.remove(kind) } else { kinds.insert(kind) }
+        storedKinds = GradeCategory.allCases.filter(kinds.contains).map(\.rawValue).joined(separator: ",")
+    }
+
     var body: some View {
         NavigationStack {
-            List {
-                Section {
-                    MonthCalendar(markedDays: markedDays, selection: $selectedDay)
-                }
+            ScrollView(showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 20) {
+                    Text("Calendario")
+                        .font(.system(size: titleSize, weight: .bold, design: .rounded))
+                        .padding(.leading, 4)
+                        .accessibilityAddTraits(.isHeader)
 
-                Section {
-                    if deadlines.isEmpty {
-                        ContentUnavailableView(
-                            "Sin fechas todavía",
-                            systemImage: "calendar.badge.plus",
-                            description: Text("Pon la fecha del examen en la ficha de cada asignatura, o la de una entrega desde Editar.")
-                        )
-                    } else if visible.isEmpty {
-                        Text(selectedDay == nil ? "No queda nada pendiente. 🎉" : "Nada este día.")
-                            .foregroundStyle(.secondary)
-                    } else {
-                        ForEach(visible) { deadline in
-                            NavigationLink(value: deadline.recordID) {
-                                DeadlineRow(deadline: deadline)
+                    MonthCalendar(dayKinds: dayKinds, selection: $selectedDay)
+                        .frame(maxWidth: 320)
+                        .frame(maxWidth: .infinity)
+                        .card(padding: 4)
+                        .padding(.top, 8)
+
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack {
+                            Text(listTitle)
+                                .font(.title3.bold())
+                            Spacer()
+                            if selectedDay != nil {
+                                Button("Ver próximas") { selectedDay = nil }
+                                    .font(.subheadline)
+                            }
+                        }
+                        .padding(.horizontal, 4)
+
+                        if allDeadlines.isEmpty {
+                            ContentUnavailableView(
+                                "Sin fechas todavía",
+                                systemImage: "calendar.badge.plus",
+                                description: Text("Pon la fecha del examen en la ficha de cada asignatura, o la de una entrega desde Editar.")
+                            )
+                        } else if visible.isEmpty {
+                            Text(selectedDay != nil ? "Nada este día." : isFiltered && deadlines.isEmpty ? "Nada con estos filtros." : "No queda nada pendiente. 🎉")
+                                .foregroundStyle(.secondary)
+                                .padding(.horizontal, 4)
+                        } else {
+                            ForEach(visible) { deadline in
+                                NavigationLink(value: deadline.recordID) {
+                                    DeadlineRow(deadline: deadline)
+                                }
+                                .buttonStyle(.plain)
                             }
                         }
                     }
-                } header: {
-                    HStack {
-                        Text(listTitle)
-                        Spacer()
-                        if selectedDay != nil {
-                            Button("Ver todas") { selectedDay = nil }
-                                .font(.subheadline)
-                                .textCase(nil)
-                        }
+                }
+                .padding(.horizontal)
+                .padding(.bottom, 24)
+            }
+            .background(Color(.systemGroupedBackground))
+            .navigationTitle("")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        isFiltering = true
+                    } label: {
+                        Image(systemName: isFiltered ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease")
+                    }
+                    .accessibilityLabel("Filtrar")
+                    .popover(isPresented: $isFiltering) {
+                        KindFilter(shown: shownKinds, toggle: toggle)
+                            .presentationCompactAdaptation(.popover)
                     }
                 }
             }
-            .navigationTitle("Calendario")
             .navigationDestination(for: SubjectRecord.ID.self) { id in
                 SubjectDetailView(recordID: id)
             }
         }
+    }
+}
+
+/// The filter's list: a coloured dot per kind, tapped on and off.
+private struct KindFilter: View {
+    let shown: Set<GradeCategory>
+    let toggle: (GradeCategory) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            ForEach(GradeCategory.allCases, id: \.self) { kind in
+                Button { toggle(kind) } label: {
+                    HStack(spacing: 12) {
+                        Circle()
+                            .fill(kind.color)
+                            .frame(width: 12, height: 12)
+                        Text(kind.title)
+                            .foregroundStyle(.primary)
+                        Spacer(minLength: 24)
+                        Image(systemName: "checkmark")
+                            .font(.footnote.weight(.bold))
+                            .opacity(shown.contains(kind) ? 1 : 0)
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 10)
+                    .contentShape(.rect)
+                }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(shown.contains(kind) ? .isSelected : [])
+            }
+        }
+        .padding(.vertical, 6)
+        .frame(minWidth: 210)
     }
 }
 
@@ -118,18 +247,32 @@ private struct DeadlineRow: View {
 
     var body: some View {
         HStack(spacing: 14) {
-            DayBadge(date: deadline.date)
+            Image(systemName: deadline.symbol)
+                .font(.title3.weight(.semibold))
+                .foregroundStyle(.white)
+                .frame(width: 44, height: 44)
+                .background(deadline.tint.gradient, in: .rect(cornerRadius: 12))
             VStack(alignment: .leading, spacing: 2) {
-                Text(deadline.leafName)
-                    .font(.headline)
+                HStack(spacing: 7) {
+                    Circle()
+                        .fill(deadline.kind.color)
+                        .frame(width: 9, height: 9)
+                    Text(deadline.leafName)
+                        .font(.headline)
+                        .foregroundStyle(.primary)
+                        .multilineTextAlignment(.leading)
+                }
                 Text(deadline.subjectName)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.leading)
             }
-            Spacer()
+            Spacer(minLength: 8)
             trailing
         }
+        .card(padding: 14)
         .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(deadline.kind.singular): \(deadline.leafName), \(deadline.subjectName)")
     }
 
     @ViewBuilder
@@ -138,33 +281,21 @@ private struct DeadlineRow: View {
             VStack(alignment: .trailing, spacing: 2) {
                 Text(grade, format: .number.precision(.fractionLength(0...2)))
                     .font(.headline.monospacedDigit())
+                    .foregroundStyle(.primary)
                 Text("sobre \(deadline.scaleMax.formatted())")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
         } else {
-            Text(RelativeDay(deadline.date).label)
-                .font(.subheadline)
-                .foregroundStyle(RelativeDay(deadline.date).isOverdue ? .red : .secondary)
+            VStack(alignment: .trailing, spacing: 2) {
+                Text(RelativeDay(deadline.date).label)
+                    .font(.subheadline)
+                    .foregroundStyle(RelativeDay(deadline.date).isOverdue ? .red : .secondary)
+                Text(deadline.date, format: .dateTime.day().month(.abbreviated))
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+            }
         }
-    }
-}
-
-private struct DayBadge: View {
-    let date: Date
-
-    var body: some View {
-        VStack(spacing: 0) {
-            Text(date, format: .dateTime.month(.abbreviated))
-                .font(.caption2.weight(.semibold))
-                .textCase(.uppercase)
-                .foregroundStyle(.red)
-            Text(date, format: .dateTime.day())
-                .font(.system(.title3, design: .rounded, weight: .semibold))
-                .monospacedDigit()
-        }
-        .frame(width: 44, height: 44)
-        .background(.quaternary.opacity(0.5), in: .rect(cornerRadius: 10))
     }
 }
 
@@ -216,10 +347,10 @@ struct CalendarDay: Hashable {
     var components: DateComponents { DateComponents(year: year, month: month, day: day) }
 }
 
-/// UIKit's month calendar, since SwiftUI has no equivalent that can mark days: a dot on every
-/// day in `markedDays`, single-day selection bound to `selection` (cleared from "Ver todas").
+/// UIKit's month calendar, since SwiftUI has no equivalent that can mark days: a dot on every day
+/// in `dayKinds`, in its kind's colour, with single-day selection bound to `selection`.
 private struct MonthCalendar: UIViewRepresentable {
-    let markedDays: Set<CalendarDay>
+    let dayKinds: [CalendarDay: GradeCategory]
     @Binding var selection: CalendarDay?
 
     func makeCoordinator() -> Coordinator { Coordinator(parent: self) }
@@ -236,9 +367,9 @@ private struct MonthCalendar: UIViewRepresentable {
     }
 
     func updateUIView(_ view: UICalendarView, context: Context) {
-        let previous = context.coordinator.parent.markedDays
+        let previous = context.coordinator.parent.dayKinds
         context.coordinator.parent = self
-        let changed = previous.symmetricDifference(markedDays)
+        let changed = Set(previous.keys).union(dayKinds.keys).filter { previous[$0] != dayKinds[$0] }
         if !changed.isEmpty {
             view.reloadDecorations(forDateComponents: changed.map(\.components), animated: true)
         }
@@ -267,8 +398,8 @@ private struct MonthCalendar: UIViewRepresentable {
         }
 
         func calendarView(_ calendarView: UICalendarView, decorationFor dateComponents: DateComponents) -> UICalendarView.Decoration? {
-            guard let day = CalendarDay(dateComponents), parent.markedDays.contains(day) else { return nil }
-            return .default(color: .systemOrange, size: .medium)
+            guard let day = CalendarDay(dateComponents), let kind = parent.dayKinds[day] else { return nil }
+            return .default(color: UIColor(kind.color), size: .medium)
         }
 
         func dateSelection(_ selection: UICalendarSelectionSingleDate, didSelectDate dateComponents: DateComponents?) {

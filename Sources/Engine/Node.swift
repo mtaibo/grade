@@ -16,6 +16,8 @@ public struct Grade: Sendable, Equatable, Codable {
     /// Marks the final exam (every subject has one): shown in its own card with an ordinary and an
     /// extraordinary slot. Presentation only. `nil` means it isn't.
     public var isFinalExam: Bool?
+    /// What kind of thing this is, for the calendar's colours. `nil` lets `kind` guess from the name.
+    public var category: GradeCategory?
     public var scaleMax: Double
     public var minimum: Minimum?
     public var recovery: Recovery?
@@ -29,6 +31,7 @@ public struct Grade: Sendable, Equatable, Codable {
     public init(
         name: String,
         isFinalExam: Bool? = nil,
+        category: GradeCategory? = nil,
         scaleMax: Double = 10,
         minimum: Minimum? = nil,
         recovery: Recovery? = nil,
@@ -37,6 +40,7 @@ public struct Grade: Sendable, Equatable, Codable {
     ) {
         self.name = name
         self.isFinalExam = isFinalExam
+        self.category = category
         self.scaleMax = scaleMax
         self.minimum = minimum
         self.recovery = recovery
@@ -183,5 +187,23 @@ public struct Subject: Sendable, Equatable, Codable {
         self.name = name
         self.ectsCredits = ectsCredits
         self.root = root
+    }
+}
+
+/// A colour-coded classification for anything with a date: an assignment, a quiz-style control or an exam.
+public enum GradeCategory: String, Sendable, Codable, CaseIterable, Equatable {
+    case work, quiz, exam
+}
+
+extension Grade {
+    /// The chosen category, or a guess from what it's called: final exams and "examen" are exams;
+    /// "control", "prueba", "test"… are controls; everything else (labs, seminars, problem sets) is work.
+    public var kind: GradeCategory {
+        if let category { return category }
+        if isFinalExam == true { return .exam }
+        let folded = name.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: nil).lowercased()
+        if folded.contains("examen") { return .exam }
+        if ["control", "prueba", "test", "quiz", "moodle"].contains(where: folded.contains) { return .quiz }
+        return .work
     }
 }

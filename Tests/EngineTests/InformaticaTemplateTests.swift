@@ -100,3 +100,15 @@ struct FinalExamMarkerTests {
         #expect(grade.isFinalExam == nil)
     }
 }
+
+struct GradeCategoryTests {
+    @Test func categoryIsGuessedFromTheNameUnlessChosen() {
+        #expect(Grade(name: "Prácticas de laboratorio").kind == .work)
+        #expect(Grade(name: "Solución de problemas").kind == .work)
+        #expect(Grade(name: "Prueba práctica").kind == .quiz)
+        #expect(Grade(name: "Controles").kind == .quiz)
+        #expect(Grade(name: "Prueba objetiva", isFinalExam: true).kind == .exam)
+        #expect(Grade(name: "Examen de teoría").kind == .exam)
+        #expect(Grade(name: "Prácticas", category: .exam).kind == .exam)
+    }
+}
