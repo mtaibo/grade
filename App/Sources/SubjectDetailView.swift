@@ -280,7 +280,7 @@ private struct GradeCard: View {
                         .background(tint.opacity(0.1), in: .rect(cornerRadius: 12))
                     }
                     if let formula {
-                        Text(formula.expression.display)
+                        Text(formula.expression.source)
                             .font(.footnote.monospaced())
                             .foregroundStyle(.secondary)
                     }
@@ -386,7 +386,7 @@ private struct ExamCard: View {
                 Label(exam?.node.title ?? "Examen", systemImage: "calendar")
                     .font(.headline)
                 if let weightPercent = exam?.weightPercent {
-                    WeightChip(percent: weightPercent)
+                    WeightChip(percent: weightPercent, isMaximum: exam?.isMaximum == true)
                 }
             }
             ForEach(Convocatoria.allCases) { session in
@@ -565,6 +565,8 @@ private struct PartItem: Identifiable {
     let id: String
     let node: Node
     let weightPercent: Double?
+    /// True when the share is a ceiling ("hasta 80 %") because the formula decides the real one.
+    var isMaximum = false
 
     var isExam: Bool { node.isFinalExamPart }
 
@@ -576,8 +578,12 @@ private struct PartItem: Identifiable {
                 PartItem(id: child.id.uuidString, node: child.node, weightPercent: total > 0 ? child.weight / total * 100 : nil)
             }
         } else if case .formula(let formula) = root {
-            return formula.variables.keys.sorted().compactMap { key in
-                formula.variables[key].map { PartItem(id: key, node: $0, weightPercent: nil) }
+            let keys = formula.expression.variableOrder.filter { formula.variables[$0] != nil }
+                + formula.variables.keys.sorted().filter { !formula.expression.variableOrder.contains($0) }
+            return keys.compactMap { key in
+                formula.variables[key].map {
+                    PartItem(id: key, node: $0, weightPercent: formula.maxShare(of: key) * 10, isMaximum: true)
+                }
             }
         } else {
             return [PartItem(id: "root", node: root, weightPercent: nil)]
@@ -629,9 +635,10 @@ private struct PartSummary {
 
 private struct WeightChip: View {
     let percent: Double
+    var isMaximum = false
 
     var body: some View {
-        Text("\(percent.formatted(.number.precision(.fractionLength(0...1)))) %")
+        Text("\(isMaximum ? "hasta " : "")\(percent.formatted(.number.precision(.fractionLength(0...1)))) %")
             .font(.caption.weight(.semibold))
             .foregroundStyle(.secondary)
             .padding(.horizontal, 7)
@@ -655,7 +662,7 @@ private struct PartCard: View {
                     .font(.headline)
                     .multilineTextAlignment(.leading)
                 if let weightPercent = item.weightPercent {
-                    WeightChip(percent: weightPercent)
+                    WeightChip(percent: weightPercent, isMaximum: item.isMaximum)
                 }
                 Spacer(minLength: 8)
                 Text(summary.text)

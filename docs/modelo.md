@@ -367,3 +367,9 @@ Menú `…` de cada asignatura: sin guía solo «Subir guía» (selector de PDF,
 ## Simulador (oct 2026)
 
 Menú `…` → «Simulador»: abre a pantalla completa la misma pantalla de asignatura sobre una `Library(simulating:)` desechable (una copia en memoria de la asignatura con sus notas actuales, sin archivo: `save()` no hace nada). Todo lo que se escribe vive solo ahí y se pierde al salir con la ✕ (arriba a la izquierda, sustituye al `<`). Dentro se oculta el menú `…` (nada de editar, guías ni fechas) y sale una etiqueta «Simulador · no se guarda nada». Se detecta con `EnvironmentValues.isSimulating`.
+
+## Editor de fórmulas (oct 2026)
+
+`Sources/Engine/FormulaText.swift`: `Expression.parse(_:variables:)` lee una fórmula escrita a mano (`+ - * /`, paréntesis, `min(a; b)`, `max(a; b)`, `si(a >= b; entonces; si no)` también con `<=`; decimales con coma o punto; argumentos separados por `;`) con errores legibles, y `Expression.source` la imprime de vuelta (las 6 fórmulas de referencia hacen ida y vuelta, `FormulaTextTests`). `renamingVariable` renombra una letra en toda la fórmula. `Formula.maxShare(of:)` calcula lo máximo que puede aportar una variable a la nota (en puntos sobre 10).
+
+En el editor, una asignatura con fórmula tiene: un campo de texto de la fórmula con botones para insertar variables y operadores (se aplica en cuanto se lee; si no, queda la última buena y sale el motivo), una vista previa (todo al máximo / todo a 0) y la lista de variables (letra, nombre, cuántas notas, cómo se pone cada una; añadir; borrar solo si la fórmula no la usa). Al revés, el grupo raíz (media ponderada o suma) tiene «Convertir en fórmula»: cada parte pasa a una variable (inicial del nombre) y los pesos a coeficientes. En la pantalla de asignatura las partes de una fórmula muestran «hasta N %».

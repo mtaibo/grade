@@ -235,27 +235,53 @@ extension Group.Combination {
     }
 }
 
-extension Engine.Expression {
-    /// Human-readable form, e.g. "P + C + 0,1 · (8 − C) · F".
-    var display: String {
-        switch self {
-        case .constant(let value): value.formatted()
-        case .variable(let name): name
-        case .add(let lhs, let rhs): "\(lhs.display) + \(rhs.display)"
-        case .subtract(let lhs, let rhs): "\(lhs.display) − \(rhs.parenthesized)"
-        case .multiply(let lhs, let rhs): "\(lhs.parenthesized) · \(rhs.parenthesized)"
-        case .divide(let lhs, let rhs): "\(lhs.parenthesized) / \(rhs.parenthesized)"
-        case .min(let lhs, let rhs): "mín(\(lhs.display), \(rhs.display))"
-        case .max(let lhs, let rhs): "máx(\(lhs.display), \(rhs.display))"
-        case .ifGreaterOrEqual(let lhs, let rhs, let then, let otherwise):
-            "si \(lhs.display) ≥ \(rhs.display): \(then.display)\nsi no: \(otherwise.display)"
+extension Formula {
+    /// The same parts as an ordinary group, so it can be edited like any other subject. A formula
+    /// has no fixed weights, so each part gets one from what it can contribute on its own (or,
+    /// failing that, its maximum) — a starting point to correct, not the guide's exact rule.
+    func asGroup(kind: CombinationKind) -> Engine.Group {
+        let contributions = variables.keys.reduce(into: [String: Double]()) { $0[$1] = maxShare(of: $1) }
+        let total = contributions.values.reduce(0, +)
+        let ordered = expression.variableOrder.filter { variables[$0] != nil }
+            + variables.keys.sorted().filter { !expression.variableOrder.contains($0) }
+        let children = ordered.compactMap { key -> WeightedChild? in
+            guard let node = variables[key] else { return nil }
+            return WeightedChild(weight: total > 0 ? (contributions[key] ?? 0) / total : 1 / Double(variables.count), node: node)
         }
+        return Engine.Group(
+            name: name,
+            combination: Engine.Group.Combination(kind: kind, bestOf: 1),
+            children: children,
+            minimum: minimum
+        )
     }
+}
 
-    private var parenthesized: String {
-        switch self {
-        case .add, .subtract, .ifGreaterOrEqual: "(\(display))"
-        default: display
+extension Engine.Group {
+    /// The same parts as a formula (`0,2 * A + 0,8 * B`), for subjects whose final grade doesn't come
+    /// from fixed percentages. Only for weighted averages and sums, which a formula can say exactly.
+    /// Each part gets a variable named after its first letter when that's free, else the next letter.
+    func asFormula() -> Formula? {
+        guard combination == .weightedAverage || combination == .sum, !children.isEmpty else { return nil }
+        let total = children.reduce(0) { $0 + $1.weight }
+        guard total > 0 else { return nil }
+        var variables: [String: Node] = [:]
+        var terms: [Engine.Expression] = []
+        let alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".map(String.init)
+        for child in children where child.node.scaleMax > 0 {
+            let initial = child.node.title.first.map { String($0).uppercased() }
+            let key = [initial].compactMap { $0 }.first { variables[$0] == nil && $0.first?.isLetter == true }
+                ?? alphabet.first { variables[$0] == nil }
+                ?? "V\(variables.count + 1)"
+            variables[key] = child.node
+            let share = combination == .sum ? child.weight : child.weight / total
+            let coefficient = share * 10 / child.node.scaleMax
+            terms.append(abs(coefficient - 1) < 1e-9
+                ? .variable(key)
+                : .multiply(.constant((coefficient * 1_000_000).rounded() / 1_000_000), .variable(key)))
         }
+        guard var expression = terms.first else { return nil }
+        for term in terms.dropFirst() { expression = .add(expression, term) }
+        return Formula(name: name, expression: expression, variables: variables, minimum: minimum)
     }
 }

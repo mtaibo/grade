@@ -38,7 +38,7 @@ struct SubjectEditorView: View {
                     }
                 }
 
-                NodeContentsSections(node: $draft.subject.root, onRenameLeaf: recordRename)
+                NodeContentsSections(node: $draft.subject.root, isRoot: true, onRenameLeaf: recordRename)
 
                 if !duplicateLeafNames.isEmpty {
                     Section {
@@ -94,13 +94,18 @@ struct SubjectEditorView: View {
 /// group inside it.
 private struct NodeContentsSections: View {
     @Binding var node: Node
+    var isRoot = false
     let onRenameLeaf: (String, String) -> Void
 
     var body: some View {
         if let group = Binding($node.asGroup) {
-            GroupSections(group: group, onRenameLeaf: onRenameLeaf)
+            GroupSections(
+                group: group,
+                onRenameLeaf: onRenameLeaf,
+                convertToFormula: isRoot ? group.wrappedValue.asFormula().map { formula in { node = .formula(formula) } } : nil
+            )
         } else if let formula = Binding($node.asFormula) {
-            FormulaSections(formula: formula, onRenameLeaf: onRenameLeaf)
+            FormulaSections(node: $node, formula: formula, onRenameLeaf: onRenameLeaf)
         } else if let grade = Binding($node.asGrade) {
             GradeSettingsSections(grade: grade)
         } else {
@@ -115,6 +120,8 @@ private struct NodeContentsSections: View {
 private struct GroupSections: View {
     @Binding var group: Engine.Group
     let onRenameLeaf: (String, String) -> Void
+    /// Set for the subject's own group when a formula can express it exactly.
+    var convertToFormula: (() -> Void)?
 
     private var combinationKind: Binding<CombinationKind> {
         Binding(
@@ -139,6 +146,14 @@ private struct GroupSections: View {
             }
         } footer: {
             Text(group.combination.kind.explanation)
+        }
+
+        if let convertToFormula {
+            Section {
+                Button("Convertir en fórmula", systemImage: "function", action: convertToFormula)
+            } footer: {
+                Text("Para cuando la nota final no sale de porcentajes fijos, sino de una fórmula de la guía. Cada parte pasa a ser una variable con su letra y podrás escribir la fórmula a mano.")
+            }
         }
 
         Section {
@@ -213,38 +228,229 @@ private struct GroupSections: View {
 }
 
 private struct FormulaSections: View {
+    @Binding var node: Node
     @Binding var formula: Formula
     let onRenameLeaf: (String, String) -> Void
 
+    @State private var text = ""
+    @State private var parseError: String?
+
+    /// "Fórmula" stays selected; picking anything else turns the subject into ordinary weighted
+    /// parts, which are edited like any other. Cancel in the editor to undo it.
+    private var mode: Binding<CombinationKind?> {
+        Binding(
+            get: { nil },
+            set: { kind in
+                guard let kind else { return }
+                node = .group(formula.asGroup(kind: kind))
+            }
+        )
+    }
+
+    private var orderedKeys: [String] {
+        let used = formula.expression.variableOrder.filter { formula.variables[$0] != nil }
+        return used + formula.variables.keys.sorted().filter { !used.contains($0) }
+    }
+
+    private var preview: String? {
+        let maxima = formula.variables.mapValues(\.scaleMax)
+        let best = formula.expression.evaluate(maxima)
+        let worst = formula.expression.evaluate(maxima.mapValues { _ in 0.0 })
+        guard best.isFinite, worst.isFinite else { return nil }
+        let format = { (value: Double) in value.formatted(.number.precision(.fractionLength(0...2))) }
+        return "Con todo al máximo da \(format(best)); con todo a 0, \(format(worst))."
+    }
+
     var body: some View {
         Section {
-            Text(formula.expression.display)
-                .font(.callout.monospaced())
-                .textSelection(.enabled)
-        } header: {
-            Text("Fórmula")
+            Picker("Cómo se calcula", selection: mode) {
+                Text("Fórmula").tag(CombinationKind?.none)
+                ForEach(CombinationKind.allCases) { kind in
+                    Text(kind.label).tag(CombinationKind?.some(kind))
+                }
+            }
         } footer: {
-            Text("Esta asignatura se calcula con una fórmula de su guía docente. Por ahora puedes editar sus variables, no la fórmula.")
+            Text("Elige otra forma para editarla con partes y pesos como el resto de asignaturas. Los pesos salen aproximados de la fórmula: revísalos.")
         }
 
-        Section("Variables") {
-            ForEach(formula.variables.keys.sorted(), id: \.self) { key in
-                let variable = Binding(
-                    get: { formula.variables[key] ?? .grade(Grade(name: key)) },
-                    set: { formula.variables[key] = $0 }
-                )
-                NavigationLink {
-                    LeafEditorView(node: variable, onRenameLeaf: onRenameLeaf)
-                        .navigationTitle(key)
-                } label: {
-                    LabeledContent {
-                        Text("sobre \(variable.wrappedValue.scaleMax.formatted())")
-                    } label: {
-                        Text("\(Text(key).bold())  \(variable.wrappedValue.title)")
+        Section {
+            TextField("Fórmula", text: $text, axis: .vertical)
+                .font(.body.monospaced())
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .onChange(of: text) { apply() }
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(orderedKeys, id: \.self) { key in
+                        InsertChip(label: key, bold: true) { text += key }
+                    }
+                    ForEach(["+", "-", "*", "/", "(", ")", ";", ">="], id: \.self) { token in
+                        InsertChip(label: token) { text += " \(token) " }
+                    }
+                    ForEach(["min(", "max(", "si("], id: \.self) { token in
+                        InsertChip(label: token) { text += token }
                     }
                 }
             }
+            if let parseError {
+                Label(parseError, systemImage: "exclamationmark.triangle.fill")
+                    .font(.footnote)
+                    .foregroundStyle(.orange)
+            } else if let preview {
+                Text(preview)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+        } header: {
+            Text("Fórmula")
+        } footer: {
+            Text("Usa las letras de las variables con + - * / y paréntesis, min(a; b), max(a; b) y si(a >= b; entonces; si no). Decimales con coma; separa con «;».")
         }
+        .onAppear { text = formula.expression.source }
+
+        Section {
+            ForEach(orderedKeys, id: \.self) { key in
+                NavigationLink {
+                    FormulaVariableEditor(key: key, formula: $formula, onRenameKey: renameKey, onRenameLeaf: onRenameLeaf)
+                } label: {
+                    LabeledContent {
+                        Text("sobre \((formula.variables[key]?.scaleMax ?? 10).formatted())")
+                    } label: {
+                        Text("\(Text(key).bold())  \(formula.variables[key]?.title ?? key)")
+                    }
+                }
+                .deleteDisabled(formula.expression.variableOrder.contains(key))
+            }
+            .onDelete { offsets in
+                for key in offsets.map({ orderedKeys[$0] }) where !formula.expression.variableOrder.contains(key) {
+                    formula.variables[key] = nil
+                }
+            }
+            Button("Añadir variable", systemImage: "plus.circle.fill", action: addVariable)
+        } header: {
+            Text("Variables")
+        } footer: {
+            Text("Cada parte de la nota es una variable con su letra. Una variable que usa la fórmula no se puede borrar: quítala antes de la fórmula.")
+        }
+    }
+
+    /// Applies the text as the formula as soon as it reads; until it does, the last good one stays.
+    private func apply() {
+        do {
+            formula.expression = try Engine.Expression.parse(text, variables: Set(formula.variables.keys))
+            parseError = nil
+        } catch {
+            parseError = error.localizedDescription
+        }
+    }
+
+    private func renameKey(_ old: String, _ new: String) {
+        guard old != new, let variable = formula.variables[old] else { return }
+        formula.variables[old] = nil
+        formula.variables[new] = variable
+        formula.expression = formula.expression.renamingVariable(old, to: new)
+        text = formula.expression.source
+    }
+
+    private func addVariable() {
+        let letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".map(String.init)
+        let key = letters.first { formula.variables[$0] == nil } ?? "V\(formula.variables.count + 1)"
+        let taken = Set(formula.variables.values.map(\.title))
+        let name = taken.contains("Nota nueva") ? ((2...).lazy.map { "Nota nueva \($0)" }.first { !taken.contains($0) }!) : "Nota nueva"
+        formula.variables[key] = .grade(Grade(name: name))
+    }
+}
+
+private struct InsertChip: View {
+    let label: String
+    var bold = false
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Text(label)
+                .font(.callout.monospaced().weight(bold ? .bold : .regular))
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(Color(.tertiarySystemFill), in: .rect(cornerRadius: 8))
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+/// One variable of a formula: its letter, its name and everything about how its grade is given.
+private struct FormulaVariableEditor: View {
+    let key: String
+    @Binding var formula: Formula
+    let onRenameKey: (String, String) -> Void
+    let onRenameLeaf: (String, String) -> Void
+
+    @State private var keyText: String
+    @State private var keyError: String?
+
+    init(key: String, formula: Binding<Formula>, onRenameKey: @escaping (String, String) -> Void, onRenameLeaf: @escaping (String, String) -> Void) {
+        self.key = key
+        _formula = formula
+        self.onRenameKey = onRenameKey
+        self.onRenameLeaf = onRenameLeaf
+        _keyText = State(initialValue: key)
+    }
+
+    private var node: Binding<Node> {
+        Binding(
+            get: { formula.variables[key] ?? .grade(Grade(name: key)) },
+            set: { formula.variables[key] = $0 }
+        )
+    }
+
+    var body: some View {
+        Form {
+            Section {
+                LabeledContent("Variable") {
+                    TextField("Letra", text: $keyText)
+                        .multilineTextAlignment(.trailing)
+                        .font(.body.monospaced().bold())
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                }
+                NameField(node: node, onRenameLeaf: onRenameLeaf)
+            } footer: {
+                if let keyError {
+                    Label(keyError, systemImage: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+                } else {
+                    Text("La letra es como se llama en la fórmula.")
+                }
+            }
+
+            if node.wrappedValue.asGrade != nil || node.wrappedValue.isGroupOfGrades {
+                NoteCountSection(node: node)
+            }
+            if node.wrappedValue.asGroup != nil {
+                NodeContentsSections(node: node, onRenameLeaf: onRenameLeaf)
+            } else if let grade = Binding(node.asGrade) {
+                GradeSettingsSections(grade: grade)
+            }
+        }
+        .navigationTitle(key)
+        .navigationBarTitleDisplayMode(.inline)
+        .onChange(of: keyText) { keyError = validation(keyText) }
+        .onDisappear {
+            let trimmed = keyText.trimmingCharacters(in: .whitespaces)
+            if validation(trimmed) == nil { onRenameKey(key, trimmed) }
+        }
+    }
+
+    /// A letter or short name that the formula can read: starts with a letter, no spaces, not
+    /// another variable and not a function name. `nil` when it's fine (or unchanged).
+    private func validation(_ name: String) -> String? {
+        let name = name.trimmingCharacters(in: .whitespaces)
+        if name == key { return nil }
+        guard let first = name.first, first.isLetter, name.allSatisfy({ $0.isLetter || $0.isNumber || $0 == "_" }) else {
+            return "Usa letras y números, empezando por una letra."
+        }
+        if ["min", "max", "mín", "máx", "si", "if"].contains(name.lowercased()) { return "«\(name)» es una función de la fórmula." }
+        if formula.variables[name] != nil { return "Ya hay una variable «\(name)»." }
+        return nil
     }
 }
 
@@ -299,24 +505,6 @@ private struct NoteCountSection: View {
                  ? "Una sola nota. Súbelo si en clase hay varias (por ejemplo, dos prácticas): la parte será su media. La nota ya puesta de esta parte se borra."
                  : "La parte se calcula con estas \(count) notas. Más abajo puedes cambiar el nombre y el peso de cada una.")
         }
-    }
-}
-
-/// A formula variable: renameable, with its own scale.
-private struct LeafEditorView: View {
-    @Binding var node: Node
-    let onRenameLeaf: (String, String) -> Void
-
-    var body: some View {
-        Form {
-            Section {
-                NameField(node: $node, onRenameLeaf: onRenameLeaf)
-            }
-            if let grade = Binding($node.asGrade) {
-                GradeSettingsSections(grade: grade)
-            }
-        }
-        .navigationBarTitleDisplayMode(.inline)
     }
 }
 
