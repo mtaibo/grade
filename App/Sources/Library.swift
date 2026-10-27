@@ -212,6 +212,10 @@ final class Library {
         }
     }
 
+    func setGradeDate(_ date: Date?, forLeaf leaf: String, in recordID: SubjectRecord.ID) {
+        mutateRecord(recordID) { $0.subject.root.setDate(date, forLeaf: leaf) }
+    }
+
     func update(_ record: SubjectRecord) {
         mutateRecord(record.id) { $0 = record }
     }

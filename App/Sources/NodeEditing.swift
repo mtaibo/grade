@@ -53,6 +53,33 @@ extension Node {
         }
     }
 
+    /// Sets the due date of the grade named `leaf`, wherever it sits in the tree.
+    mutating func setDate(_ date: Date?, forLeaf leaf: String) {
+        switch self {
+        case .grade(var grade):
+            guard grade.name == leaf else { return }
+            grade.date = date
+            self = .grade(grade)
+        case .group(var group):
+            for index in group.children.indices {
+                group.children[index].node.setDate(date, forLeaf: leaf)
+            }
+            self = .group(group)
+        case .formula(var formula):
+            for key in formula.variables.keys {
+                formula.variables[key]?.setDate(date, forLeaf: leaf)
+            }
+            self = .formula(formula)
+        case .alternatives(var alternatives):
+            for index in alternatives.branches.indices {
+                alternatives.branches[index].node.setDate(date, forLeaf: leaf)
+            }
+            self = .alternatives(alternatives)
+        case .bonus, .requirement:
+            break
+        }
+    }
+
     /// Leaves carry the grades the user types; renaming one has to move its stored grade along.
     var isLeaf: Bool {
         switch self {

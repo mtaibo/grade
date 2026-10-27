@@ -1,9 +1,9 @@
 import Engine
 import SwiftUI
 
-/// One subject, laid out as cards instead of a settings-style list: the sitting (ordinaria /
-/// extraordinaria), where you stand, that sitting's exam date, and one card per part with the input
-/// that fits how its grade is given (points, a percentage, letters, or a grid for many small tests).
+/// One subject, as a few calm cards: where you stand (folded until you want the detail), the exam
+/// dates, and one card per part showing its grade. Nothing here edits the structure or the dates —
+/// that lives in the "…" menu; tapping a part opens just its grade to fill in.
 struct SubjectDetailView: View {
     let recordID: SubjectRecord.ID
 
@@ -11,7 +11,9 @@ struct SubjectDetailView: View {
     /// `nil` until the user picks one; until then the record's active sitting is shown.
     @State private var pickedSession: Convocatoria?
     @State private var isEditing = false
-    @FocusState private var focusedField: String?
+    @State private var isEditingDates = false
+    @State private var addingDateFor: Convocatoria?
+    @State private var editingPartID: String?
 
     var body: some View {
         if let record = library.record(id: recordID) {
@@ -29,123 +31,166 @@ struct SubjectDetailView: View {
                     .font(.largeTitle.bold())
                     .fixedSize(horizontal: false, vertical: true)
 
-                Picker("Convocatoria", selection: Binding(get: { session }, set: { pickedSession = $0 })) {
-                    ForEach(Convocatoria.allCases) { session in
-                        Text(session.label).tag(session)
+                GradeCard(progress: progress, session: session, formula: record.subject.root.asFormula)
+
+                ExamsCard(record: record) { addingDateFor = $0 }
+
+                Text("Notas")
+                    .font(.title3.bold())
+                    .padding(.top, 8)
+                    .padding(.horizontal, 4)
+
+                VStack(spacing: 12) {
+                    ForEach(PartItem.items(of: record)) { item in
+                        Button { editingPartID = item.id } label: {
+                            PartCard(item: item, record: record, session: session, progress: progress)
+                        }
+                        .buttonStyle(.plain)
                     }
                 }
-                .pickerStyle(.segmented)
-
-                SummaryCard(progress: progress)
-
-                if progress.enteredCount == 0 {
-                    GettingStartedTip()
-                }
-
-                ExamCard(session: session, date: Binding(
-                    get: { record.examDate(for: session) },
-                    set: { library.setExamDate($0, for: session, in: recordID) }
-                ))
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Tus notas")
-                        .font(.title3.bold())
-                    Text("Toca una casilla para escribir la nota que te han puesto. Lo que dejes vacío cuenta como pendiente.")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                }
-                .padding(.top, 8)
-                .padding(.horizontal, 4)
-
-                PartsSection(record: record, session: session, progress: progress, focus: $focusedField) { leaf, entry in
-                    library.setEntry(entry, forLeaf: leaf, in: recordID, session: session)
-                }
-
-                Text("¿No coincide con tu guía docente? Toca Editar para cambiar las partes, sus pesos o cómo se pone cada nota.")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, 4)
             }
             .padding(.horizontal)
             .padding(.bottom, 24)
         }
-        .scrollDismissesKeyboard(.interactively)
         .background(Color(.systemGroupedBackground))
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
-                Button("Editar") { isEditing = true }
-                    .accessibilityHint("Cambia las partes y los pesos de la evaluación")
-            }
-            ToolbarItemGroup(placement: .keyboard) {
-                Spacer()
-                Button("Hecho") { focusedField = nil }
+                Menu {
+                    Button("Editar", systemImage: "pencil") { isEditing = true }
+                    Button("Modificar fechas", systemImage: "calendar") { isEditingDates = true }
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                }
+                .accessibilityLabel("Más opciones")
             }
         }
         .sheet(isPresented: $isEditing) {
             SubjectEditorView(record: record)
         }
+        .sheet(isPresented: $isEditingDates) {
+            DatesSheet(recordID: recordID)
+        }
+        .sheet(item: $addingDateFor) { session in
+            ExamDateSheet(session: session) { library.setExamDate($0, for: session, in: recordID) }
+        }
+        .sheet(item: $editingPartID.asIdentifiable) { partID in
+            PartSheet(recordID: recordID, partID: partID.value, session: Binding(get: { session }, set: { pickedSession = $0 }))
+        }
     }
 }
 
-// MARK: - Summary
+/// `sheet(item:)` wants an `Identifiable`; a bare string id isn't one.
+private struct IDBox: Identifiable {
+    let value: String
+    var id: String { value }
+}
 
-private struct SummaryCard: View {
+private extension Binding where Value == String? {
+    var asIdentifiable: Binding<IDBox?> {
+        Binding<IDBox?>(get: { wrappedValue.map(IDBox.init) }, set: { wrappedValue = $0?.value })
+    }
+}
+
+// MARK: - Grade
+
+/// The grade up front with its bar; tap to unfold what's secured, what's still reachable, the pass
+/// mark and what's needed.
+private struct GradeCard: View {
     let progress: SubjectProgress
+    let session: Convocatoria
+    let formula: Formula?
+
+    @State private var isExpanded = false
 
     private var hasGrades: Bool { progress.enteredCount > 0 }
-    private var tint: Color { hasGrades ? progress.status.tint : .secondary }
+
+    /// Calm while there's still room to move: only a sure pass or a lost one gets a colour of its own.
+    private var tint: Color {
+        guard hasGrades else { return .secondary }
+        switch progress.status {
+        case .guaranteed: return .green
+        case .possible: return .accentColor
+        case .impossible: return .red
+        }
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .top) {
-                VStack(alignment: .leading, spacing: 0) {
-                    Text(hasGrades ? "Llevas asegurado" : "Todavía sin notas")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                    HStack(alignment: .firstTextBaseline, spacing: 4) {
-                        Text(progress.worst, format: .number.precision(.fractionLength(0...2)))
-                            .foregroundStyle(hasGrades ? .primary : .tertiary)
-                            .font(.system(size: 52, weight: .bold, design: .rounded))
-                            .monospacedDigit()
-                            .contentTransition(.numericText())
-                        Text("/ 10")
-                            .font(.title3)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                Spacer()
-                StatusPill(status: progress.status, hasGrades: hasGrades)
+            Button {
+                withAnimation(.snappy) { isExpanded.toggle() }
+            } label: {
+                header
             }
+            .buttonStyle(.plain)
+            .accessibilityHint(isExpanded ? "Oculta el detalle" : "Muestra el detalle")
 
             GradeRangeBar(worst: progress.worst, best: hasGrades ? progress.best : 0, threshold: progress.threshold, tint: tint)
 
-            if hasGrades {
-                GradeRangeLegend(worst: progress.worst, best: progress.best, threshold: progress.threshold, tint: tint)
-            } else {
-                Text("Apruebas con un \(progress.threshold.formatted())")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-            }
-
-            if let message = verdict {
-                Label {
-                    Text(message)
-                        .fixedSize(horizontal: false, vertical: true)
-                } icon: {
-                    Image(systemName: verdictIcon)
+            if isExpanded {
+                VStack(alignment: .leading, spacing: 14) {
+                    if hasGrades {
+                        GradeRangeLegend(worst: progress.worst, best: progress.best, threshold: progress.threshold, tint: tint)
+                    } else {
+                        Text("Apruebas con un \(progress.threshold.formatted())")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+                    if let message = verdict {
+                        Label {
+                            Text(message)
+                                .fixedSize(horizontal: false, vertical: true)
+                        } icon: {
+                            Image(systemName: verdictIcon)
+                        }
+                        .font(.subheadline)
+                        .foregroundStyle(tint)
+                        .padding(12)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(tint.opacity(0.1), in: .rect(cornerRadius: 12))
+                    }
+                    if let formula {
+                        Text(formula.expression.display)
+                            .font(.footnote.monospaced())
+                            .foregroundStyle(.secondary)
+                    }
                 }
-                .font(.subheadline)
-                .foregroundStyle(tint)
-                .padding(12)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(tint.opacity(0.1), in: .rect(cornerRadius: 12))
+                .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
         .card(padding: 18)
     }
 
-    /// The one sentence that answers "and so what?" for the numbers above it.
+    private var header: some View {
+        HStack(alignment: .center) {
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(alignment: .firstTextBaseline, spacing: 4) {
+                    Text(progress.worst, format: .number.precision(.fractionLength(0...2)))
+                        .foregroundStyle(hasGrades ? .primary : .tertiary)
+                        .font(.system(size: 52, weight: .bold, design: .rounded))
+                        .monospacedDigit()
+                        .contentTransition(.numericText())
+                    Text("/ 10")
+                        .font(.title3)
+                        .foregroundStyle(.secondary)
+                }
+                if session == .extraordinary {
+                    Text(session.label)
+                        .font(.footnote.weight(.medium))
+                        .foregroundStyle(.secondary)
+                }
+            }
+            Spacer()
+            ProgressPill(progress: progress, hasGrades: hasGrades)
+            Image(systemName: "chevron.down")
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(.tertiary)
+                .rotationEffect(.degrees(isExpanded ? 180 : 0))
+        }
+        .contentShape(.rect)
+    }
+
+    /// The one sentence that answers "and so what?" for the numbers.
     private var verdict: LocalizedStringKey? {
         guard hasGrades else { return nil }
         switch progress.status {
@@ -168,179 +213,251 @@ private struct SummaryCard: View {
     }
 }
 
-/// Shown until the first grade is in: what to do here and what the app gives back.
-private struct GettingStartedTip: View {
-    var body: some View {
-        HStack(alignment: .top, spacing: 12) {
-            Image(systemName: "hand.tap.fill")
-                .font(.title3)
-                .foregroundStyle(Color.accentColor)
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Empieza por tus notas")
-                    .font(.headline)
-                Text("Ve poniendo abajo cada nota según la sepas. Mark calcula al momento lo que llevas y cuánto te hace falta en lo que queda para aprobar.")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        }
-        .card()
-    }
-}
-
-private struct StatusPill: View {
-    let status: PassStatus
+/// How far along you are ("3 de 5 notas"), not how worried to be; a sure pass or a lost one say so.
+private struct ProgressPill: View {
+    let progress: SubjectProgress
     let hasGrades: Bool
 
     var body: some View {
-        let (text, icon, tint): (String, String, Color) = if !hasGrades {
-            ("Sin notas", "circle.dashed", .secondary)
+        let (text, icon, tint): (String, String?, Color) = if !hasGrades {
+            ("Sin notas", nil, .secondary)
         } else {
-            switch status {
+            switch progress.status {
             case .guaranteed: ("Aprobada", "checkmark.circle.fill", .green)
-            case .possible: ("En juego", "hourglass", .orange)
             case .impossible: ("No llega", "xmark.circle.fill", .red)
+            case .possible: ("\(progress.enteredCount) de \(progress.leafCount)", nil, .secondary)
             }
         }
-        Label(text, systemImage: icon)
-            .font(.subheadline.weight(.semibold))
-            .foregroundStyle(tint)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .background(tint.opacity(0.14), in: Capsule())
+        HStack(spacing: 4) {
+            if let icon { Image(systemName: icon) }
+            Text(text).monospacedDigit()
+        }
+        .font(.subheadline.weight(.semibold))
+        .foregroundStyle(tint)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(tint.opacity(0.14), in: Capsule())
     }
 }
 
-// MARK: - Exam
+// MARK: - Exams
 
-private struct ExamCard: View {
-    let session: Convocatoria
-    @Binding var date: Date?
-
-    private var subtitle: String {
-        guard let date else { return "Sin fecha" }
-        let days = Calendar.current.dateComponents([.day], from: Calendar.current.startOfDay(for: .now), to: Calendar.current.startOfDay(for: date)).day ?? 0
-        switch days {
-        case 0: return "Hoy"
-        case 1: return "Mañana"
-        case 2...: return "En \(days) días"
-        case -1: return "Fue ayer"
-        default: return "Fue hace \(-days) días"
-        }
-    }
+/// Both sittings in one card: just the date and how long is left. Changing a date is done from
+/// the "…" menu, so it doesn't move by accident.
+private struct ExamsCard: View {
+    let record: SubjectRecord
+    let onAddDate: (Convocatoria) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 14) {
-                Image(systemName: "calendar")
-                    .font(.title3.weight(.semibold))
-                    .foregroundStyle(.red)
-                    .frame(width: 44, height: 44)
-                    .background(.red.opacity(0.12), in: .rect(cornerRadius: 12))
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Examen de la \(session.label.lowercased())")
-                        .font(.headline)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.8)
-                    Text(subtitle)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                }
-                Spacer(minLength: 0)
-                if date == nil {
-                    Button("Añadir fecha") {
-                        date = Calendar.current.date(bySettingHour: 9, minute: 0, second: 0, of: .now)
-                    }
-                    .buttonStyle(.bordered)
-                } else {
-                    Button("Quitar fecha", systemImage: "xmark.circle.fill") { date = nil }
-                        .labelStyle(.iconOnly)
-                        .foregroundStyle(.secondary)
-                }
-            }
-            if let date = Binding($date) {
-                DatePicker("Fecha del examen", selection: date, displayedComponents: [.date, .hourAndMinute])
-                    .labelsHidden()
+            Label("Examen", systemImage: "calendar")
+                .font(.headline)
+            ForEach(Array(Convocatoria.allCases.enumerated()), id: \.element) { index, session in
+                if index > 0 { Divider() }
+                ExamRow(session: session, date: record.examDate(for: session)) { onAddDate(session) }
             }
         }
         .card()
+    }
+}
+
+private struct ExamRow: View {
+    let session: Convocatoria
+    let date: Date?
+    let onAdd: () -> Void
+
+    var body: some View {
+        HStack(alignment: .center) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(session.label)
+                    .font(.subheadline.weight(.semibold))
+                if let date {
+                    Text(Self.remaining(until: date))
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            Spacer(minLength: 8)
+            if let date {
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text(date, format: .dateTime.day().month(.abbreviated).year())
+                        .font(.subheadline.weight(.semibold))
+                    Text(date, format: .dateTime.hour().minute())
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+                .accessibilityElement(children: .combine)
+            } else {
+                Button("Añadir fecha", action: onAdd)
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+            }
+        }
+    }
+
+    private static func remaining(until date: Date) -> String {
+        let calendar = Calendar.current
+        let days = calendar.dateComponents([.day], from: calendar.startOfDay(for: .now), to: calendar.startOfDay(for: date)).day ?? 0
+        switch days {
+        case 0: return "Hoy"
+        case 1: return "Mañana"
+        case 2...: return "Quedan \(days) días"
+        case -1: return "Fue ayer"
+        default: return "Hace \(-days) días"
+        }
+    }
+}
+
+/// Picks a first exam date. Once set it only changes from "Modificar fechas".
+private struct ExamDateSheet: View {
+    let session: Convocatoria
+    let onSave: (Date) -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var date = Calendar.current.date(bySettingHour: 9, minute: 0, second: 0, of: .now) ?? .now
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                DatePicker("Fecha", selection: $date, displayedComponents: [.date, .hourAndMinute])
+                    .datePickerStyle(.graphical)
+            }
+            .navigationTitle("Examen · \(session.label)")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancelar") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Guardar") {
+                        onSave(date)
+                        dismiss()
+                    }
+                }
+            }
+        }
+        .presentationDetents([.large])
+    }
+}
+
+/// Every date of the subject in one place: both exams and the due date of each grade.
+private struct DatesSheet: View {
+    let recordID: SubjectRecord.ID
+
+    @Environment(Library.self) private var library
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            if let record = library.record(id: recordID) {
+                Form {
+                    Section("Examen") {
+                        ForEach(Convocatoria.allCases) { session in
+                            DateToggleRow(title: session.label, defaultHour: 9, date: Binding(
+                                get: { record.examDate(for: session) },
+                                set: { library.setExamDate($0, for: session, in: recordID) }
+                            ))
+                        }
+                    }
+                    let leaves = record.subject.root.allLeafNames().filter { record.subject.root.leaf(named: $0)?.asGrade != nil }
+                    if !leaves.isEmpty {
+                        Section("Pruebas y entregas") {
+                            ForEach(leaves, id: \.self) { name in
+                                DateToggleRow(title: name, defaultHour: 23, date: Binding(
+                                    get: { record.subject.root.leaf(named: name)?.asGrade?.date },
+                                    set: { library.setGradeDate($0, forLeaf: name, in: recordID) }
+                                ))
+                            }
+                        }
+                    }
+                }
+                .navigationTitle("Fechas")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Hecho") { dismiss() }
+                    }
+                }
+            }
+        }
+    }
+}
+
+private struct DateToggleRow: View {
+    let title: String
+    let defaultHour: Int
+    @Binding var date: Date?
+
+    var body: some View {
+        VStack(alignment: .leading) {
+            Toggle(title, isOn: Binding(
+                get: { date != nil },
+                set: { date = $0 ? Calendar.current.date(bySettingHour: defaultHour, minute: defaultHour == 23 ? 59 : 0, second: 0, of: .now) : nil }
+            ))
+            if let date = Binding($date) {
+                DatePicker("Fecha", selection: date, displayedComponents: [.date, .hourAndMinute])
+                    .labelsHidden()
+            }
+        }
     }
 }
 
 // MARK: - Parts
 
-private struct PartsSection: View {
-    let record: SubjectRecord
-    let session: Convocatoria
-    let progress: SubjectProgress
-    var focus: FocusState<String?>.Binding
-    let onEntry: (String, GradeEntry?) -> Void
+/// One top-level part of the evaluation, with the share of the grade it carries.
+private struct PartItem: Identifiable {
+    let id: String
+    let node: Node
+    let weightPercent: Double?
+    /// Points toward the final 10, out of what the part can give at most.
+    let maxPoints: Double?
 
-    var body: some View {
+    static func items(of record: SubjectRecord) -> [PartItem] {
         let root = record.subject.root
-        VStack(spacing: 12) {
-            if case .group(let group) = root {
-                let total = group.combination == .weightedAverage ? group.children.reduce(0) { $0 + $1.weight } : 1
-                ForEach(group.children) { child in
-                    PartCard(
-                        node: child.node,
-                        weightPercent: total > 0 ? child.weight / total * 100 : nil,
-                        contribution: contribution(of: child, total: total),
-                        context: context
-                    )
-                }
-            } else if case .formula(let formula) = root {
-                ForEach(formula.variables.keys.sorted(), id: \.self) { key in
-                    if let node = formula.variables[key] {
-                        PartCard(node: node, weightPercent: nil, contribution: nil, context: context)
-                    }
-                }
-                Text("Se calcula con la fórmula de su guía: \(formula.expression.display)")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, 4)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            } else {
-                PartCard(node: root, weightPercent: nil, contribution: nil, context: context)
+        if case .group(let group) = root {
+            let total = group.combination == .weightedAverage ? group.children.reduce(0) { $0 + $1.weight } : 1
+            return group.children.map { child in
+                PartItem(
+                    id: child.id.uuidString,
+                    node: child.node,
+                    weightPercent: total > 0 ? child.weight / total * 100 : nil,
+                    maxPoints: total > 0 && child.node.scaleMax > 0 ? child.weight / total * 10 : nil
+                )
             }
+        } else if case .formula(let formula) = root {
+            return formula.variables.keys.sorted().compactMap { key in
+                formula.variables[key].map { PartItem(id: key, node: $0, weightPercent: nil, maxPoints: nil) }
+            }
+        } else {
+            return [PartItem(id: "root", node: root, weightPercent: nil, maxPoints: nil)]
         }
     }
 
-    private var context: PartContext {
-        PartContext(record: record, session: session, inputs: progress.inputs, focus: focus, onEntry: onEntry)
-    }
-
-    /// Points this part has earned towards the final 10, out of what it can give at most.
-    private func contribution(of child: WeightedChild, total: Double) -> (earned: Double?, max: Double)? {
-        guard total > 0, child.node.scaleMax > 0 else { return nil }
-        let max = child.weight / total * 10
-        let hasGrades = child.node.allLeafNames().contains { progress.inputs[$0] != nil }
-        let earned = hasGrades ? max * child.node.evaluate(progress.inputs, pendingFraction: 0) / child.node.scaleMax : nil
-        return (earned, max)
+    func earnedPoints(_ inputs: [String: Double]) -> Double? {
+        guard let maxPoints else { return nil }
+        let hasGrades = node.allLeafNames().contains { inputs[$0] != nil }
+        guard hasGrades else { return nil }
+        return maxPoints * node.evaluate(inputs, pendingFraction: 0) / node.scaleMax
     }
 }
 
-/// What every card and input needs to read and write grades for the sitting on screen.
-private struct PartContext {
+/// A part at a glance: name, weight, what's in so far and a thin bar of its points. Read-only.
+private struct PartCard: View {
+    let item: PartItem
     let record: SubjectRecord
     let session: Convocatoria
-    let inputs: [String: Double]
-    var focus: FocusState<String?>.Binding
-    let onEntry: (String, GradeEntry?) -> Void
-}
+    let progress: SubjectProgress
 
-private struct PartCard: View {
-    let node: Node
-    let weightPercent: Double?
-    let contribution: (earned: Double?, max: Double)?
-    let context: PartContext
+    private var leafNames: [String] { item.node.allLeafNames() }
+    private var enteredCount: Int { leafNames.count { progress.inputs[$0] != nil } }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text(node.title)
+                Text(item.node.title)
                     .font(.headline)
-                if let weightPercent {
+                    .multilineTextAlignment(.leading)
+                if let weightPercent = item.weightPercent {
                     Text("\(weightPercent.formatted(.number.precision(.fractionLength(0...1)))) %")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(.secondary)
@@ -349,16 +466,137 @@ private struct PartCard: View {
                         .background(.quaternary, in: Capsule())
                 }
                 Spacer(minLength: 8)
-                if let contribution {
-                    Text("\(contribution.earned.map { $0.formatted(.number.precision(.fractionLength(0...2))) } ?? "—") / \(contribution.max.formatted(.number.precision(.fractionLength(0...2))))")
-                        .font(.subheadline.monospacedDigit())
-                        .foregroundStyle(.secondary)
+                trailing
+                Image(systemName: "chevron.right")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+            }
+            if let maxPoints = item.maxPoints {
+                let earned = item.earnedPoints(progress.inputs) ?? 0
+                ProgressBar(fraction: earned / maxPoints)
+            }
+            if let group = item.node.asGroup, group.children.count < 4, group.children.allSatisfy({ $0.node.asGrade != nil }) {
+                VStack(spacing: 6) {
+                    ForEach(group.children) { child in
+                        if let grade = child.node.asGrade {
+                            HStack {
+                                Text(grade.name)
+                                    .foregroundStyle(.secondary)
+                                Spacer()
+                                Text(display(of: grade))
+                                    .monospacedDigit()
+                            }
+                            .font(.subheadline)
+                        }
+                    }
                 }
             }
-            PartContent(node: node, context: context)
         }
         .card()
+        .contentShape(.rect)
     }
+
+    @ViewBuilder
+    private var trailing: some View {
+        if let grade = item.node.asGrade {
+            Text(display(of: grade))
+                .font(.title3.weight(.semibold).monospacedDigit())
+                .foregroundStyle(record.entry(for: grade.name, in: session) == nil ? .tertiary : .primary)
+        } else if leafNames.count > 1 {
+            Text("\(enteredCount) de \(leafNames.count)")
+                .font(.subheadline.monospacedDigit())
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private func display(of grade: Grade) -> String {
+        guard let entry = record.entry(for: grade.name, in: session) else { return "—" }
+        let number = { (value: Double) in value.formatted(.number.precision(.fractionLength(0...2))) }
+        if let letter = entry.letter { return letter }
+        switch grade.inputStyle ?? .points {
+        case .percent:
+            return "\(number(entry.outOf == 100 ? entry.value : entry.value / entry.outOf * 100)) %"
+        case .points, .letters:
+            return entry.outOf == 10 ? number(entry.value) : "\(number(entry.value)) / \(number(entry.outOf))"
+        }
+    }
+}
+
+private struct ProgressBar: View {
+    let fraction: Double
+
+    var body: some View {
+        GeometryReader { proxy in
+            ZStack(alignment: .leading) {
+                Capsule().fill(.quaternary)
+                Capsule().fill(Color.accentColor)
+                    .frame(width: proxy.size.width * min(max(fraction, 0), 1))
+            }
+        }
+        .frame(height: 4)
+        .accessibilityHidden(true)
+    }
+}
+
+/// Where a grade is actually typed: just that part's inputs. The sitting picker only shows up when
+/// something in the part is retaken in the extraordinary sitting (usually the exam).
+private struct PartSheet: View {
+    let recordID: SubjectRecord.ID
+    let partID: String
+    @Binding var session: Convocatoria
+
+    @Environment(Library.self) private var library
+    @Environment(\.dismiss) private var dismiss
+    @FocusState private var focusedField: String?
+
+    var body: some View {
+        NavigationStack {
+            if let record = library.record(id: recordID), let item = PartItem.items(of: record).first(where: { $0.id == partID }) {
+                let progress = SubjectProgress(record, session: session)
+                let retaken = item.node.allLeafNames().contains { !record.keepsForExtraordinary($0) }
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 16) {
+                        if retaken {
+                            Picker("Convocatoria", selection: $session) {
+                                ForEach(Convocatoria.allCases) { Text($0.label).tag($0) }
+                            }
+                            .pickerStyle(.segmented)
+                        }
+                        PartContent(node: item.node, context: PartContext(
+                            record: record, session: session, inputs: progress.inputs, focus: $focusedField
+                        ) { leaf, entry in
+                            library.setEntry(entry, forLeaf: leaf, in: recordID, session: session)
+                        })
+                        .card()
+                    }
+                    .padding()
+                }
+                .scrollDismissesKeyboard(.interactively)
+                .background(Color(.systemGroupedBackground))
+                .navigationTitle(item.node.title)
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Hecho") { dismiss() }
+                    }
+                    ToolbarItemGroup(placement: .keyboard) {
+                        Spacer()
+                        Button("Hecho") { focusedField = nil }
+                    }
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+    }
+}
+
+/// What every input needs to read and write grades for the sitting on screen.
+private struct PartContext {
+    let record: SubjectRecord
+    let session: Convocatoria
+    let inputs: [String: Double]
+    var focus: FocusState<String?>.Binding
+    let onEntry: (String, GradeEntry?) -> Void
 }
 
 /// The inputs inside a part: a single field for a grade, a compact grid for a group of many small
