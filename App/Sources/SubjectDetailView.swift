@@ -15,6 +15,8 @@ struct SubjectDetailView: View {
     @State private var isEditingDates = false
     @State private var addingDateFor: Convocatoria?
     @State private var gradeTarget: GradeTarget?
+    /// Driven by the popup itself, so the blur leaves as soon as it starts closing.
+    @State private var isBlurred = false
     @State private var simulation: Library?
     @State private var isImportingGuide = false
     @State private var isShowingGuide = false
@@ -78,12 +80,11 @@ struct SubjectDetailView: View {
             .padding(.horizontal)
             .padding(.bottom, 24)
         }
-        .blur(radius: gradeTarget == nil ? 0 : 3)
-        .animation(.easeInOut(duration: 0.3), value: gradeTarget?.id)
+        .blur(radius: isBlurred ? 3 : 0)
         .background(Color(.systemGroupedBackground))
         .overlay {
             if let target = gradeTarget {
-                GradePopup(recordID: recordID, target: target) { gradeTarget = nil }
+                GradePopup(recordID: recordID, target: target, isBlurred: $isBlurred) { gradeTarget = nil }
             }
         }
 
@@ -727,6 +728,7 @@ private struct ProgressBar: View {
 private struct GradePopup: View {
     let recordID: SubjectRecord.ID
     let target: GradeTarget
+    @Binding var isBlurred: Bool
     let onClose: () -> Void
 
     @Environment(Library.self) private var library
@@ -752,10 +754,11 @@ private struct GradePopup: View {
     }
 
     private func close() {
-        withAnimation(.spring(duration: 0.35, bounce: 0.1)) { shown = false }
+        withAnimation(.spring(duration: 0.25, bounce: 0)) { shown = false }
+        withAnimation(.easeOut(duration: 0.15)) { isBlurred = false }
         focusedField = nil
         Task {
-            try? await Task.sleep(for: .milliseconds(280))
+            try? await Task.sleep(for: .milliseconds(200))
             onClose()
         }
     }
@@ -800,7 +803,8 @@ private struct GradePopup: View {
             .ignoresSafeArea(.keyboard)
             .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { containerFrame = $0 }
             .onAppear {
-                withAnimation(.spring(duration: 0.5, bounce: 0.2)) { shown = true }
+                withAnimation(.spring(duration: 0.35, bounce: 0.15)) { shown = true }
+                withAnimation(.easeOut(duration: 0.2)) { isBlurred = true }
             }
             .task {
                 let leaves = item.node.allLeafNames()
