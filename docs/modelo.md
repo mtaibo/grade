@@ -359,3 +359,11 @@ Límites conocidos: sigue sin haber árbol propio para la extraordinaria. Progra
 - Barras: azules mientras falte alguna nota de la sección; completa, color por nota: <5 rojo, <7 amarillo, <9 verde, ≥9 morado (`GradeBand`). La longitud es la nota de la parte sobre su máximo.
 - Editor: en cada parte, «Cuántas notas» (`Node.resizeNotes`) la convierte en place entre una nota y N notas iguales; el mínimo de la nota pasa al grupo. «Es el examen final» en los ajustes de cada nota.
 - Copia de seguridad: `.mark` (`com.migueltaibo.mark.backup`, JSON) con todos los cursos, asignaturas, notas, fechas y ajustes de carrera (`Backup.swift`, `MarkBackup`, versión 1). Cuenta → Copia de seguridad: exportar (hoja de compartir) e importar; abrir un `.mark` desde Archivos/AirDrop pasa por la misma confirmación. Importar sustituye todo.
+
+## Guía docente en el móvil (oct 2026)
+
+Menú `…` de cada asignatura: sin guía solo «Subir guía» (selector de PDF, se valida con `PDFDocument`); con guía, «Abrir guía» (visor `PDFView` en una hoja, con compartir) y «Borrar guía». Los PDF viven en `Application Support/Guides/<id de la asignatura>.pdf` (`Library.setGuide/removeGuide/guideURL`, `guideIDs` observable) y se borran con la asignatura. Van dentro del `.mark` (`MarkBackup.guides`, id → datos en base64, opcional: las copias antiguas siguen abriéndose); importar sustituye también las guías.
+
+## Simulador (oct 2026)
+
+Menú `…` → «Simulador»: abre a pantalla completa la misma pantalla de asignatura sobre una `Library(simulating:)` desechable (una copia en memoria de la asignatura con sus notas actuales, sin archivo: `save()` no hace nada). Todo lo que se escribe vive solo ahí y se pierde al salir con la ✕ (arriba a la izquierda, sustituye al `<`). Dentro se oculta el menú `…` (nada de editar, guías ni fechas) y sale una etiqueta «Simulador · no se guarda nada». Se detecta con `EnvironmentValues.isSimulating`.

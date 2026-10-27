@@ -1,4 +1,5 @@
 import Engine
+import PDFKit
 import SwiftUI
 
 /// One subject, as a few calm cards: where you stand (folded until you want the detail), the final
@@ -8,10 +9,17 @@ struct SubjectDetailView: View {
     let recordID: SubjectRecord.ID
 
     @Environment(Library.self) private var library
+    @Environment(\.isSimulating) private var isSimulating
+    @Environment(\.dismiss) private var dismiss
     @State private var isEditing = false
     @State private var isEditingDates = false
     @State private var addingDateFor: Convocatoria?
     @State private var gradeTarget: GradeTarget?
+    @State private var simulation: Library?
+    @State private var isImportingGuide = false
+    @State private var isShowingGuide = false
+    @State private var isConfirmingDeleteGuide = false
+    @State private var guideError: String?
 
     var body: some View {
         if let record = library.record(id: recordID) {
@@ -29,6 +37,14 @@ struct SubjectDetailView: View {
         let others = items.filter { $0.id != exam?.id }
         return ScrollView {
             VStack(alignment: .leading, spacing: 16) {
+                if isSimulating {
+                    Label("Simulador · no se guarda nada", systemImage: "flask")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(.orange)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(.orange.opacity(0.14), in: Capsule())
+                }
                 Text(record.subject.name)
                     .font(.largeTitle.bold())
                     .fixedSize(horizontal: false, vertical: true)
@@ -63,15 +79,41 @@ struct SubjectDetailView: View {
         }
         .background(Color(.systemGroupedBackground))
         .navigationBarTitleDisplayMode(.inline)
+        .navigationBarBackButtonHidden(isSimulating)
         .toolbar {
+            if isSimulating {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Salir del simulador", systemImage: "xmark") { dismiss() }
+                }
+            } else {
             ToolbarItem(placement: .primaryAction) {
                 Menu {
                     Button("Editar", systemImage: "pencil") { isEditing = true }
                     Button("Modificar fechas", systemImage: "calendar") { isEditingDates = true }
+                    Button("Simulador", systemImage: "flask") {
+                        simulation = Library(simulating: record, degree: library.degree)
+                    }
+                    Divider()
+                    if library.guideIDs.contains(recordID) {
+                        Button("Abrir guía", systemImage: "doc.text") { isShowingGuide = true }
+                        Button("Borrar guía", systemImage: "trash", role: .destructive) { isConfirmingDeleteGuide = true }
+                    } else {
+                        Button("Subir guía", systemImage: "square.and.arrow.up") { isImportingGuide = true }
+                    }
                 } label: {
-                    Image(systemName: "ellipsis.circle")
+                    Image(systemName: "ellipsis")
                 }
                 .accessibilityLabel("Más opciones")
+            }
+            }
+        }
+        .fullScreenCover(isPresented: Binding(get: { simulation != nil }, set: { if !$0 { simulation = nil } })) {
+            if let simulation {
+                NavigationStack {
+                    SubjectDetailView(recordID: recordID)
+                }
+                .environment(simulation)
+                .environment(\.isSimulating, true)
             }
         }
         .sheet(isPresented: $isEditing) {
@@ -86,7 +128,86 @@ struct SubjectDetailView: View {
         .sheet(item: $gradeTarget) { target in
             PartSheet(recordID: recordID, target: target)
         }
+        .sheet(isPresented: $isShowingGuide) {
+            if let url = library.guideURL(for: recordID) {
+                GuideSheet(url: url, title: record.subject.name)
+            }
+        }
+        .fileImporter(isPresented: $isImportingGuide, allowedContentTypes: [.pdf]) { result in
+            importGuide(result)
+        }
+        .confirmationDialog("¿Borrar la guía?", isPresented: $isConfirmingDeleteGuide, titleVisibility: .visible) {
+            Button("Borrar guía", role: .destructive) { library.removeGuide(for: recordID) }
+        } message: {
+            Text("Se borra el PDF guardado en el móvil. Podrás subirlo otra vez.")
+        }
+        .alert("No se ha podido subir la guía", isPresented: Binding(get: { guideError != nil }, set: { if !$0 { guideError = nil } })) {
+            Button("Vale") {}
+        } message: {
+            Text(guideError ?? "")
+        }
     }
+}
+
+extension SubjectDetailView {
+    /// Reads the chosen PDF (it must really be one) and keeps a copy inside the app.
+    fileprivate func importGuide(_ result: Result<URL, Error>) {
+        guard case .success(let url) = result else { return }
+        let scoped = url.startAccessingSecurityScopedResource()
+        defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+        guard let data = try? Data(contentsOf: url), PDFDocument(data: data) != nil else {
+            guideError = "El archivo no es un PDF válido."
+            return
+        }
+        do {
+            try library.setGuide(data, for: recordID)
+        } catch {
+            guideError = error.localizedDescription
+        }
+    }
+}
+
+/// The stored guide, scrollable and zoomable.
+private struct GuideSheet: View {
+    let url: URL
+    let title: String
+
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            PDFKitView(url: url)
+                .ignoresSafeArea(edges: .bottom)
+                .navigationTitle(title)
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Cerrar") { dismiss() }
+                    }
+                    ToolbarItem(placement: .secondaryAction) {
+                        ShareLink(item: url)
+                    }
+                }
+        }
+    }
+}
+
+private struct PDFKitView: UIViewRepresentable {
+    let url: URL
+
+    func makeUIView(context: Context) -> PDFView {
+        let view = PDFView()
+        view.autoScales = true
+        view.document = PDFDocument(url: url)
+        return view
+    }
+
+    func updateUIView(_ view: PDFView, context: Context) {}
+}
+
+private extension EnvironmentValues {
+    /// True inside the simulator, where nothing is saved and editing the subject itself is off.
+    @Entry var isSimulating = false
 }
 
 /// Which part's grades to fill in, and for which sitting.

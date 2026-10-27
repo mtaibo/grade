@@ -152,7 +152,10 @@ struct Course: Identifiable, Codable, Equatable {
 final class Library {
     private(set) var courses: [Course]
     private(set) var degree = DegreeSettings()
-    @ObservationIgnored private let fileURL: URL
+    /// `nil` for a simulation: it lives only in memory and never touches the real library.
+    @ObservationIgnored private let fileURL: URL?
+    /// Subjects that have a teaching guide (PDF) stored next to the library file.
+    private(set) var guideIDs: Set<SubjectRecord.ID> = []
 
     private struct Snapshot: Codable {
         var courses: [Course]
@@ -172,7 +175,46 @@ final class Library {
             courses = []
         }
         flagFinalExams()
+        let files = (try? FileManager.default.contentsOfDirectory(at: guidesDirectory, includingPropertiesForKeys: nil)) ?? []
+        guideIDs = Set(files.filter { $0.pathExtension == "pdf" }.compactMap { UUID(uuidString: $0.deletingPathExtension().lastPathComponent) })
         save()
+    }
+
+    /// A throwaway library holding a copy of one subject with its current grades, for the
+    /// simulator: edit anything, nothing is saved, and it disappears when the simulator closes.
+    init(simulating record: SubjectRecord, degree: DegreeSettings) {
+        fileURL = nil
+        self.degree = degree
+        courses = [Course(year: 1, subjects: [record])]
+    }
+
+    // MARK: Teaching guides
+
+    private var guidesDirectory: URL { (fileURL ?? URL.temporaryDirectory).deletingLastPathComponent().appending(path: "Guides") }
+
+    /// The stored guide PDF for a subject, if it has one.
+    func guideURL(for id: SubjectRecord.ID) -> URL? {
+        guideIDs.contains(id) ? guidesDirectory.appending(path: "\(id.uuidString).pdf") : nil
+    }
+
+    func setGuide(_ data: Data, for id: SubjectRecord.ID) throws {
+        try FileManager.default.createDirectory(at: guidesDirectory, withIntermediateDirectories: true)
+        try data.write(to: guidesDirectory.appending(path: "\(id.uuidString).pdf"), options: .atomic)
+        guideIDs.insert(id)
+    }
+
+    func removeGuide(for id: SubjectRecord.ID) {
+        try? FileManager.default.removeItem(at: guidesDirectory.appending(path: "\(id.uuidString).pdf"))
+        guideIDs.remove(id)
+    }
+
+    /// Every stored guide, by subject, for the backup file.
+    private func allGuides() -> [String: Data] {
+        var result: [String: Data] = [:]
+        for id in guideIDs {
+            if let url = guideURL(for: id), let data = try? Data(contentsOf: url) { result[id.uuidString] = data }
+        }
+        return result
     }
 
     /// Subjects saved before the final exam had its own marker get it on the leaves named like one,
@@ -279,6 +321,7 @@ final class Library {
 
     func deleteSubject(id: SubjectRecord.ID) {
         removeSubject(id)
+        removeGuide(for: id)
         save()
     }
 
@@ -312,19 +355,24 @@ final class Library {
     /// Everything stored — every subject with its evaluation, grades and dates, plus the degree
     /// settings — as the contents of a `.mark` file.
     func backupData() throws -> Data {
-        try MarkBackup.encoder.encode(MarkBackup(courses: courses, degree: degree))
+        try MarkBackup.encoder.encode(MarkBackup(courses: courses, degree: degree, guides: allGuides()))
     }
 
     /// Replaces everything with a backup's contents.
     func restore(_ backup: MarkBackup) {
         courses = backup.courses
         degree = backup.degree
+        for id in guideIDs { removeGuide(for: id) }
+        for (key, data) in backup.guides ?? [:] {
+            if let id = UUID(uuidString: key) { try? setGuide(data, for: id) }
+        }
         flagFinalExams()
         save()
     }
 
     func removeAllSubjects() {
         courses = []
+        for id in guideIDs { removeGuide(for: id) }
         save()
     }
 
@@ -359,6 +407,7 @@ final class Library {
     }
 
     private func save() {
+        guard let fileURL else { return }
         do {
             try FileManager.default.createDirectory(at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
             try JSONEncoder().encode(Snapshot(courses: courses, degree: degree))

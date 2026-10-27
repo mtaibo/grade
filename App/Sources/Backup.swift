@@ -8,7 +8,7 @@ extension UTType {
     static let markBackup = UTType(exportedAs: "com.migueltaibo.mark.backup", conformingTo: .json)
 }
 
-/// What a `.mark` file holds.
+/// What a `.mark` file holds: the library, the degree settings and any uploaded guides.
 struct MarkBackup: Codable {
     static let format = "mark-backup"
     static let currentVersion = 1
@@ -18,6 +18,8 @@ struct MarkBackup: Codable {
     var exportedAt = Date.now
     var courses: [Course]
     var degree: DegreeSettings
+    /// The teaching-guide PDFs, by subject id. Absent in copies made before guides existed.
+    var guides: [String: Data]?
 
     var subjectCount: Int { courses.reduce(0) { $0 + $1.subjects.count } }
 }
