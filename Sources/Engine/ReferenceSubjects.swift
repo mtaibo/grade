@@ -186,8 +186,191 @@ extension Subject {
         ))
     )
 
+    // MARK: - Ingeniería Informática (UDC) syllabi, 2025/26
+
+    /// Matemática Discreta of the Informática degree (202306) — not the GCED guide above. The guide's
+    /// own text is cut off right after "Para aprobar la asignatura es necesario […]", so a possible
+    /// exam minimum is unknown (see `guide/extracted/matematicaDiscretaGEI.json`).
+    public static let matematicaDiscretaGEI = Subject(
+        name: "Matemática Discreta",
+        ectsCredits: 6,
+        root: .group(Group(
+            name: "Nota final",
+            combination: .weightedAverage,
+            children: [
+                WeightedChild(weight: 0.20, node: .grade(Grade(name: "Prácticas de laboratorio", recovery: .savedForExtraordinary))),
+                WeightedChild(weight: 0.80, node: .grade(Grade(name: "Prueba objetiva"))),
+            ],
+            minimum: Minimum(threshold: 5, consequence: .fails)
+        ))
+    )
+
+    /// Three seminar controls give up to 60% (S, in points out of 6); the exam takes whatever is
+    /// left (40–100%). Under 2.5 on the exam the seminars are not added and only the exam counts.
+    public static let calculo = Subject(
+        name: "Cálculo",
+        ectsCredits: 6,
+        root: .formula(Formula(
+            name: "Nota final",
+            expression: .ifGreaterOrEqual(
+                lhs: .variable("E"), rhs: .constant(2.5),
+                then: .add(
+                    .variable("S"),
+                    .multiply(.multiply(.constant(0.1), .subtract(.constant(10), .variable("S"))), .variable("E"))
+                ),
+                otherwise: .variable("E")
+            ),
+            variables: [
+                "S": .group(Group(
+                    name: "Seminarios",
+                    combination: .sum,
+                    children: (1...3).map { WeightedChild(weight: 0.20, node: .grade(Grade(name: "Control \($0)", recovery: .savedForExtraordinary))) }
+                )),
+                "E": .grade(Grade(name: "Examen final")),
+            ],
+            minimum: Minimum(threshold: 5, consequence: .fails)
+        ))
+    )
+
+    /// At least 3.5 on the final exam and 5 overall. The second sitting is one exam worth 100%,
+    /// which the shared tree can't express, so its parts are all retaken.
+    public static let programacion1 = Subject(
+        name: "Programación I",
+        ectsCredits: 6,
+        root: .group(Group(
+            name: "Nota final",
+            combination: .weightedAverage,
+            children: [
+                WeightedChild(weight: 0.30, node: .grade(Grade(name: "Prácticas de laboratorio", recovery: .recoverableInExtraordinary))),
+                WeightedChild(weight: 0.10, node: .grade(Grade(name: "Prueba práctica", recovery: .recoverableInExtraordinary))),
+                WeightedChild(weight: 0.60, node: .grade(Grade(name: "Examen final", minimum: Minimum(threshold: 3.5, consequence: .fails)))),
+            ],
+            minimum: Minimum(threshold: 5, consequence: .fails)
+        ))
+    )
+
+    /// Under 25% of any part's maximum the guide fails the subject with a 4.9 even if the total
+    /// reaches 5 (read as 25% of each part, not of the total — see the extraction's doubtful list).
+    public static let fundamentosComputadores = Subject(
+        name: "Fundamentos de los Computadores",
+        ectsCredits: 6,
+        root: .group(Group(
+            name: "Nota final",
+            combination: .weightedAverage,
+            children: [
+                WeightedChild(weight: 0.30, node: .grade(Grade(
+                    name: "Prácticas de laboratorio",
+                    minimum: Minimum(threshold: 2.5, consequence: .capAt(4.9)),
+                    recovery: .savedForExtraordinary
+                ))),
+                WeightedChild(weight: 0.30, node: .grade(Grade(
+                    name: "Controles",
+                    minimum: Minimum(threshold: 2.5, consequence: .capAt(4.9)),
+                    recovery: .recoverableInExtraordinary
+                ))),
+                WeightedChild(weight: 0.40, node: .grade(Grade(
+                    name: "Examen final",
+                    minimum: Minimum(threshold: 2.5, consequence: .capAt(4.9))
+                ))),
+            ],
+            minimum: Minimum(threshold: 5, consequence: .fails)
+        ))
+    )
+
+    /// Labs 40% and exam 60%, each needing 4.5 or the result is capped at 4.5; problem solving adds
+    /// up to one extra point (10%) only once the subject is passed.
+    public static let programacion2 = Subject(
+        name: "Programación II",
+        ectsCredits: 6,
+        root: .formula(Self.programacion2Formula)
+    )
+
+    private static let programacion2Formula: Formula = {
+        let base = Expression.add(
+            .multiply(.constant(0.4), .variable("L")),
+            .multiply(.constant(0.6), .variable("E"))
+        )
+        let capped = Expression.min(base, .constant(4.5))
+        let counted = Expression.ifGreaterOrEqual(
+            lhs: .variable("L"), rhs: .constant(4.5),
+            then: .ifGreaterOrEqual(lhs: .variable("E"), rhs: .constant(4.5), then: base, otherwise: capped),
+            otherwise: capped
+        )
+        return Formula(
+            name: "Nota final",
+            expression: .ifGreaterOrEqual(
+                lhs: counted, rhs: .constant(5),
+                then: .min(.add(counted, .variable("S")), .constant(10)),
+                otherwise: counted
+            ),
+            variables: [
+                "L": .grade(Grade(name: "Prácticas de laboratorio", recovery: .savedForExtraordinary)),
+                "E": .grade(Grade(name: "Prueba objetiva")),
+                "S": .grade(Grade(name: "Solución de problemas", scaleMax: 1, recovery: .savedForExtraordinary)),
+            ],
+            minimum: Minimum(threshold: 5, consequence: .fails)
+        )
+    }()
+
+    /// Labs (up to 3 points), problem solving (2) and exam (5) add up; under 1.5 on the exam the
+    /// sum is halved.
+    public static let tecnologiaElectronica = Subject(
+        name: "Tecnología Electrónica",
+        ectsCredits: 6,
+        root: .formula({
+            let sum = Expression.add(.add(.variable("L"), .variable("P")), .variable("E"))
+            return Formula(
+                name: "Nota final",
+                expression: .ifGreaterOrEqual(
+                    lhs: .variable("E"), rhs: .constant(1.5),
+                    then: sum,
+                    otherwise: .divide(sum, .constant(2))
+                ),
+                variables: [
+                    "L": .grade(Grade(name: "Prácticas de laboratorio", scaleMax: 3, recovery: .savedForExtraordinary)),
+                    "P": .grade(Grade(name: "Solución de problemas", scaleMax: 2, recovery: .savedForExtraordinary)),
+                    "E": .grade(Grade(name: "Prueba mixta", scaleMax: 5)),
+                ],
+                minimum: Minimum(threshold: 5, consequence: .fails)
+            )
+        }())
+    )
+
+    /// Two exams (theory 55%, practice 20%) make the objective test; both can be retaken in the
+    /// second sitting, and a missed one keeps its first-sitting grade.
+    public static let algoritmos = Subject(
+        name: "Algoritmos",
+        ectsCredits: 6,
+        root: .group(Group(
+            name: "Nota final",
+            combination: .weightedAverage,
+            children: [
+                WeightedChild(weight: 0.10, node: .grade(Grade(name: "Prácticas de laboratorio", recovery: .savedForExtraordinary))),
+                WeightedChild(weight: 0.05, node: .group(Group(
+                    name: "Pruebas de respuesta breve",
+                    combination: .weightedAverage,
+                    children: [
+                        WeightedChild(weight: 1, node: .grade(Grade(name: "Prueba 1", recovery: .savedForExtraordinary))),
+                        WeightedChild(weight: 1, node: .grade(Grade(name: "Prueba 2", recovery: .savedForExtraordinary))),
+                    ]
+                ))),
+                WeightedChild(weight: 0.10, node: .grade(Grade(name: "Solución de problemas", recovery: .savedForExtraordinary))),
+                WeightedChild(weight: 0.75, node: .group(Group(
+                    name: "Prueba objetiva",
+                    combination: .weightedAverage,
+                    children: [
+                        WeightedChild(weight: 0.55, node: .grade(Grade(name: "Examen de teoría"))),
+                        WeightedChild(weight: 0.20, node: .grade(Grade(name: "Examen de prácticas"))),
+                    ]
+                ))),
+            ],
+            minimum: Minimum(threshold: 5, consequence: .fails)
+        ))
+    )
+
     public static let all: [Subject] = [
         estructuraComputadores, estadistica, matematicaDiscreta, sistemasOperativos,
         algebra, administracionGestionOrganizaciones, informaticaBasica, disenoSoftware, paradigmasProgramacion,
+        matematicaDiscretaGEI, calculo, programacion1, fundamentosComputadores, programacion2, tecnologiaElectronica, algoritmos,
     ]
 }

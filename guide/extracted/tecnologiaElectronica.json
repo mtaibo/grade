@@ -1,0 +1,49 @@
+{
+  "subject": "Tecnología Electrónica",
+  "code": "202307",
+  "course": 1,
+  "period": "Segundo cuatrimestre",
+  "source": "guiaDocente_tecnologiaElectronica.pdf",
+  "sessions": {
+    "ordinary": {
+      "label": "Primera oportunidad",
+      "components": [
+        {
+          "name": "Prácticas de laboratorio",
+          "points": 3,
+          "citation": "Prácticas de laboratorio (LAB): hasta 3 puntos."
+        },
+        {
+          "name": "Solución de problemas",
+          "points": 2,
+          "citation": "Solución de problemas (PRB): hasta 2 puntos."
+        },
+        {
+          "name": "Prueba mixta",
+          "points": 5,
+          "citation": "Prueba mixta (examen final): hasta 5 puntos."
+        }
+      ],
+      "formula": "si E ≥ 1,5: L + P + E; si no: (L + P + E) / 2",
+      "rules": {
+        "minimum": {
+          "threshold": 5.0,
+          "consequence": "fails"
+        }
+      },
+      "citation": "es inferior a 1,5 puntos, entonces se suman las notas de LAB, PRB y del examen final y el resultado se divide a la mitad"
+    },
+    "extraordinary": {
+      "label": "Segunda oportunidad",
+      "note": "Solo se evalúa la prueba mixta; LAB y PRB son las de la primera oportunidad; mismo cálculo."
+    },
+    "earlyOpportunity": {
+      "label": "Oportunidad adelantada",
+      "note": "Lo mismo que la segunda oportunidad."
+    }
+  },
+  "doubtfulCases": [],
+  "degree": "Grado en Ingeniería Informática",
+  "academicYear": "2025/26",
+  "ects": 6.0
+}

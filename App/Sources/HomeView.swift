@@ -333,7 +333,7 @@ private struct EmptyHome: View {
         ContentUnavailableView {
             Label("Sin asignaturas", systemImage: "books.vertical")
         } description: {
-            Text("Añade las de este cuatrimestre para empezar a apuntar fechas y notas.")
+            Text("Añade las de este cuatrimestre o carga una plantilla desde la pestaña Cuenta.")
         } actions: {
             Button("Añadir asignatura", action: add)
                 .buttonStyle(.borderedProminent)

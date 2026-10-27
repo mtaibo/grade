@@ -1,0 +1,54 @@
+{
+  "subject": "Programación II",
+  "code": "202308",
+  "course": 1,
+  "period": "Segundo cuatrimestre",
+  "source": "guiaDocente_programacion2.pdf",
+  "sessions": {
+    "ordinary": {
+      "label": "Primera oportunidad",
+      "components": [
+        {
+          "name": "Prácticas de laboratorio",
+          "weight": 0.4,
+          "minimum": {
+            "threshold": 4.5,
+            "consequence": "capAt 4.5"
+          },
+          "citation": "Es necesario presentar todas las prácticas y obtener una nota mínima global de 4,5 sobre 10"
+        },
+        {
+          "name": "Prueba objetiva",
+          "weight": 0.6,
+          "minimum": {
+            "threshold": 4.5,
+            "consequence": "capAt 4.5"
+          },
+          "citation": "Es necesario obtener una nota mínima de 4,5 sobre 10 para superar la materia."
+        },
+        {
+          "name": "Solución de problemas",
+          "weight": 0.1,
+          "citation": "La calificación de este apartado solamente se sumará a la obtenida en las pruebas restantes cuando la materia esté superada. (Total 110%)"
+        }
+      ],
+      "formula": "base = 0,4·L + 0,6·E (tope 4,5 si L o E < 4,5); si base ≥ 5: mín(10, base + S) con S sobre 1",
+      "citation": "si alguna de las dos es inferior a 4,5 sobre 10, en las actas figurará la nota mínima entre 4,5 y la que resulte del cálculo conjunto"
+    },
+    "extraordinary": {
+      "label": "Segunda oportunidad",
+      "note": "La prueba objetiva no se mantiene; prácticas y solución de problemas se mantienen (solo se pueden entregar las suspensas o no presentadas)."
+    },
+    "earlyOpportunity": {
+      "label": "Oportunidad adelantada",
+      "note": "Se basa exclusivamente en una prueba escrita."
+    }
+  },
+  "doubtfulCases": [
+    "Los pesos suman 110%: se lee Solución de problemas como un punto extra (10%) que solo se suma con la asignatura aprobada, y el total se limita a 10.",
+    "Penalización por no asistencia a prácticas \"según condiciones que se detallarán\": no modelable."
+  ],
+  "degree": "Grado en Ingeniería Informática",
+  "academicYear": "2025/26",
+  "ects": 6.0
+}

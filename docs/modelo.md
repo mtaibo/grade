@@ -342,3 +342,13 @@ simulador, se lee bien incluso en miniatura.
 - `SubjectRecord.symbol` / `colorName` (opcionales): icono y color elegidos en «Personalizar»; si
   faltan, `SubjectStyle` los deriva del nombre/id.
 - Menú de la tarjeta: Personalizar, Mover, Editar evaluación, Eliminar.
+
+## Plantillas de carrera (oct 2026)
+
+`Sources/Engine/DegreeTemplates.swift`: un `DegreeTemplate` es una lista de asignaturas con su año y su cuatrimestre *relativo* (1.º o 2.º del año; la app lo convierte al número absoluto con los ajustes de Tu carrera). La primera es `.informatica` (Grado en Ingeniería Informática, UDC, guías 2025/26): 1.º completo y el 1.er cuatrimestre de 2.º (15 asignaturas; falta el 2.º cuatrimestre de 2.º). En la app vive en Cuenta → Plantillas; «Añadir a mi carrera» (`Library.apply`) añade lo que no esté ya por nombre en ese curso, así que repetirlo no duplica ni toca notas.
+
+Ya no se siembran asignaturas de ejemplo al instalar: la app arranca vacía y se carga una plantilla o se añaden a mano. «Restaurar ejemplos» pasó a «Borrar todas las asignaturas».
+
+Siete guías nuevas modeladas (cada una con su JSON citado en `guide/extracted/` y tests a mano en `InformaticaTemplateTests`): Cálculo (fórmula tipo Estadística con un `ifGreaterOrEqual` para el mínimo del examen), Programación I, Matemática Discreta del Grado en Informática (`matematicaDiscretaGEI`, distinta de la GCED, cuya guía está cortada con «[…]»), Fundamentos de los Computadores (mínimo del 25 % de cada parte con tope 4,9), Programación II (110 %: la solución de problemas es un punto extra solo con la asignatura aprobada), Tecnología Electrónica (suma de puntos, mitad si el examen < 1,5) y Algoritmos (la prueba objetiva agrupa teoría 55 % y prácticas 20 %).
+
+Límites conocidos: sigue sin haber árbol propio para la extraordinaria. Programación I (examen único al 100 %) y Fundamentos (examen al 70 %, sin controles) la aproximan marcando partes como recuperables. El PDF `q3/estruturaComputadores.pdf` era el del *Máster* (código 100571), no el del Grado: se mantiene el modelo del Grado (202314), que tiene los mismos pesos.

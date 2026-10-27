@@ -1,0 +1,43 @@
+{
+  "subject": "Matemática Discreta",
+  "code": "202306",
+  "course": 1,
+  "period": "Primer cuatrimestre",
+  "source": "guiaDocente_matematicaDiscretaGEI.pdf",
+  "sessions": {
+    "ordinary": {
+      "label": "Primera oportunidad",
+      "components": [
+        {
+          "name": "Prácticas de laboratorio",
+          "weight": 0.2,
+          "recovery": "savedForExtraordinary",
+          "citation": "A lo largo del curso se realizarán pruebas sobre algunos temas de la asignatura ... 20,00"
+        },
+        {
+          "name": "Prueba objetiva",
+          "weight": 0.8,
+          "citation": "Al final del curso se realizará una prueba escrita ... Para aprobar la asignatura es necesario [...] 80,00"
+        }
+      ],
+      "rules": {
+        "minimum": {
+          "threshold": 5.0,
+          "consequence": "fails"
+        }
+      }
+    },
+    "earlyOpportunity": {
+      "label": "Oportunidad adelantada",
+      "note": "Examen sobre diez, al menos un cinco para aprobar."
+    }
+  },
+  "doubtfulCases": [
+    "La guía corta la descripción de la prueba objetiva en \"Para aprobar la asignatura es necesario [...]\": puede haber un mínimo en el examen que no consta. No se ha inventado.",
+    "No dice si la nota de prácticas se guarda para la segunda oportunidad; se asume que sí (es evaluación continua, como en Álgebra).",
+    "Es la guía del Grado en Informática; la guía GCED de `matematicaDiscreta.json` es otra asignatura con otra evaluación."
+  ],
+  "degree": "Grado en Ingeniería Informática",
+  "academicYear": "2025/26",
+  "ects": 6.0
+}

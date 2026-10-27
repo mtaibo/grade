@@ -1,0 +1,54 @@
+{
+  "subject": "Programación I",
+  "code": "202303",
+  "course": 1,
+  "period": "Primer cuatrimestre",
+  "source": "guiaDocente_programacion1.pdf",
+  "sessions": {
+    "ordinary": {
+      "label": "Primera oportunidad",
+      "components": [
+        {
+          "name": "Prácticas de laboratorio",
+          "weight": 0.3,
+          "citation": "Prácticas de laboratorio: 30%"
+        },
+        {
+          "name": "Prueba práctica",
+          "weight": 0.1,
+          "citation": "Prueba práctica: 10%"
+        },
+        {
+          "name": "Examen final",
+          "weight": 0.6,
+          "minimum": {
+            "threshold": 3.5,
+            "consequence": "fails"
+          },
+          "citation": "Sesión magistral (examen final): 60% ... por lo menos el 35% de la cualificación del EXAMEN FINAL (3,5 sobre 10 puntos)"
+        }
+      ],
+      "rules": {
+        "minimum": {
+          "threshold": 5.0,
+          "consequence": "fails"
+        }
+      }
+    },
+    "extraordinary": {
+      "label": "Segunda oportunidad",
+      "note": "Un único examen que supone el 100% de la nota (incluye prácticas y prueba práctica); hay que sacar al menos el 50%."
+    },
+    "earlyOpportunity": {
+      "label": "Oportunidad adelantada",
+      "note": "Igual que la segunda: un examen único al 100%, mínimo 50%."
+    }
+  },
+  "doubtfulCases": [
+    "El examen único de la segunda oportunidad no cabe en el árbol compartido: las prácticas y la prueba práctica se marcan como recuperables (empiezan vacías) y se rellenan con lo que se saque en cada parte del examen.",
+    "No quedan guardadas notas para la segunda oportunidad: la guía dice explícitamente que todo se evalúa en un único examen."
+  ],
+  "degree": "Grado en Ingeniería Informática",
+  "academicYear": "2025/26",
+  "ects": 6.0
+}

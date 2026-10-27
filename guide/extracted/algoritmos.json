@@ -1,0 +1,67 @@
+{
+  "subject": "Algoritmos",
+  "code": "202313",
+  "course": 2,
+  "period": "Primer cuatrimestre",
+  "source": "guiaDocente_algoritmos.pdf",
+  "sessions": {
+    "ordinary": {
+      "label": "Primera oportunidad",
+      "components": [
+        {
+          "name": "Prácticas de laboratorio",
+          "weight": 0.1,
+          "citation": "4 prácticas realizadas en grupos ... 10,00"
+        },
+        {
+          "name": "Pruebas de respuesta breve",
+          "weight": 0.05,
+          "citation": "2 pruebas escritas de evaluación continua ... 5,00"
+        },
+        {
+          "name": "Solución de problemas",
+          "weight": 0.1,
+          "citation": "Evaluación de 2 ó 3 trabajos ... 10,00"
+        },
+        {
+          "name": "Prueba objetiva",
+          "weight": 0.75,
+          "parts": [
+            {
+              "name": "Examen de teoría",
+              "weight": 0.55
+            },
+            {
+              "name": "Examen de prácticas",
+              "weight": 0.2
+            }
+          ],
+          "citation": "Examen individual de teoría: 55% / Examen individual de prácticas: 20%"
+        }
+      ],
+      "rules": {
+        "minimum": {
+          "threshold": 5.0,
+          "consequence": "fails"
+        }
+      }
+    },
+    "extraordinary": {
+      "label": "Segunda oportunidad",
+      "note": "Se puede repetir el examen de prácticas y el de teoría; el que no se haga conserva la nota de la primera oportunidad."
+    },
+    "earlyOpportunity": {
+      "label": "Oportunidad adelantada",
+      "note": "El 100% es un examen específico de teoría con cuestiones de prácticas."
+    }
+  },
+  "doubtfulCases": [
+    "La guía no fija un mínimo de aprobado más allá de la nota final; se usa 5.",
+    "Para ir al examen de prácticas hay que haber entregado las prácticas en plazo: requisito sin nota, no modelado.",
+    "Los pesos del grupo (55 y 20) se leen dentro de la prueba objetiva (75%), no como pesos de primer nivel.",
+    "Matrícula a tiempo parcial: el acta recoge la mejor de dos fórmulas (70/30 teoría/prácticas solo con exámenes); no modelado."
+  ],
+  "degree": "Grado en Ingeniería Informática",
+  "academicYear": "2025/26",
+  "ects": 6.0
+}

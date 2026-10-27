@@ -1,3 +1,4 @@
+import Engine
 import SwiftUI
 
 /// The account tab: the things you look at occasionally rather than while the term runs — the
@@ -5,7 +6,7 @@ import SwiftUI
 struct AccountView: View {
     @Environment(Library.self) private var library
     @State private var isConfirmingClear = false
-    @State private var isConfirmingRestore = false
+    @State private var isConfirmingRemoveAll = false
 
     private var version: String {
         let info = Bundle.main.infoDictionary
@@ -30,6 +31,29 @@ struct AccountView: View {
                 }
 
                 Section {
+                    ForEach(DegreeTemplate.all) { template in
+                        NavigationLink {
+                            TemplateView(template: template)
+                        } label: {
+                            Label {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(template.name)
+                                    Text("\(template.university) · \(template.entries.count) asignaturas")
+                                        .font(.footnote)
+                                        .foregroundStyle(.secondary)
+                                }
+                            } icon: {
+                                Image(systemName: "graduationcap")
+                            }
+                        }
+                    }
+                } header: {
+                    Text("Plantillas")
+                } footer: {
+                    Text("Asignaturas ya preparadas con la evaluación de su guía docente. Después puedes editarlas.")
+                }
+
+                Section {
                     Stepper(value: degreeBinding.years, in: 1...DegreeSettings.maxYears) {
                         LabeledContent("Años de carrera", value: library.degree.years.formatted())
                     }
@@ -49,11 +73,9 @@ struct AccountView: View {
 
                 Section {
                     Button("Borrar todas las notas", role: .destructive) { isConfirmingClear = true }
-                    Button("Restaurar asignaturas de ejemplo", role: .destructive) { isConfirmingRestore = true }
+                    Button("Borrar todas las asignaturas", role: .destructive) { isConfirmingRemoveAll = true }
                 } header: {
                     Text("Datos")
-                } footer: {
-                    Text("Restaurar borra tus asignaturas y notas y deja solo las de ejemplo, tal como venían.")
                 }
 
                 Section("Acerca de") {
@@ -66,10 +88,59 @@ struct AccountView: View {
             } message: {
                 Text("Se borran las notas de todas las asignaturas. No se puede deshacer.")
             }
-            .confirmationDialog("¿Restaurar las asignaturas de ejemplo?", isPresented: $isConfirmingRestore, titleVisibility: .visible) {
-                Button("Restaurar", role: .destructive) { library.restoreExamples() }
+            .confirmationDialog("¿Borrar todas las asignaturas?", isPresented: $isConfirmingRemoveAll, titleVisibility: .visible) {
+                Button("Borrar todo", role: .destructive) { library.removeAllSubjects() }
             } message: {
-                Text("Vuelven las asignaturas de ejemplo tal como venían, sin notas, y se pierden las que hayas creado. No se puede deshacer.")
+                Text("Se borran todas tus asignaturas y sus notas. No se puede deshacer.")
+            }
+        }
+    }
+}
+
+/// What a template contains, by year and term, and the button that adds it to your degree.
+private struct TemplateView: View {
+    let template: DegreeTemplate
+
+    @Environment(Library.self) private var library
+    @State private var result: (added: Int, skipped: Int)?
+
+    var body: some View {
+        List {
+            ForEach(template.years, id: \.self) { year in
+                ForEach(1...library.degree.termsPerYear, id: \.self) { term in
+                    let entries = template.entries(year: year, term: term)
+                    if !entries.isEmpty {
+                        Section("\(year)º Año · \(library.degree.termLabel(library.degree.absoluteTerm(year: year, relative: term)))") {
+                            ForEach(entries.indices, id: \.self) { index in
+                                LabeledContent(entries[index].subject.name, value: "\(entries[index].subject.ectsCredits.formatted()) ECTS")
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        .navigationTitle(template.name)
+        .navigationBarTitleDisplayMode(.inline)
+        .safeAreaInset(edge: .bottom) {
+            Button {
+                result = library.apply(template)
+            } label: {
+                Text("Añadir a mi carrera")
+                    .font(.headline)
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.large)
+            .padding()
+            .background(.bar)
+        }
+        .alert("Plantilla añadida", isPresented: Binding(get: { result != nil }, set: { if !$0 { result = nil } })) {
+            Button("Vale") {}
+        } message: {
+            if let result {
+                Text(result.skipped == 0
+                     ? "Se han añadido \(result.added) asignaturas."
+                     : "Se han añadido \(result.added) asignaturas. Las otras \(result.skipped) ya las tenías.")
             }
         }
     }

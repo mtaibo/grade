@@ -1,0 +1,53 @@
+{
+  "subject": "Cálculo",
+  "code": "202305",
+  "course": 1,
+  "period": "Primer cuatrimestre",
+  "source": "guiaDocente_calculo.pdf",
+  "sessions": {
+    "ordinary": {
+      "label": "Primera oportunidad",
+      "components": [
+        {
+          "name": "Seminarios",
+          "detail": "3 controles de hasta el 20% cada uno (S, hasta 6 puntos)",
+          "citation": "Se realizarán 3 pruebas de evaluación durante los seminarios ... hasta el 20% de la nota final."
+        },
+        {
+          "name": "Examen final",
+          "detail": "vale entre el 40 y el 100%: lo que no hayan dado los seminarios",
+          "citation": "El examen final, con un valor entre el 40 y el 100% (dependiendo de la calificación obtenida en esta misma prueba y en el apartado \"Seminario\")"
+        }
+      ],
+      "formula": "si E >= 2,5: S + 0,1 · (10 − S) · E; si no: E",
+      "rules": {
+        "minimum": {
+          "threshold": 5.0,
+          "consequence": "fails"
+        },
+        "examMinimum": {
+          "part": "Examen final",
+          "threshold": 2.5,
+          "consequence": "seminars not added"
+        }
+      },
+      "citation": "es necesario obtener una calificación igual o superior a 2,50 puntos, sobre 10, en el examen final para superar la materia. Si no se alcanzase dicha calificación, no se sumará la nota del apartado \"Seminario\""
+    },
+    "extraordinary": {
+      "label": "Segunda oportunidad",
+      "note": "La prueba objetiva se rige por los mismos principios que la primera."
+    },
+    "earlyOpportunity": {
+      "label": "Oportunidad adelantada",
+      "note": "Mismos principios; se considera la nota de seminarios del curso anterior."
+    }
+  },
+  "doubtfulCases": [
+    "La guía no dice expresamente que la nota de seminarios se guarde para la segunda oportunidad; se asume que sí porque la prueba \"se regirá por los mismos principios\".",
+    "Con menos de 2,5 en el examen \"solo aparece la nota de la prueba objetiva\": se modela como nota final = nota del examen.",
+    "Defensa oral de controles a criterio del profesorado: no modelable."
+  ],
+  "degree": "Grado en Ingeniería Informática",
+  "academicYear": "2025/26",
+  "ects": 6.0
+}

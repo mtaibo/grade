@@ -152,41 +152,25 @@ struct Course: Identifiable, Codable, Equatable {
 final class Library {
     private(set) var courses: [Course]
     private(set) var degree = DegreeSettings()
-    /// Example subjects already added once, so a new one shipped later (e.g. a newly extracted
-    /// syllabus) reaches existing installs without re-adding ones the user already has.
-    @ObservationIgnored private var offeredExamples: Set<String>
     @ObservationIgnored private let fileURL: URL
 
     private struct Snapshot: Codable {
         var courses: [Course]
-        var offeredExamples: Set<String>
-        /// 2 = subjects carry a `term`. Earlier files have none, so the examples get theirs once.
-        var version: Int?
         var degree: DegreeSettings?
     }
-
-    private static let currentVersion = 2
 
     init(fileURL: URL = URL.applicationSupportDirectory.appending(path: "library.json")) {
         self.fileURL = fileURL
         let data = try? Data(contentsOf: fileURL)
-        var needsTermMigration = false
         if let data, let snapshot = try? JSONDecoder().decode(Snapshot.self, from: data) {
             courses = snapshot.courses
-            offeredExamples = snapshot.offeredExamples
             degree = snapshot.degree ?? DegreeSettings()
-            needsTermMigration = (snapshot.version ?? 0) < Self.currentVersion
         } else if let data, let courses = try? JSONDecoder().decode([Course].self, from: data) {
-            // Files saved before `offeredExamples` existed: whatever they hold was offered.
+            // The first file format was a bare list of courses.
             self.courses = courses
-            offeredExamples = Set(courses.flatMap(\.subjects).map(\.subject.name))
-            needsTermMigration = true
         } else {
             courses = []
-            offeredExamples = []
         }
-        if needsTermMigration { assignExampleTerms() }
-        addMissingExamples(migratingLegacyGrades: true)
         save()
     }
 
@@ -310,11 +294,29 @@ final class Library {
         save()
     }
 
-    func restoreExamples() {
+    func removeAllSubjects() {
         courses = []
-        offeredExamples = []
-        addMissingExamples(migratingLegacyGrades: false)
         save()
+    }
+
+    /// Adds the template's subjects, each in its year and term. A subject the course already has
+    /// (same name) is left alone, so applying a template twice never duplicates or loses grades.
+    @discardableResult
+    func apply(_ template: DegreeTemplate) -> (added: Int, skipped: Int) {
+        var added = 0
+        var skipped = 0
+        for entry in template.entries {
+            let course = courseIndex(forYear: entry.year)
+            if courses[course].subjects.contains(where: { $0.subject.name == entry.subject.name }) {
+                skipped += 1
+                continue
+            }
+            let term = degree.absoluteTerm(year: entry.year, relative: min(entry.term, degree.termsPerYear))
+            courses[course].subjects.append(SubjectRecord(subject: entry.subject, term: term))
+            added += 1
+        }
+        save()
+        return (added, skipped)
     }
 
     private func mutateRecord(_ id: SubjectRecord.ID, _ body: (inout SubjectRecord) -> Void) {
@@ -330,55 +332,11 @@ final class Library {
     private func save() {
         do {
             try FileManager.default.createDirectory(at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
-            try JSONEncoder().encode(Snapshot(courses: courses, offeredExamples: offeredExamples, version: Self.currentVersion, degree: degree))
+            try JSONEncoder().encode(Snapshot(courses: courses, degree: degree))
                 .write(to: fileURL, options: .atomic)
         } catch {
             assertionFailure("Couldn't save the library: \(error)")
         }
-    }
-
-    /// The reference subjects with the year and degree-wide term their syllabus places them in.
-    private static let exampleCatalog: [(year: Int, term: Int, subjects: [Subject])] = [
-        (1, 1, [.matematicaDiscreta, .administracionGestionOrganizaciones, .informaticaBasica]),
-        (1, 2, [.estadistica, .algebra]),
-        (2, 3, [.estructuraComputadores, .sistemasOperativos, .disenoSoftware, .paradigmasProgramacion]),
-    ]
-
-    /// Gives the examples already in a pre-term library their term, without touching anything else.
-    private func assignExampleTerms() {
-        for (_, term, subjects) in Self.exampleCatalog {
-            for subject in subjects {
-                for course in courses.indices {
-                    for index in courses[course].subjects.indices
-                    where courses[course].subjects[index].subject.name == subject.name && courses[course].subjects[index].term == nil {
-                        courses[course].subjects[index].term = term
-                    }
-                }
-            }
-        }
-    }
-
-    /// Adds every catalog subject not offered before to its course, creating the course if needed.
-    private func addMissingExamples(migratingLegacyGrades: Bool) {
-        for (year, term, subjects) in Self.exampleCatalog {
-            for subject in subjects where !offeredExamples.contains(subject.name) {
-                let record = SubjectRecord(
-                    subject: subject,
-                    entries: migratingLegacyGrades ? Self.legacyEntries(for: subject.name) : [:],
-                    term: term
-                )
-                courses[courseIndex(forYear: year)].subjects.append(record)
-                offeredExamples.insert(subject.name)
-            }
-        }
-    }
-
-    /// Grades saved by the earlier `UserDefaults`-only version, so nothing typed before is lost.
-    private static func legacyEntries(for subjectName: String) -> [String: GradeEntry] {
-        guard let data = UserDefaults.standard.data(forKey: "com.migueltaibo.mark.grades.\(subjectName)"),
-              let entries = try? JSONDecoder().decode([String: GradeEntry].self, from: data)
-        else { return [:] }
-        return entries
     }
 }
 

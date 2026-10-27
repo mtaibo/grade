@@ -1,0 +1,55 @@
+{
+  "subject": "Fundamentos de los Computadores",
+  "code": "202309",
+  "course": 1,
+  "period": "Segundo cuatrimestre",
+  "source": "guiaDocente_fundamentosComputadores.pdf",
+  "sessions": {
+    "ordinary": {
+      "label": "Primera oportunidad",
+      "components": [
+        {
+          "name": "Prácticas de laboratorio",
+          "weight": 0.3,
+          "citation": "Prácticas de laboratorio [SEG21] ... 30,00"
+        },
+        {
+          "name": "Controles",
+          "weight": 0.3,
+          "citation": "Solución de problemas [SEG41] ... controles escritos durante el curso ... 30,00"
+        },
+        {
+          "name": "Examen final",
+          "weight": 0.4,
+          "citation": "Prueba objetiva [SEG31] ... 40,00"
+        }
+      ],
+      "rules": {
+        "minimum": {
+          "threshold": 5.0,
+          "consequence": "fails"
+        },
+        "perPartMinimum": {
+          "threshold": 2.5,
+          "consequence": "capAt 4.9"
+        }
+      },
+      "citation": "nota total ... igual o superior al 50% de la nota máxima, además de tener una calificación superior al 25% de la nota total en cada una de las metodologías evaluadas ... se establecerá una calificación de suspenso (4,9)"
+    },
+    "extraordinary": {
+      "label": "Segunda oportunidad",
+      "note": "El examen es sobre todo el temario y vale el 70%; no cuentan los controles; las prácticas son las del curso (30%). Total ≥ 50%."
+    },
+    "earlyOpportunity": {
+      "label": "Oportunidad adelantada",
+      "note": "Examen 70% sobre todo el temario; prácticas las del último curso (30%)."
+    }
+  },
+  "doubtfulCases": [
+    "\"Superior al 25% de la nota total en cada metodología\" es ambiguo: se interpreta como 25% del máximo de cada parte (2,5 sobre 10), con tope 4,9 si no se llega.",
+    "En la segunda oportunidad el examen vale 70% y los controles no cuentan; el árbol compartido no lo expresa, así que los controles quedan marcados como recuperables."
+  ],
+  "degree": "Grado en Ingeniería Informática",
+  "academicYear": "2025/26",
+  "ects": 6.0
+}
