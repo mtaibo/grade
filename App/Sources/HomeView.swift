@@ -276,21 +276,26 @@ struct HomeView: View {
     }
 }
 
-/// One subject: a decorative icon and its name, nothing else.
+/// One subject: a decorative icon and its name, with a small ring in the corner that fills as
+/// its grades are entered.
 struct SubjectTile: View {
     let name: String
     let symbol: String
     let tint: Color
+    /// Grades entered and grades in total, recomputed from the subject each time. `nil` hides the ring.
+    let count: (entered: Int, total: Int)?
 
     init(record: SubjectRecord) {
         let style = SubjectStyle(record)
-        self.init(name: record.subject.name, symbol: style.symbol, tint: style.tint)
+        let progress = SubjectProgress(record)
+        self.init(name: record.subject.name, symbol: style.symbol, tint: style.tint, count: (progress.enteredCount, progress.leafCount))
     }
 
-    init(name: String, symbol: String, tint: Color) {
+    init(name: String, symbol: String, tint: Color, count: (entered: Int, total: Int)? = nil) {
         self.name = name
         self.symbol = symbol
         self.tint = tint
+        self.count = count
     }
 
     var body: some View {
@@ -311,8 +316,41 @@ struct SubjectTile: View {
         .padding(16)
         .frame(height: 156)
         .background(Color(.secondarySystemGroupedBackground), in: .rect(cornerRadius: 22))
+        .overlay(alignment: .topTrailing) {
+            if let count, count.total > 0 {
+                CompletionRing(entered: count.entered, total: count.total)
+                    .padding(16)
+            }
+        }
         .contentShape(.rect(cornerRadius: 22))
         .accessibilityElement(children: .combine)
+    }
+}
+
+/// A small circle that fills as grades are entered, turning green with a tick once they all are.
+private struct CompletionRing: View {
+    let entered: Int
+    let total: Int
+
+    private var fraction: Double { min(Double(entered) / Double(max(total, 1)), 1) }
+    private var isComplete: Bool { entered >= total }
+
+    var body: some View {
+        ZStack {
+            Circle().stroke(.quaternary, lineWidth: 4)
+            Circle()
+                .trim(from: 0, to: fraction)
+                .stroke(isComplete ? Color.green : Color.accentColor, style: StrokeStyle(lineWidth: 4, lineCap: .round))
+                .rotationEffect(.degrees(-90))
+            if isComplete {
+                Image(systemName: "checkmark")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(.green)
+            }
+        }
+        .frame(width: 28, height: 28)
+        .animation(.snappy, value: fraction)
+        .accessibilityLabel("\(entered) de \(total) notas")
     }
 }
 
