@@ -171,7 +171,22 @@ final class Library {
         } else {
             courses = []
         }
+        flagFinalExams()
         save()
+    }
+
+    /// Subjects saved before the final exam had its own marker get it on the leaves named like one,
+    /// once, so they show the exam card too.
+    private func flagFinalExams() {
+        let names: Set<String> = ["Prueba objetiva", "Examen final", "Prueba mixta", "Examen", "Examen de teoría", "Examen de prácticas"]
+        for course in courses.indices {
+            for index in courses[course].subjects.indices {
+                var root = courses[course].subjects[index].subject.root
+                guard !root.grades.contains(where: { $0.isFinalExam == true }) else { continue }
+                root.updateGrades { if names.contains($0.name) { $0.isFinalExam = true } }
+                courses[course].subjects[index].subject.root = root
+            }
+        }
     }
 
     func record(id: SubjectRecord.ID) -> SubjectRecord? {
@@ -208,7 +223,7 @@ final class Library {
     @discardableResult
     func addSubject(name: String, ects: Double = 6, year: Int, term: Int?) -> SubjectRecord.ID {
         let root = Node.group(Group(name: name, combination: .weightedAverage, children: [
-            WeightedChild(weight: 1, node: .grade(Grade(name: "Examen"))),
+            WeightedChild(weight: 1, node: .grade(Grade(name: "Examen", isFinalExam: true))),
         ]))
         let record = SubjectRecord(subject: Subject(name: name, ectsCredits: ects, root: root), term: term)
         courses[courseIndex(forYear: year)].subjects.append(record)
@@ -291,6 +306,20 @@ final class Library {
                 courses[course].subjects[subject].extraordinaryEntries = [:]
             }
         }
+        save()
+    }
+
+    /// Everything stored — every subject with its evaluation, grades and dates, plus the degree
+    /// settings — as the contents of a `.mark` file.
+    func backupData() throws -> Data {
+        try MarkBackup.encoder.encode(MarkBackup(courses: courses, degree: degree))
+    }
+
+    /// Replaces everything with a backup's contents.
+    func restore(_ backup: MarkBackup) {
+        courses = backup.courses
+        degree = backup.degree
+        flagFinalExams()
         save()
     }
 

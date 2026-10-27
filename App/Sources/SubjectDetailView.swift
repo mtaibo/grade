@@ -1,30 +1,32 @@
 import Engine
 import SwiftUI
 
-/// One subject, as a few calm cards: where you stand (folded until you want the detail), the exam
-/// dates, and one card per part showing its grade. Nothing here edits the structure or the dates —
-/// that lives in the "…" menu; tapping a part opens just its grade to fill in.
+/// One subject, as a few calm cards: where you stand (folded until you want the detail), the final
+/// exam with its two sittings, and one card per other part showing its grade. Nothing here edits
+/// the structure or the dates — that lives in the "…" menu; tapping a card opens just its grade.
 struct SubjectDetailView: View {
     let recordID: SubjectRecord.ID
 
     @Environment(Library.self) private var library
-    /// `nil` until the user picks one; until then the record's active sitting is shown.
-    @State private var pickedSession: Convocatoria?
     @State private var isEditing = false
     @State private var isEditingDates = false
     @State private var addingDateFor: Convocatoria?
-    @State private var editingPartID: String?
+    @State private var gradeTarget: GradeTarget?
 
     var body: some View {
         if let record = library.record(id: recordID) {
-            content(record, session: pickedSession ?? record.activeSession)
+            content(record)
         } else {
             ContentUnavailableView("Asignatura no encontrada", systemImage: "questionmark.folder")
         }
     }
 
-    private func content(_ record: SubjectRecord, session: Convocatoria) -> some View {
+    private func content(_ record: SubjectRecord) -> some View {
+        let session = record.activeSession
         let progress = SubjectProgress(record, session: session)
+        let items = PartItem.items(of: record)
+        let exam = items.first(where: \.isExam)
+        let others = items.filter { $0.id != exam?.id }
         return ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 Text(record.subject.name)
@@ -33,19 +35,26 @@ struct SubjectDetailView: View {
 
                 GradeCard(progress: progress, session: session, formula: record.subject.root.asFormula)
 
-                ExamsCard(record: record) { addingDateFor = $0 }
+                ExamCard(
+                    record: record,
+                    exam: exam,
+                    onAddDate: { addingDateFor = $0 },
+                    onOpen: { gradeTarget = GradeTarget(partID: exam?.id ?? "", session: $0) }
+                )
 
-                Text("Notas")
-                    .font(.title3.bold())
-                    .padding(.top, 8)
-                    .padding(.horizontal, 4)
+                if !others.isEmpty {
+                    Text("Notas")
+                        .font(.title3.bold())
+                        .padding(.top, 8)
+                        .padding(.horizontal, 4)
 
-                VStack(spacing: 12) {
-                    ForEach(PartItem.items(of: record)) { item in
-                        Button { editingPartID = item.id } label: {
-                            PartCard(item: item, record: record, session: session, progress: progress)
+                    VStack(spacing: 12) {
+                        ForEach(others) { item in
+                            Button { gradeTarget = GradeTarget(partID: item.id, session: session) } label: {
+                                PartCard(item: item, record: record, session: session, progress: progress)
+                            }
+                            .buttonStyle(.plain)
                         }
-                        .buttonStyle(.plain)
                     }
                 }
             }
@@ -74,22 +83,17 @@ struct SubjectDetailView: View {
         .sheet(item: $addingDateFor) { session in
             ExamDateSheet(session: session) { library.setExamDate($0, for: session, in: recordID) }
         }
-        .sheet(item: $editingPartID.asIdentifiable) { partID in
-            PartSheet(recordID: recordID, partID: partID.value, session: Binding(get: { session }, set: { pickedSession = $0 }))
+        .sheet(item: $gradeTarget) { target in
+            PartSheet(recordID: recordID, target: target)
         }
     }
 }
 
-/// `sheet(item:)` wants an `Identifiable`; a bare string id isn't one.
-private struct IDBox: Identifiable {
-    let value: String
-    var id: String { value }
-}
-
-private extension Binding where Value == String? {
-    var asIdentifiable: Binding<IDBox?> {
-        Binding<IDBox?>(get: { wrappedValue.map(IDBox.init) }, set: { wrappedValue = $0?.value })
-    }
+/// Which part's grades to fill in, and for which sitting.
+private struct GradeTarget: Identifiable {
+    let partID: String
+    let session: Convocatoria
+    var id: String { "\(partID)/\(session.rawValue)" }
 }
 
 // MARK: - Grade
@@ -105,7 +109,12 @@ private struct GradeCard: View {
 
     private var hasGrades: Bool { progress.enteredCount > 0 }
 
-    /// Calm while there's still room to move: only a sure pass or a lost one gets a colour of its own.
+    /// Blue while grades are missing; once everything is in, the colour of the final grade.
+    private var barTint: Color {
+        progress.isComplete ? GradeBand.color(for: progress.worst) : .accentColor
+    }
+
+    /// For the verdict sentence: a sure pass or a lost one get a colour of their own.
     private var tint: Color {
         guard hasGrades else { return .secondary }
         switch progress.status {
@@ -125,12 +134,12 @@ private struct GradeCard: View {
             .buttonStyle(.plain)
             .accessibilityHint(isExpanded ? "Oculta el detalle" : "Muestra el detalle")
 
-            GradeRangeBar(worst: progress.worst, best: hasGrades ? progress.best : 0, threshold: progress.threshold, tint: tint)
+            GradeRangeBar(worst: progress.worst, best: hasGrades ? progress.best : 0, threshold: progress.threshold, tint: barTint)
 
             if isExpanded {
                 VStack(alignment: .leading, spacing: 14) {
                     if hasGrades {
-                        GradeRangeLegend(worst: progress.worst, best: progress.best, threshold: progress.threshold, tint: tint)
+                        GradeRangeLegend(worst: progress.worst, best: progress.best, threshold: progress.threshold, tint: barTint)
                     } else {
                         Text("Apruebas con un \(progress.threshold.formatted())")
                             .font(.footnote)
@@ -240,58 +249,84 @@ private struct ProgressPill: View {
     }
 }
 
-// MARK: - Exams
+// MARK: - Exam
 
-/// Both sittings in one card: just the date and how long is left. Changing a date is done from
-/// the "…" menu, so it doesn't move by accident.
-private struct ExamsCard: View {
+/// The final exam, which every subject has: its weight and, below it, one slot per sitting with the
+/// grade, its own bar and the date. Tap a slot to put its grade; the date is changed from "…".
+private struct ExamCard: View {
     let record: SubjectRecord
+    let exam: PartItem?
     let onAddDate: (Convocatoria) -> Void
+    let onOpen: (Convocatoria) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Label("Examen", systemImage: "calendar")
-                .font(.headline)
-            ForEach(Array(Convocatoria.allCases.enumerated()), id: \.element) { index, session in
-                if index > 0 { Divider() }
-                ExamRow(session: session, date: record.examDate(for: session)) { onAddDate(session) }
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Label(exam?.node.title ?? "Examen", systemImage: "calendar")
+                    .font(.headline)
+                if let weightPercent = exam?.weightPercent {
+                    WeightChip(percent: weightPercent)
+                }
+            }
+            ForEach(Convocatoria.allCases) { session in
+                ExamSlot(
+                    session: session,
+                    date: record.examDate(for: session),
+                    summary: exam.map { PartSummary(node: $0.node, record: record, session: session) },
+                    onAddDate: { onAddDate(session) },
+                    onOpen: { onOpen(session) }
+                )
             }
         }
         .card()
     }
 }
 
-private struct ExamRow: View {
+private struct ExamSlot: View {
     let session: Convocatoria
     let date: Date?
-    let onAdd: () -> Void
+    let summary: PartSummary?
+    let onAddDate: () -> Void
+    let onOpen: () -> Void
 
     var body: some View {
-        HStack(alignment: .center) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(session.label)
-                    .font(.subheadline.weight(.semibold))
-                if let date {
-                    Text(Self.remaining(until: date))
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                }
-            }
-            Spacer(minLength: 8)
-            if let date {
-                VStack(alignment: .trailing, spacing: 2) {
-                    Text(date, format: .dateTime.day().month(.abbreviated).year())
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .center) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(session.label)
                         .font(.subheadline.weight(.semibold))
-                    Text(date, format: .dateTime.hour().minute())
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
+                    dateLine
                 }
-                .accessibilityElement(children: .combine)
-            } else {
-                Button("Añadir fecha", action: onAdd)
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
+                Spacer(minLength: 8)
+                if let summary {
+                    Text(summary.text)
+                        .font(.title3.weight(.semibold).monospacedDigit())
+                        .foregroundStyle(summary.hasAnyGrade ? .primary : .tertiary)
+                    Image(systemName: "chevron.right")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(.tertiary)
+                }
             }
+            if let summary {
+                ProgressBar(fraction: summary.fraction, tint: summary.tint)
+            }
+        }
+        .padding(12)
+        .background(Color(.tertiarySystemFill), in: .rect(cornerRadius: 14))
+        .contentShape(.rect)
+        .onTapGesture { if summary != nil { onOpen() } }
+    }
+
+    @ViewBuilder
+    private var dateLine: some View {
+        if let date {
+            Text("\(date.formatted(.dateTime.day().month(.abbreviated))) · \(Self.remaining(until: date))")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+        } else {
+            Button("Añadir fecha", action: onAddDate)
+                .buttonStyle(.bordered)
+                .controlSize(.small)
         }
     }
 
@@ -409,107 +444,56 @@ private struct PartItem: Identifiable {
     let id: String
     let node: Node
     let weightPercent: Double?
-    /// Points toward the final 10, out of what the part can give at most.
-    let maxPoints: Double?
+
+    var isExam: Bool { node.isFinalExamPart }
 
     static func items(of record: SubjectRecord) -> [PartItem] {
         let root = record.subject.root
         if case .group(let group) = root {
             let total = group.combination == .weightedAverage ? group.children.reduce(0) { $0 + $1.weight } : 1
             return group.children.map { child in
-                PartItem(
-                    id: child.id.uuidString,
-                    node: child.node,
-                    weightPercent: total > 0 ? child.weight / total * 100 : nil,
-                    maxPoints: total > 0 && child.node.scaleMax > 0 ? child.weight / total * 10 : nil
-                )
+                PartItem(id: child.id.uuidString, node: child.node, weightPercent: total > 0 ? child.weight / total * 100 : nil)
             }
         } else if case .formula(let formula) = root {
             return formula.variables.keys.sorted().compactMap { key in
-                formula.variables[key].map { PartItem(id: key, node: $0, weightPercent: nil, maxPoints: nil) }
+                formula.variables[key].map { PartItem(id: key, node: $0, weightPercent: nil) }
             }
         } else {
-            return [PartItem(id: "root", node: root, weightPercent: nil, maxPoints: nil)]
+            return [PartItem(id: "root", node: root, weightPercent: nil)]
         }
-    }
-
-    func earnedPoints(_ inputs: [String: Double]) -> Double? {
-        guard let maxPoints else { return nil }
-        let hasGrades = node.allLeafNames().contains { inputs[$0] != nil }
-        guard hasGrades else { return nil }
-        return maxPoints * node.evaluate(inputs, pendingFraction: 0) / node.scaleMax
     }
 }
 
-/// A part at a glance: name, weight, what's in so far and a thin bar of its points. Read-only.
-private struct PartCard: View {
-    let item: PartItem
-    let record: SubjectRecord
-    let session: Convocatoria
-    let progress: SubjectProgress
+/// How a part stands in one sitting: what to show, how full its bar is and what colour. The bar is
+/// blue until every grade in the part is in, then red / yellow / green / purple by the part's grade.
+private struct PartSummary {
+    let text: String
+    let fraction: Double
+    let tint: Color
+    let hasAnyGrade: Bool
 
-    private var leafNames: [String] { item.node.allLeafNames() }
-    private var enteredCount: Int { leafNames.count { progress.inputs[$0] != nil } }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text(item.node.title)
-                    .font(.headline)
-                    .multilineTextAlignment(.leading)
-                if let weightPercent = item.weightPercent {
-                    Text("\(weightPercent.formatted(.number.precision(.fractionLength(0...1)))) %")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                        .padding(.horizontal, 7)
-                        .padding(.vertical, 2)
-                        .background(.quaternary, in: Capsule())
-                }
-                Spacer(minLength: 8)
-                trailing
-                Image(systemName: "chevron.right")
-                    .font(.footnote.weight(.semibold))
-                    .foregroundStyle(.tertiary)
-            }
-            if let maxPoints = item.maxPoints {
-                let earned = item.earnedPoints(progress.inputs) ?? 0
-                ProgressBar(fraction: earned / maxPoints)
-            }
-            if let group = item.node.asGroup, group.children.count < 4, group.children.allSatisfy({ $0.node.asGrade != nil }) {
-                VStack(spacing: 6) {
-                    ForEach(group.children) { child in
-                        if let grade = child.node.asGrade {
-                            HStack {
-                                Text(grade.name)
-                                    .foregroundStyle(.secondary)
-                                Spacer()
-                                Text(display(of: grade))
-                                    .monospacedDigit()
-                            }
-                            .font(.subheadline)
-                        }
-                    }
-                }
-            }
-        }
-        .card()
-        .contentShape(.rect)
-    }
-
-    @ViewBuilder
-    private var trailing: some View {
-        if let grade = item.node.asGrade {
-            Text(display(of: grade))
-                .font(.title3.weight(.semibold).monospacedDigit())
-                .foregroundStyle(record.entry(for: grade.name, in: session) == nil ? .tertiary : .primary)
-        } else if leafNames.count > 1 {
-            Text("\(enteredCount) de \(leafNames.count)")
-                .font(.subheadline.monospacedDigit())
-                .foregroundStyle(.secondary)
+    init(node: Node, record: SubjectRecord, session: Convocatoria) {
+        let progress = SubjectProgress(record, session: session)
+        let leaves = node.allLeafNames()
+        let entered = leaves.count { progress.inputs[$0] != nil }
+        let max = node.scaleMax
+        let value = node.evaluate(progress.inputs, pendingFraction: 0)
+        fraction = max > 0 ? Swift.min(Swift.max(value / max, 0), 1) : 0
+        hasAnyGrade = entered > 0
+        let complete = !leaves.isEmpty && entered == leaves.count
+        tint = complete ? GradeBand.color(for: fraction * 10) : .accentColor
+        if let grade = node.asGrade {
+            text = Self.display(of: grade, record: record, session: session)
+        } else if complete {
+            text = (fraction * 10).formatted(.number.precision(.fractionLength(0...2)))
+        } else if leaves.count > 1 {
+            text = "\(entered) de \(leaves.count)"
+        } else {
+            text = "—"
         }
     }
 
-    private func display(of grade: Grade) -> String {
+    static func display(of grade: Grade, record: SubjectRecord, session: Convocatoria) -> String {
         guard let entry = record.entry(for: grade.name, in: session) else { return "—" }
         let number = { (value: Double) in value.formatted(.number.precision(.fractionLength(0...2))) }
         if let letter = entry.letter { return letter }
@@ -522,28 +506,89 @@ private struct PartCard: View {
     }
 }
 
+private struct WeightChip: View {
+    let percent: Double
+
+    var body: some View {
+        Text("\(percent.formatted(.number.precision(.fractionLength(0...1)))) %")
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 7)
+            .padding(.vertical, 2)
+            .background(.quaternary, in: Capsule())
+    }
+}
+
+/// A part at a glance: name, weight, what's in so far and a thin bar. Read-only.
+private struct PartCard: View {
+    let item: PartItem
+    let record: SubjectRecord
+    let session: Convocatoria
+    let progress: SubjectProgress
+
+    var body: some View {
+        let summary = PartSummary(node: item.node, record: record, session: session)
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(item.node.title)
+                    .font(.headline)
+                    .multilineTextAlignment(.leading)
+                if let weightPercent = item.weightPercent {
+                    WeightChip(percent: weightPercent)
+                }
+                Spacer(minLength: 8)
+                Text(summary.text)
+                    .font(.title3.weight(.semibold).monospacedDigit())
+                    .foregroundStyle(summary.hasAnyGrade ? .primary : .tertiary)
+                Image(systemName: "chevron.right")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+            }
+            ProgressBar(fraction: summary.fraction, tint: summary.tint)
+            if let group = item.node.asGroup, group.children.allSatisfy({ $0.node.asGrade != nil }) {
+                VStack(spacing: 6) {
+                    ForEach(group.children) { child in
+                        if let grade = child.node.asGrade {
+                            HStack {
+                                Text(grade.name)
+                                    .foregroundStyle(.secondary)
+                                Spacer()
+                                Text(PartSummary.display(of: grade, record: record, session: session))
+                                    .monospacedDigit()
+                            }
+                            .font(.subheadline)
+                        }
+                    }
+                }
+            }
+        }
+        .card()
+        .contentShape(.rect)
+    }
+}
+
 private struct ProgressBar: View {
     let fraction: Double
+    let tint: Color
 
     var body: some View {
         GeometryReader { proxy in
             ZStack(alignment: .leading) {
                 Capsule().fill(.quaternary)
-                Capsule().fill(Color.accentColor)
+                Capsule().fill(tint)
                     .frame(width: proxy.size.width * min(max(fraction, 0), 1))
             }
         }
-        .frame(height: 4)
+        .frame(height: 6)
         .accessibilityHidden(true)
+        .animation(.snappy, value: fraction)
     }
 }
 
-/// Where a grade is actually typed: just that part's inputs. The sitting picker only shows up when
-/// something in the part is retaken in the extraordinary sitting (usually the exam).
+/// Where a grade is actually typed: just that part's inputs, for the sitting that was tapped.
 private struct PartSheet: View {
     let recordID: SubjectRecord.ID
-    let partID: String
-    @Binding var session: Convocatoria
+    let target: GradeTarget
 
     @Environment(Library.self) private var library
     @Environment(\.dismiss) private var dismiss
@@ -551,29 +596,21 @@ private struct PartSheet: View {
 
     var body: some View {
         NavigationStack {
-            if let record = library.record(id: recordID), let item = PartItem.items(of: record).first(where: { $0.id == partID }) {
+            if let record = library.record(id: recordID), let item = PartItem.items(of: record).first(where: { $0.id == target.partID }) {
+                let session = target.session
                 let progress = SubjectProgress(record, session: session)
-                let retaken = item.node.allLeafNames().contains { !record.keepsForExtraordinary($0) }
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 16) {
-                        if retaken {
-                            Picker("Convocatoria", selection: $session) {
-                                ForEach(Convocatoria.allCases) { Text($0.label).tag($0) }
-                            }
-                            .pickerStyle(.segmented)
-                        }
-                        PartContent(node: item.node, context: PartContext(
-                            record: record, session: session, inputs: progress.inputs, focus: $focusedField
-                        ) { leaf, entry in
-                            library.setEntry(entry, forLeaf: leaf, in: recordID, session: session)
-                        })
-                        .card()
-                    }
+                    PartContent(node: item.node, context: PartContext(
+                        record: record, session: session, inputs: progress.inputs, focus: $focusedField
+                    ) { leaf, entry in
+                        library.setEntry(entry, forLeaf: leaf, in: recordID, session: session)
+                    })
+                    .card()
                     .padding()
                 }
                 .scrollDismissesKeyboard(.interactively)
                 .background(Color(.systemGroupedBackground))
-                .navigationTitle(item.node.title)
+                .navigationTitle(item.isExam ? "\(item.node.title) · \(session.label)" : item.node.title)
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .confirmationAction) {

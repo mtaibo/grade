@@ -268,6 +268,10 @@ private struct ComponentEditorView: View {
                 }
             }
 
+            if child.node.asGrade != nil || child.node.isGroupOfGrades {
+                NoteCountSection(node: $child.node)
+            }
+
             if child.node.asGroup != nil {
                 NodeContentsSections(node: $child.node, onRenameLeaf: onRenameLeaf)
             } else if let grade = Binding($child.node.asGrade) {
@@ -276,6 +280,25 @@ private struct ComponentEditorView: View {
         }
         .navigationTitle(child.node.title)
         .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+/// How many notes make up a part: one, or several averaged (two lab practicals, ten quizzes…).
+/// Changing it reshapes the part in place instead of deleting and re-creating it.
+private struct NoteCountSection: View {
+    @Binding var node: Node
+
+    var body: some View {
+        let count = node.noteCount
+        Section {
+            Stepper(value: Binding(get: { node.noteCount }, set: { node.resizeNotes(to: $0) }), in: 1...20) {
+                LabeledContent("Cuántas notas", value: count.formatted())
+            }
+        } footer: {
+            Text(count == 1
+                 ? "Una sola nota. Súbelo si en clase hay varias (por ejemplo, dos prácticas): la parte será su media. La nota ya puesta de esta parte se borra."
+                 : "La parte se calcula con estas \(count) notas. Más abajo puedes cambiar el nombre y el peso de cada una.")
+        }
     }
 }
 
@@ -427,6 +450,15 @@ private struct GradeSettingsSections: View {
             } footer: {
                 Text("Lo que vale cada letra, sobre 10.")
             }
+        }
+
+        Section {
+            Toggle("Es el examen final", isOn: Binding(
+                get: { grade.isFinalExam == true },
+                set: { grade.isFinalExam = $0 ? true : nil }
+            ))
+        } footer: {
+            Text("Va en su propia tarjeta, con huecos para la ordinaria y la extraordinaria.")
         }
 
         Section {

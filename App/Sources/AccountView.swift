@@ -5,6 +5,7 @@ import SwiftUI
 /// record (expediente) and the app's settings.
 struct AccountView: View {
     @Environment(Library.self) private var library
+    @Environment(BackupImportCenter.self) private var backupCenter
     @State private var isConfirmingClear = false
     @State private var isConfirmingRemoveAll = false
 
@@ -69,6 +70,19 @@ struct AccountView: View {
                     Text("Tu carrera")
                 } footer: {
                     Text("Se usa en los títulos, p. ej. «2º Año · 1º \(library.degree.termName.isEmpty ? "Cuatrimestre" : library.degree.termName)». Si cambias los periodos por año, cada asignatura conserva su año y su posición dentro de él.")
+                }
+
+                Section {
+                    if let file = BackupFile(library: library) {
+                        ShareLink(item: file, preview: SharePreview("Copia de Mark")) {
+                            Label("Exportar datos", systemImage: "square.and.arrow.up")
+                        }
+                    }
+                    Button("Importar datos", systemImage: "square.and.arrow.down") { backupCenter.isPicking = true }
+                } header: {
+                    Text("Copia de seguridad")
+                } footer: {
+                    Text("Exporta todas tus asignaturas, notas, fechas y ajustes a un archivo .mark. Para recuperarlos, impórtalo aquí o ábrelo con Mark.")
                 }
 
                 Section {

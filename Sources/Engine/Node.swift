@@ -13,6 +13,9 @@ public indirect enum Node: Sendable, Equatable, Codable {
 /// A leaf grade entered by the user, on its own scale.
 public struct Grade: Sendable, Equatable, Codable {
     public var name: String
+    /// Marks the final exam (every subject has one): shown in its own card with an ordinary and an
+    /// extraordinary slot. Presentation only. `nil` means it isn't.
+    public var isFinalExam: Bool?
     public var scaleMax: Double
     public var minimum: Minimum?
     public var recovery: Recovery?
@@ -25,6 +28,7 @@ public struct Grade: Sendable, Equatable, Codable {
 
     public init(
         name: String,
+        isFinalExam: Bool? = nil,
         scaleMax: Double = 10,
         minimum: Minimum? = nil,
         recovery: Recovery? = nil,
@@ -32,6 +36,7 @@ public struct Grade: Sendable, Equatable, Codable {
         inputStyle: GradeInputStyle? = nil
     ) {
         self.name = name
+        self.isFinalExam = isFinalExam
         self.scaleMax = scaleMax
         self.minimum = minimum
         self.recovery = recovery

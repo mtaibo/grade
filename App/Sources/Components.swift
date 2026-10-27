@@ -69,6 +69,19 @@ struct GradeRangeLegend: View {
     }
 }
 
+/// The colour a finished grade (out of 10) gets: red below 5, yellow up to 7, green up to 9, purple
+/// from 9. Only used once everything in a section is entered — until then bars stay blue.
+enum GradeBand {
+    static func color(for grade: Double) -> Color {
+        switch grade {
+        case ..<5: .red
+        case ..<7: .yellow
+        case ..<9: .green
+        default: .purple
+        }
+    }
+}
+
 extension PassStatus {
     var tint: Color {
         switch self {

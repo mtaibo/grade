@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 import Engine
 
@@ -83,5 +84,19 @@ struct InformaticaTemplateTests {
         #expect(template.entries(year: 1, term: 2).count == 5)
         #expect(template.entries(year: 2, term: 1).count == 5)
         #expect(template.entries(year: 2, term: 2).isEmpty)
+    }
+}
+
+struct FinalExamMarkerTests {
+    @Test func everyReferenceSubjectMarksItsFinalExam() {
+        for subject in Subject.all {
+            #expect(subject.root.grades.contains { $0.isFinalExam == true }, "\(subject.name)")
+        }
+    }
+
+    @Test func gradesSavedWithoutTheMarkerStillDecode() throws {
+        let json = #"{"name":"Examen","scaleMax":10}"#
+        let grade = try JSONDecoder().decode(Grade.self, from: Data(json.utf8))
+        #expect(grade.isFinalExam == nil)
     }
 }

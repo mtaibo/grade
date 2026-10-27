@@ -53,6 +53,68 @@ extension Node {
         }
     }
 
+    /// A group made only of plain grades: what "several notes" in the editor turns a part into.
+    var isGroupOfGrades: Bool {
+        guard case .group(let group) = self else { return false }
+        return !group.children.isEmpty && group.children.allSatisfy { $0.node.asGrade != nil }
+    }
+
+    /// 1 for a single grade, the number of notes for a group of grades.
+    var noteCount: Int {
+        switch self {
+        case .group(let group): group.children.count
+        default: 1
+        }
+    }
+
+    /// Turns a single grade into a group of `count` equal notes, a group of notes into one with
+    /// more or fewer, or back into a single grade at 1 — keeping how the notes are given. A grade's
+    /// minimum moves to the group so it still applies to the whole part.
+    mutating func resizeNotes(to count: Int) {
+        let count = Swift.max(count, 1)
+        switch self {
+        case .grade(let grade):
+            guard count > 1 else { return }
+            var template = grade
+            template.minimum = nil
+            template.date = nil
+            let children = (1...count).map { number -> WeightedChild in
+                var note = template
+                note.name = "\(grade.name) \(number)"
+                return WeightedChild(weight: 1 / Double(count), node: .grade(note))
+            }
+            self = .group(Group(name: grade.name, combination: .weightedAverage, children: children, minimum: grade.minimum))
+        case .group(var group):
+            guard isGroupOfGrades, let first = group.children.first?.node.asGrade else { return }
+            if count == 1 {
+                var single = first
+                single.name = group.name
+                single.minimum = group.minimum
+                single.date = nil
+                self = .grade(single)
+                return
+            }
+            let weights = group.children.map(\.weight)
+            let equal = Set(weights).count <= 1
+            let newWeight = weights.reduce(0, +) / Double(weights.count)
+            while group.children.count > count { group.children.removeLast() }
+            var taken = Set(group.children.map(\.node.title))
+            while group.children.count < count {
+                var note = first
+                note.date = nil
+                note.name = (1...).lazy.map { "\(group.name) \($0)" }.first { !taken.contains($0) }!
+                taken.insert(note.name)
+                group.children.append(WeightedChild(weight: newWeight, node: .grade(note)))
+            }
+            if equal {
+                for index in group.children.indices { group.children[index].weight = 1 / Double(count) }
+            }
+            self = .group(group)
+        default:
+            break
+        }
+    }
+
     /// Sets the due date of the grade named `leaf`, wherever it sits in the tree.
     mutating func setDate(_ date: Date?, forLeaf leaf: String) {
         switch self {

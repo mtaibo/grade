@@ -5,6 +5,7 @@ struct MarkApp: App {
     @State private var library = Library()
     /// Calendar sits leftmost, but the app still opens on the subjects.
     @State private var selectedTab = AppTab.subjects
+    @State private var backupCenter = BackupImportCenter()
 
     var body: some Scene {
         WindowGroup {
@@ -19,7 +20,9 @@ struct MarkApp: App {
                     AccountView()
                 }
             }
+            .modifier(BackupImportHost(center: backupCenter))
             .environment(library)
+            .environment(backupCenter)
         }
     }
 }

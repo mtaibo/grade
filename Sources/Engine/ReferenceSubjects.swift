@@ -17,7 +17,7 @@ extension Subject {
                         WeightedChild(weight: 0.20, node: .grade(Grade(name: "Prueba 2"))),
                     ]
                 ))),
-                WeightedChild(weight: 0.40, node: .grade(Grade(name: "Prueba objetiva"))),
+                WeightedChild(weight: 0.40, node: .grade(Grade(name: "Prueba objetiva", isFinalExam: true))),
             ],
             minimum: Minimum(threshold: 5, consequence: .fails)
         ))
@@ -38,7 +38,7 @@ extension Subject {
             variables: [
                 "P": .grade(Grade(name: "Prácticas de laboratorio", scaleMax: 2, recovery: .notRecoverable)),
                 "C": .grade(Grade(name: "Controles (temas 1 y 2)", scaleMax: 2, recovery: .partiallyRecoverableInFinal)),
-                "F": .grade(Grade(name: "Examen final", scaleMax: 10)),
+                "F": .grade(Grade(name: "Examen final", isFinalExam: true, scaleMax: 10)),
             ]
         ))
     )
@@ -67,7 +67,7 @@ extension Subject {
             variables: [
                 "P": .grade(Grade(name: "Prácticas de laboratorio", scaleMax: 3, recovery: .notRecoverable)),
                 "M": .grade(Grade(name: "Prueba Moodle", scaleMax: 2, recovery: .partiallyRecoverableInFinal)),
-                "E": .grade(Grade(name: "Examen final", scaleMax: 10)),
+                "E": .grade(Grade(name: "Examen final", isFinalExam: true, scaleMax: 10)),
             ],
             minimum: Minimum(threshold: 5, consequence: .fails)
         )
@@ -83,7 +83,7 @@ extension Subject {
             combination: .weightedAverage,
             children: [
                 WeightedChild(weight: 0.25, node: .grade(Grade(name: "Prácticas de laboratorio", recovery: .savedForExtraordinary))),
-                WeightedChild(weight: 0.75, node: .grade(Grade(name: "Prueba objetiva", minimum: Minimum(threshold: 4, consequence: .fails)))),
+                WeightedChild(weight: 0.75, node: .grade(Grade(name: "Prueba objetiva", isFinalExam: true, minimum: Minimum(threshold: 4, consequence: .fails)))),
             ],
             minimum: Minimum(threshold: 5, consequence: .fails)
         ))
@@ -97,7 +97,7 @@ extension Subject {
             combination: .weightedAverage,
             children: [
                 WeightedChild(weight: 0.30, node: .grade(Grade(name: "Prácticas de laboratorio", recovery: .savedForExtraordinary))),
-                WeightedChild(weight: 0.70, node: .grade(Grade(name: "Prueba objetiva"))),
+                WeightedChild(weight: 0.70, node: .grade(Grade(name: "Prueba objetiva", isFinalExam: true))),
             ],
             minimum: Minimum(threshold: 5, consequence: .fails)
         ))
@@ -113,7 +113,7 @@ extension Subject {
                 WeightedChild(weight: 0.10, node: .grade(Grade(name: "Prácticas a través de TIC", recovery: .savedForExtraordinary))),
                 WeightedChild(weight: 0.10, node: .grade(Grade(name: "Seminario", recovery: .savedForExtraordinary))),
                 WeightedChild(weight: 0.10, node: .grade(Grade(name: "Solución de problemas", recovery: .savedForExtraordinary))),
-                WeightedChild(weight: 0.70, node: .grade(Grade(name: "Prueba mixta"))),
+                WeightedChild(weight: 0.70, node: .grade(Grade(name: "Prueba mixta", isFinalExam: true))),
             ],
             minimum: Minimum(threshold: 5, consequence: .fails)
         ))
@@ -130,7 +130,7 @@ extension Subject {
             children: [
                 WeightedChild(weight: 0.40, node: .grade(Grade(name: "Prácticas de laboratorio", scaleMax: 4, recovery: .savedForExtraordinary))),
                 WeightedChild(weight: 0.60, node: .grade(Grade(
-                    name: "Prueba mixta",
+                    name: "Prueba mixta", isFinalExam: true,
                     scaleMax: 6,
                     minimum: Minimum(threshold: 2.4, consequence: .capAt(4.9)),
                     recovery: .recoverableInExtraordinary
@@ -154,7 +154,7 @@ extension Subject {
                     recovery: .savedForExtraordinary
                 ))),
                 WeightedChild(weight: 0.67, node: .grade(Grade(
-                    name: "Prueba objetiva",
+                    name: "Prueba objetiva", isFinalExam: true,
                     minimum: Minimum(threshold: 4, consequence: .capAt(4.5)),
                     recovery: .savedForExtraordinary
                 ))),
@@ -180,7 +180,7 @@ extension Subject {
             variables: [
                 "L": .grade(Grade(name: "Prácticas de laboratorio", scaleMax: 2, recovery: .savedForExtraordinary)),
                 "P": .grade(Grade(name: "Pruebas prácticas", scaleMax: 2, recovery: .savedForExtraordinary)),
-                "E": .grade(Grade(name: "Prueba objetiva", scaleMax: 10)),
+                "E": .grade(Grade(name: "Prueba objetiva", isFinalExam: true, scaleMax: 10)),
             ],
             minimum: Minimum(threshold: 5, consequence: .fails)
         ))
@@ -199,7 +199,7 @@ extension Subject {
             combination: .weightedAverage,
             children: [
                 WeightedChild(weight: 0.20, node: .grade(Grade(name: "Prácticas de laboratorio", recovery: .savedForExtraordinary))),
-                WeightedChild(weight: 0.80, node: .grade(Grade(name: "Prueba objetiva"))),
+                WeightedChild(weight: 0.80, node: .grade(Grade(name: "Prueba objetiva", isFinalExam: true))),
             ],
             minimum: Minimum(threshold: 5, consequence: .fails)
         ))
@@ -226,7 +226,7 @@ extension Subject {
                     combination: .sum,
                     children: (1...3).map { WeightedChild(weight: 0.20, node: .grade(Grade(name: "Control \($0)", recovery: .savedForExtraordinary))) }
                 )),
-                "E": .grade(Grade(name: "Examen final")),
+                "E": .grade(Grade(name: "Examen final", isFinalExam: true)),
             ],
             minimum: Minimum(threshold: 5, consequence: .fails)
         ))
@@ -243,7 +243,7 @@ extension Subject {
             children: [
                 WeightedChild(weight: 0.30, node: .grade(Grade(name: "Prácticas de laboratorio", recovery: .recoverableInExtraordinary))),
                 WeightedChild(weight: 0.10, node: .grade(Grade(name: "Prueba práctica", recovery: .recoverableInExtraordinary))),
-                WeightedChild(weight: 0.60, node: .grade(Grade(name: "Examen final", minimum: Minimum(threshold: 3.5, consequence: .fails)))),
+                WeightedChild(weight: 0.60, node: .grade(Grade(name: "Examen final", isFinalExam: true, minimum: Minimum(threshold: 3.5, consequence: .fails)))),
             ],
             minimum: Minimum(threshold: 5, consequence: .fails)
         ))
@@ -269,7 +269,7 @@ extension Subject {
                     recovery: .recoverableInExtraordinary
                 ))),
                 WeightedChild(weight: 0.40, node: .grade(Grade(
-                    name: "Examen final",
+                    name: "Examen final", isFinalExam: true,
                     minimum: Minimum(threshold: 2.5, consequence: .capAt(4.9))
                 ))),
             ],
@@ -305,7 +305,7 @@ extension Subject {
             ),
             variables: [
                 "L": .grade(Grade(name: "Prácticas de laboratorio", recovery: .savedForExtraordinary)),
-                "E": .grade(Grade(name: "Prueba objetiva")),
+                "E": .grade(Grade(name: "Prueba objetiva", isFinalExam: true)),
                 "S": .grade(Grade(name: "Solución de problemas", scaleMax: 1, recovery: .savedForExtraordinary)),
             ],
             minimum: Minimum(threshold: 5, consequence: .fails)
@@ -329,7 +329,7 @@ extension Subject {
                 variables: [
                     "L": .grade(Grade(name: "Prácticas de laboratorio", scaleMax: 3, recovery: .savedForExtraordinary)),
                     "P": .grade(Grade(name: "Solución de problemas", scaleMax: 2, recovery: .savedForExtraordinary)),
-                    "E": .grade(Grade(name: "Prueba mixta", scaleMax: 5)),
+                    "E": .grade(Grade(name: "Prueba mixta", isFinalExam: true, scaleMax: 5)),
                 ],
                 minimum: Minimum(threshold: 5, consequence: .fails)
             )
@@ -359,8 +359,8 @@ extension Subject {
                     name: "Prueba objetiva",
                     combination: .weightedAverage,
                     children: [
-                        WeightedChild(weight: 0.55, node: .grade(Grade(name: "Examen de teoría"))),
-                        WeightedChild(weight: 0.20, node: .grade(Grade(name: "Examen de prácticas"))),
+                        WeightedChild(weight: 0.55, node: .grade(Grade(name: "Examen de teoría", isFinalExam: true))),
+                        WeightedChild(weight: 0.20, node: .grade(Grade(name: "Examen de prácticas", isFinalExam: true))),
                     ]
                 ))),
             ],
