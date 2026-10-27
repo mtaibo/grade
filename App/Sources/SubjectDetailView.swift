@@ -55,7 +55,7 @@ struct SubjectDetailView: View {
                     record: record,
                     exam: exam,
                     onAddDate: { addingDateFor = $0 },
-                    onOpen: { gradeTarget = GradeTarget(partID: exam?.id ?? "", session: $0) }
+                    onOpen: { session, point in gradeTarget = GradeTarget(partID: exam?.id ?? "", session: session, origin: point) }
                 )
 
                 if !others.isEmpty {
@@ -66,10 +66,11 @@ struct SubjectDetailView: View {
 
                     VStack(spacing: 12) {
                         ForEach(others) { item in
-                            Button { gradeTarget = GradeTarget(partID: item.id, session: session) } label: {
-                                PartCard(item: item, record: record, session: session, progress: progress)
-                            }
-                            .buttonStyle(.plain)
+                            PartCard(item: item, record: record, session: session, progress: progress)
+                                .onTapGesture(coordinateSpace: .global) { point in
+                                    gradeTarget = GradeTarget(partID: item.id, session: session, origin: point)
+                                }
+                                .accessibilityAddTraits(.isButton)
                         }
                     }
                 }
@@ -77,7 +78,15 @@ struct SubjectDetailView: View {
             .padding(.horizontal)
             .padding(.bottom, 24)
         }
+        .blur(radius: gradeTarget == nil ? 0 : 3)
+        .animation(.easeInOut(duration: 0.3), value: gradeTarget?.id)
         .background(Color(.systemGroupedBackground))
+        .overlay {
+            if let target = gradeTarget {
+                GradePopup(recordID: recordID, target: target) { gradeTarget = nil }
+            }
+        }
+
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(isSimulating)
         .toolbar {
@@ -124,9 +133,6 @@ struct SubjectDetailView: View {
         }
         .sheet(item: $addingDateFor) { session in
             ExamDateSheet(session: session) { library.setExamDate($0, for: session, in: recordID) }
-        }
-        .sheet(item: $gradeTarget) { target in
-            PartSheet(recordID: recordID, target: target)
         }
         .sheet(isPresented: $isShowingGuide) {
             if let url = library.guideURL(for: recordID) {
@@ -214,6 +220,8 @@ private extension EnvironmentValues {
 private struct GradeTarget: Identifiable {
     let partID: String
     let session: Convocatoria
+    /// Where on screen it was tapped: the popup grows out of that point.
+    var origin: CGPoint = .zero
     var id: String { "\(partID)/\(session.rawValue)" }
 }
 
@@ -378,7 +386,7 @@ private struct ExamCard: View {
     let record: SubjectRecord
     let exam: PartItem?
     let onAddDate: (Convocatoria) -> Void
-    let onOpen: (Convocatoria) -> Void
+    let onOpen: (Convocatoria, CGPoint) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -395,7 +403,7 @@ private struct ExamCard: View {
                     date: record.examDate(for: session),
                     summary: exam.map { PartSummary(node: $0.node, record: record, session: session) },
                     onAddDate: { onAddDate(session) },
-                    onOpen: { onOpen(session) }
+                    onOpen: { onOpen(session, $0) }
                 )
             }
         }
@@ -408,7 +416,7 @@ private struct ExamSlot: View {
     let date: Date?
     let summary: PartSummary?
     let onAddDate: () -> Void
-    let onOpen: () -> Void
+    let onOpen: (CGPoint) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -435,7 +443,7 @@ private struct ExamSlot: View {
         .padding(12)
         .background(Color(.tertiarySystemFill), in: .rect(cornerRadius: 14))
         .contentShape(.rect)
-        .onTapGesture { if summary != nil { onOpen() } }
+        .onTapGesture(coordinateSpace: .global) { point in if summary != nil { onOpen(point) } }
     }
 
     @ViewBuilder
@@ -713,45 +721,94 @@ private struct ProgressBar: View {
     }
 }
 
-/// Where a grade is actually typed: just that part's inputs, for the sitting that was tapped.
-private struct PartSheet: View {
+/// Where a grade is typed: a card pinned to the top of the screen over a blurred background, so the
+/// keyboard rising from the bottom never pushes it around. It focuses the first empty field, and
+/// "Hecho" or a tap outside closes it.
+private struct GradePopup: View {
     let recordID: SubjectRecord.ID
     let target: GradeTarget
+    let onClose: () -> Void
 
     @Environment(Library.self) private var library
-    @Environment(\.dismiss) private var dismiss
     @FocusState private var focusedField: String?
+    @State private var contentHeight: CGFloat = 0
+    @State private var shown = false
+    /// Measured on the unscaled container and the card's own size — never on the scaled card, or
+    /// the scale animation would keep changing what it's measuring.
+    @State private var containerFrame: CGRect = .zero
+    @State private var cardHeight: CGFloat = 0
+
+    private var cardFrame: CGRect {
+        CGRect(x: containerFrame.minX + 16, y: containerFrame.minY + 8, width: containerFrame.width - 32, height: cardHeight)
+    }
+
+    /// Where the card grows from: the point that was tapped, in the card's own unit space.
+    private var anchor: UnitPoint {
+        guard cardFrame.width > 0, cardFrame.height > 0, target.origin != .zero else { return .top }
+        return UnitPoint(
+            x: (target.origin.x - cardFrame.minX) / cardFrame.width,
+            y: (target.origin.y - cardFrame.minY) / cardFrame.height
+        )
+    }
+
+    private func close() {
+        withAnimation(.spring(duration: 0.35, bounce: 0.1)) { shown = false }
+        focusedField = nil
+        Task {
+            try? await Task.sleep(for: .milliseconds(280))
+            onClose()
+        }
+    }
 
     var body: some View {
-        NavigationStack {
-            if let record = library.record(id: recordID), let item = PartItem.items(of: record).first(where: { $0.id == target.partID }) {
-                let session = target.session
-                let progress = SubjectProgress(record, session: session)
-                ScrollView {
-                    PartContent(node: item.node, context: PartContext(
-                        record: record, session: session, inputs: progress.inputs, focus: $focusedField
-                    ) { leaf, entry in
-                        library.setEntry(entry, forLeaf: leaf, in: recordID, session: session)
-                    })
-                    .card()
-                    .padding()
-                }
-                .scrollDismissesKeyboard(.interactively)
-                .background(Color(.systemGroupedBackground))
-                .navigationTitle(item.isExam ? "\(item.node.title) · \(session.label)" : item.node.title)
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    ToolbarItem(placement: .confirmationAction) {
-                        Button("Hecho") { dismiss() }
+        if let record = library.record(id: recordID), let item = PartItem.items(of: record).first(where: { $0.id == target.partID }) {
+            let session = target.session
+            let progress = SubjectProgress(record, session: session)
+            ZStack(alignment: .top) {
+                Color.black.opacity(shown ? 0.16 : 0)
+                    .ignoresSafeArea()
+                    .onTapGesture(perform: close)
+                VStack(spacing: 14) {
+                    HStack {
+                        Text(item.isExam ? "\(item.node.title) · \(session.label)" : item.node.title)
+                            .font(.headline)
+                            .lineLimit(2)
+                        Spacer(minLength: 12)
+                        Button("Hecho", action: close)
+                            .fontWeight(.semibold)
                     }
-                    ToolbarItemGroup(placement: .keyboard) {
-                        Spacer()
-                        Button("Hecho") { focusedField = nil }
+                    ScrollView {
+                        PartContent(node: item.node, context: PartContext(
+                            record: record, session: session, inputs: progress.inputs, focus: $focusedField
+                        ) { leaf, entry in
+                            library.setEntry(entry, forLeaf: leaf, in: recordID, session: session)
+                        })
+                        .frame(maxWidth: .infinity)
+                        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { contentHeight = $0 }
                     }
+                    .scrollBounceBehavior(.basedOnSize)
+                    .frame(height: min(max(contentHeight, 60), 300))
                 }
+                .padding(18)
+                .glassEffect(.regular, in: .rect(cornerRadius: 28))
+                .padding(.horizontal, 16)
+                .padding(.top, 8)
+                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { cardHeight = $0 }
+                .scaleEffect(shown ? 1 : 0.2, anchor: anchor)
+                .opacity(shown ? 1 : 0)
+            }
+            .ignoresSafeArea(.keyboard)
+            .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { containerFrame = $0 }
+            .onAppear {
+                withAnimation(.spring(duration: 0.5, bounce: 0.2)) { shown = true }
+            }
+            .task {
+                let leaves = item.node.allLeafNames()
+                let first = leaves.first { record.entry(for: $0, in: session) == nil } ?? leaves.first
+                try? await Task.sleep(for: .milliseconds(250))
+                if let first { focusedField = "\(session.rawValue)/\(first)" }
             }
         }
-        .presentationDetents([.medium, .large])
     }
 }
 
@@ -832,20 +889,23 @@ private struct PartContent: View {
     }
 }
 
-/// The input for one grade, shaped by how the teacher gives it. In the extraordinary sitting, a
-/// grade carried over from the ordinary one shows as such until it's re-entered.
+/// The input for one grade, shaped by how the teacher gives it: a clean number field with its
+/// scale shown beside it (changing the scale is done in the editor), or letter chips. In the
+/// extraordinary sitting, a grade carried over from the ordinary one shows as such until re-entered.
 private struct LeafInput: View {
     let grade: Grade
     let context: PartContext
     let compact: Bool
 
     @State private var text = ""
-    @State private var outOfText = ""
 
     private var fieldID: String { "\(context.session.rawValue)/\(grade.name)" }
     private var isFocused: Bool { context.focus.wrappedValue == fieldID }
     private var entry: GradeEntry? { context.record.entry(for: grade.name, in: context.session) }
     private var isCarriedOver: Bool { context.record.isCarriedOver(grade.name, in: context.session) }
+    private var isPercent: Bool { grade.inputStyle == .percent }
+    private var limit: Double { isPercent ? 100 : grade.scaleMax }
+    private var exceedsLimit: Bool { (Self.parse(text) ?? 0) > limit }
     private var overridesKeptGrade: Bool {
         context.session == .extraordinary
             && context.record.keepsForExtraordinary(grade.name)
@@ -854,7 +914,7 @@ private struct LeafInput: View {
     }
 
     var body: some View {
-        VStack(alignment: compact ? .center : .leading, spacing: 4) {
+        VStack(alignment: compact ? .center : .trailing, spacing: 4) {
             input
             if isCarriedOver {
                 Text("De la ordinaria")
@@ -879,77 +939,59 @@ private struct LeafInput: View {
                 context.onEntry(grade.name, letter.map { GradeEntry(value: $0.value, outOf: 10, letter: $0.letter) })
             }
         case .percent:
-            HStack(spacing: 4) {
+            HStack(spacing: 6) {
                 valueField
-                Text("%").foregroundStyle(.secondary)
+                suffix("%")
             }
         case .points:
-            if compact {
+            HStack(spacing: 6) {
                 valueField
-            } else {
-                HStack(spacing: 4) {
-                    valueField
-                    Text("sobre").font(.subheadline).foregroundStyle(.secondary)
-                    TextField("10", text: $outOfText)
-                        .keyboardType(.decimalPad)
-                        .multilineTextAlignment(.center)
-                        .font(.subheadline.monospacedDigit())
-                        .foregroundStyle(.secondary)
-                        .frame(width: 44, height: 36)
-                        .background(Color(.quaternarySystemFill), in: .rect(cornerRadius: 8))
-                        .accessibilityLabel("Sobre cuánto es la nota")
-                        .focused(context.focus, equals: fieldID + "/outOf")
-                        .onChange(of: outOfText) {
-                            guard context.focus.wrappedValue == fieldID + "/outOf" else { return }
-                            commitPoints()
-                        }
-                }
+                if !compact { suffix("/ \(Self.format(grade.scaleMax))") }
             }
         }
     }
 
+    private func suffix(_ text: String) -> some View {
+        Text(text)
+            .font(.title3)
+            .foregroundStyle(.secondary)
+    }
+
     private var valueField: some View {
-        TextField("—", text: $text)
+        TextField("–", text: $text)
             .keyboardType(.decimalPad)
-            .multilineTextAlignment(compact ? .center : .trailing)
-            .font(compact ? .title3.monospacedDigit().weight(.semibold) : .title2.monospacedDigit().weight(.semibold))
-            .foregroundStyle(isCarriedOver ? .secondary : .primary)
-            .frame(width: compact ? 56 : 72, height: compact ? 36 : 44)
-            .background(Color(.tertiarySystemFill), in: .rect(cornerRadius: 10))
+            .multilineTextAlignment(.center)
+            .font((compact ? Font.title3 : Font.title).weight(.semibold).monospacedDigit())
+            .foregroundStyle(exceedsLimit ? .red : (isCarriedOver ? .secondary : .primary))
+            .frame(width: compact ? 56 : 96, height: compact ? 40 : 52)
+            .background(Color(.tertiarySystemFill), in: .rect(cornerRadius: 14))
             .overlay {
-                RoundedRectangle(cornerRadius: 10)
-                    .strokeBorder(Color.accentColor, lineWidth: isFocused ? 2 : 0)
+                RoundedRectangle(cornerRadius: 14)
+                    .strokeBorder(Color.accentColor.opacity(isFocused ? 0.8 : 0), lineWidth: 1.5)
             }
             .accessibilityLabel(grade.name)
             .focused(context.focus, equals: fieldID)
             .onChange(of: text) {
                 guard context.focus.wrappedValue == fieldID else { return }
-                if grade.inputStyle == .percent { commitPercent() } else { commitPoints() }
+                if isPercent { commitPercent() } else { commitPoints() }
             }
     }
 
+    /// Shows what's stored on this grade's own scale, whatever scale it was typed on.
     private func seed() {
-        guard let entry else {
+        guard let entry, entry.outOf > 0 else {
             text = ""
-            outOfText = Self.format(grade.scaleMax)
             return
         }
-        if grade.inputStyle == .percent {
-            text = Self.format(entry.outOf == 100 ? entry.value : entry.value / entry.outOf * 100)
-        } else {
-            text = Self.format(entry.value)
-        }
-        outOfText = Self.format(entry.outOf)
+        text = Self.format(isPercent ? entry.value / entry.outOf * 100 : entry.value / entry.outOf * grade.scaleMax)
     }
 
     private func commitPoints() {
-        let value = Self.parse(text)
-        let outOf = compact ? (entry?.outOf ?? grade.scaleMax) : Self.parse(outOfText)
-        guard let value, let outOf, outOf > 0 else {
+        guard let value = Self.parse(text) else {
             if text.isEmpty { context.onEntry(grade.name, nil) }
             return
         }
-        context.onEntry(grade.name, GradeEntry(value: value, outOf: outOf))
+        context.onEntry(grade.name, GradeEntry(value: value, outOf: grade.scaleMax))
     }
 
     private func commitPercent() {

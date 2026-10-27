@@ -40,6 +40,9 @@ struct HomeView: View {
     /// last one offers a + to add a subject.
     @State private var isEditing = false
     @State private var viewportHeight: CGFloat = 0
+    /// The "hold the background" tip: only shown after tapping the background itself.
+    @State private var isShowingHint = false
+    @State private var hintTask: Task<Void, Never>?
 
     /// Every period that has subjects, oldest first. A year with only year-long subjects is a
     /// period of its own.
@@ -54,6 +57,15 @@ struct HomeView: View {
             }
         }
         return result.sorted { ($0.year, $0.term ?? 0) < ($1.year, $1.term ?? 0) }
+    }
+
+    private func showHint() {
+        isShowingHint = true
+        hintTask?.cancel()
+        hintTask = Task {
+            try? await Task.sleep(for: .seconds(2.5))
+            if !Task.isCancelled { isShowingHint = false }
+        }
     }
 
     private var period: Period {
@@ -99,15 +111,6 @@ struct HomeView: View {
                     .padding(.horizontal, 16)
                     .padding(.bottom, 24)
 
-                    if !isEditing {
-                        Text("Mantén pulsado el fondo para reordenar o añadir asignaturas.")
-                            .font(.footnote)
-                            .foregroundStyle(.tertiary)
-                            .multilineTextAlignment(.center)
-                            .frame(maxWidth: .infinity)
-                            .padding(.horizontal, 32)
-                            .padding(.bottom, 16)
-                    }
                     }
                     // Fills the screen so a tap on the empty space can end editing.
                     .frame(maxWidth: .infinity, minHeight: viewportHeight, alignment: .top)
@@ -117,12 +120,25 @@ struct HomeView: View {
                                 .contentShape(.rect)
                                 .onTapGesture { isEditing = false }
                         } else {
-                            LongPressBackground { isEditing = true }
+                            LongPressBackground(onTap: showHint) { isEditing = true }
                         }
                     }
                 }
             }
             .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { viewportHeight = $0 }
+            .overlay(alignment: .bottom) {
+                if isShowingHint && !isEditing {
+                    Text("Mantén pulsado el fondo para reordenar o añadir asignaturas")
+                        .font(.footnote.weight(.medium))
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 10)
+                        .background(.regularMaterial, in: Capsule())
+                        .padding(.horizontal, 24)
+                        .padding(.bottom, 12)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
+            }
             .sensoryFeedback(.impact, trigger: isEditing)
             .animation(.snappy, value: isEditing)
             .background(Color(.systemGroupedBackground))
