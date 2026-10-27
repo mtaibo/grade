@@ -27,6 +27,8 @@ struct ReorderableGrid<Normal: View, Trailing: View>: View {
     let records: [SubjectRecord]
     let isEditing: Bool
     let columns: [GridItem]
+    /// One slim row per subject (the list view) instead of tall cards.
+    var isCompact = false
     /// Called with the new order of the records' ids once a drag ends.
     let commit: ([SubjectRecord.ID]) -> Void
     /// Called when a tile's − badge is tapped.
@@ -68,7 +70,7 @@ struct ReorderableGrid<Normal: View, Trailing: View>: View {
 
     private func editableTile(_ record: SubjectRecord) -> some View {
         let isDragging = dragging == record.id
-        return SubjectTile(record: record)
+        return SubjectTile(record: record, isCompact: isCompact)
             // Inside the tile, before the wobble, so the badge is part of the card and tilts with it.
             .overlay(alignment: .topLeading) { deleteBadge(for: record) }
             .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(space)) } action: { frames[record.id] = $0 }

@@ -1,22 +1,23 @@
 import Engine
 import SwiftUI
 
-/// How the subjects are laid out on the home screen. Cards are the only one for now; the menu
-/// that picks it is already in place so another can slot in without reshaping the screen.
+/// How the subjects are laid out on the home screen: big cards in a grid, or one slim row each.
 enum SubjectLayout: String, CaseIterable, Identifiable {
-    case cards
+    case cards, list
 
     var id: Self { self }
 
     var title: LocalizedStringKey {
         switch self {
-        case .cards: "Tarjetas"
+        case .cards: "Cuadrícula"
+        case .list: "Lista"
         }
     }
 
     var icon: String {
         switch self {
         case .cards: "square.grid.2x2"
+        case .list: "list.bullet"
         }
     }
 }
@@ -84,7 +85,9 @@ struct HomeView: View {
         period.term == nil ? [] : yearSubjects.filter { $0.term == nil }
     }
 
-    private let columns = [GridItem(.adaptive(minimum: 150), spacing: 12)]
+    private var columns: [GridItem] {
+        layout == .list ? [GridItem(.flexible())] : [GridItem(.adaptive(minimum: 150), spacing: 12)]
+    }
 
     var body: some View {
         NavigationStack {
@@ -194,11 +197,12 @@ struct HomeView: View {
             records: records,
             isEditing: isEditing,
             columns: columns,
+            isCompact: layout == .list,
             commit: { order in library.reorderSubjects(order, before: nil, among: ids) },
             onDelete: { deleting = $0 },
             normal: { record in
                 NavigationLink(value: record.id) {
-                    SubjectTile(record: record)
+                    SubjectTile(record: record, isCompact: layout == .list)
                 }
                 .buttonStyle(TilePressStyle())
                 .contextMenu {
@@ -213,7 +217,7 @@ struct HomeView: View {
             },
             trailing: {
                 if canAdd {
-                    AddTile { placement = .create(period) }
+                    AddTile(isCompact: layout == .list) { placement = .create(period) }
                 }
             }
         )
@@ -227,19 +231,8 @@ struct HomeView: View {
                     .fontWeight(.semibold)
             }
         } else {
-            ToolbarItemGroup(placement: .topBarTrailing) {
-                Menu {
-                    Picker("Vista", selection: $layout) {
-                        ForEach(SubjectLayout.allCases) { option in
-                            Label(option.title, systemImage: option.icon).tag(option)
-                        }
-                    }
-                } label: {
-                    Image(systemName: layout.icon)
-                }
-                .accessibilityLabel("Vista")
-
-                if periods.count > 1 {
+            if periods.count > 1 {
+                ToolbarItem(placement: .topBarTrailing) {
                     Menu {
                         ForEach(Dictionary(grouping: periods, by: \.year).sorted { $0.key < $1.key }, id: \.key) { year, options in
                             Section(Period(year: year).title) {
@@ -257,10 +250,25 @@ struct HomeView: View {
                             }
                         }
                     } label: {
-                        Image(systemName: "calendar.badge.clock")
+                        Image(systemName: "calendar")
                     }
                     .accessibilityLabel("Cambiar de año o cuatrimestre")
                 }
+                // Keeps the two buttons as separate glass capsules instead of one joined pill.
+                ToolbarSpacer(.fixed, placement: .topBarTrailing)
+            }
+            ToolbarItem(placement: .topBarTrailing) {
+                Menu {
+                    Picker("Vista", selection: $layout) {
+                        ForEach(SubjectLayout.allCases) { option in
+                            Label(option.title, systemImage: option.icon).tag(option)
+                        }
+                    }
+                    .pickerStyle(.inline)
+                } label: {
+                    Image(systemName: "ellipsis")
+                }
+                .accessibilityLabel("Más opciones")
             }
         }
     }
@@ -286,8 +294,10 @@ struct SubjectTile: View {
     let count: (entered: Int, total: Int)?
     /// The subject's grade once every grade is in; it takes the ring's place.
     let finalGrade: Double?
+    /// A slim row (icon, name, ring) instead of the tall card, for the list view.
+    var isCompact = false
 
-    init(record: SubjectRecord) {
+    init(record: SubjectRecord, isCompact: Bool = false) {
         let style = SubjectStyle(record)
         let progress = SubjectProgress(record)
         self.init(
@@ -295,6 +305,7 @@ struct SubjectTile: View {
             count: (progress.enteredCount, progress.leafCount),
             finalGrade: progress.isComplete ? progress.worst : nil
         )
+        self.isCompact = isCompact
     }
 
     init(name: String, symbol: String, tint: Color, count: (entered: Int, total: Int)? = nil, finalGrade: Double? = nil) {
@@ -305,34 +316,61 @@ struct SubjectTile: View {
         self.finalGrade = finalGrade
     }
 
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Image(systemName: symbol)
-                .font(.title3.weight(.semibold))
-                .foregroundStyle(.white)
-                .frame(width: 40, height: 40)
-                .background(tint.gradient, in: .rect(cornerRadius: 11))
-            Spacer(minLength: 10)
-            Text(name)
-                .font(.headline)
-                .foregroundStyle(.primary)
-                .multilineTextAlignment(.leading)
-                .lineLimit(3)
+    private var icon: some View {
+        Image(systemName: symbol)
+            .font(.title3.weight(.semibold))
+            .foregroundStyle(.white)
+            .frame(width: 40, height: 40)
+            .background(tint.gradient, in: .rect(cornerRadius: 11))
+    }
+
+    @ViewBuilder
+    private var indicator: some View {
+        if let finalGrade {
+            FinalGradeBadge(grade: finalGrade)
+        } else if let count, count.total > 0 {
+            CompletionRing(entered: count.entered, total: count.total)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(16)
-        .frame(height: 156)
-        .background(Color(.secondarySystemGroupedBackground), in: .rect(cornerRadius: 22))
-        .overlay(alignment: .topTrailing) {
-            if let finalGrade {
-                FinalGradeBadge(grade: finalGrade)
-                    .padding(14)
-            } else if let count, count.total > 0 {
-                CompletionRing(entered: count.entered, total: count.total)
-                    .padding(16)
+    }
+
+    var body: some View {
+        Group {
+            if isCompact {
+                HStack(spacing: 14) {
+                    icon
+                    Text(name)
+                        .font(.headline)
+                        .foregroundStyle(.primary)
+                        .multilineTextAlignment(.leading)
+                        .lineLimit(2)
+                    Spacer(minLength: 8)
+                    indicator
+                }
+                .padding(.horizontal, 16)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .frame(height: 68)
+                .background(Color(.secondarySystemGroupedBackground), in: .rect(cornerRadius: 18))
+                .contentShape(.rect(cornerRadius: 18))
+            } else {
+                VStack(alignment: .leading, spacing: 0) {
+                    icon
+                    Spacer(minLength: 10)
+                    Text(name)
+                        .font(.headline)
+                        .foregroundStyle(.primary)
+                        .multilineTextAlignment(.leading)
+                        .lineLimit(3)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(16)
+                .frame(height: 156)
+                .background(Color(.secondarySystemGroupedBackground), in: .rect(cornerRadius: 22))
+                .overlay(alignment: .topTrailing) {
+                    indicator.padding(15)
+                }
+                .contentShape(.rect(cornerRadius: 22))
             }
         }
-        .contentShape(.rect(cornerRadius: 22))
         .accessibilityElement(children: .combine)
     }
 }
@@ -382,6 +420,7 @@ private struct CompletionRing: View {
 
 /// The blue round + that fills the gap after the last subject while editing.
 private struct AddTile: View {
+    var isCompact = false
     let action: () -> Void
 
     var body: some View {
@@ -389,9 +428,9 @@ private struct AddTile: View {
             Image(systemName: "plus")
                 .font(.title2.weight(.bold))
                 .foregroundStyle(.white)
-                .frame(width: 56, height: 56)
+                .frame(width: isCompact ? 44 : 56, height: isCompact ? 44 : 56)
                 .background(Color.accentColor, in: .circle)
-                .frame(maxWidth: .infinity, minHeight: 156)
+                .frame(maxWidth: .infinity, minHeight: isCompact ? 68 : 156)
         }
         .buttonStyle(TilePressStyle())
         .accessibilityLabel("Añadir asignatura")
