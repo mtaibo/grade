@@ -309,7 +309,7 @@ simulador, se lee bien incluso en miniatura.
 
 - **SwiftData** en lugar del JSON de `Library` (brief §6), cuando haya asignaturas creadas por
   usuarios.
-- **Añadir asignaturas y cursos** (pedido explícitamente para más adelante) y **editar fórmulas**.
+- **Editar fórmulas** (añadir/mover/borrar asignaturas ya existe; cursos se crean solos por año).
 - **`Alternatives.Branch.condition`** sigue siendo un `String` libre, sin evaluar — mismo tipo de
   hueco que tenía `Formula` antes de esta vuelta. Aún no hizo falta resolverlo porque ninguna de
   las guías de referencia fuerza una condición real (eligen rama por sesión, no por nota).
@@ -321,3 +321,24 @@ simulador, se lee bien incluso en miniatura.
 - Casos dudosos ya anotados en cada JSON de `guide/extracted/` (régimen de matrícula a tiempo
   parcial en Estadística, componente opcional de prácticas en la oportunidad adelantada de
   Estructura de Computadores) — ninguno de los dos está modelado.
+
+## Año, cuatrimestre y pantalla principal (oct 2026)
+
+- `Course` guarda `year` (el nombre «N.º año» se deriva). `SubjectRecord.term` es el cuatrimestre
+  **absoluto** de la carrera (año 2 → cuatrimestres 3 y 4) y es opcional (`nil` = anual). Solo la UI
+  lo muestra relativo al año («2.º año · 1.er cuatrimestre»): ver `Period.swift`.
+- `Library.Snapshot.version` = 2; las bibliotecas anteriores reciben el cuatrimestre de las
+  asignaturas de ejemplo (campo `period` de cada guía) una sola vez.
+- Pestañas: Calendario / Asignaturas / Cuenta (Expediente y ajustes dentro de Cuenta).
+- Inicio: título grande con año + cuatrimestre, tarjetas con solo icono y nombre, menú de vista
+  arriba a la izquierda (solo «Tarjetas»), menú de periodo y «+» arriba a la derecha. Las anuales
+  salen bajo «Todo el año». Icono y color de la tarjeta se derivan del nombre/id, no se guardan.
+
+### Carrera personalizable y tarjetas (oct 2026)
+
+- `DegreeSettings` (en `Library`, guardado en el snapshot): años de carrera, periodos por año y
+  nombre del periodo («Cuatrimestre», «Semestre»…). Se edita en Cuenta → Tu carrera. Cambiar los
+  periodos por año reubica cada asignatura en su mismo año y posición, recortada al nuevo máximo.
+- `SubjectRecord.symbol` / `colorName` (opcionales): icono y color elegidos en «Personalizar»; si
+  faltan, `SubjectStyle` los deriva del nombre/id.
+- Menú de la tarjeta: Personalizar, Mover, Editar evaluación, Eliminar.

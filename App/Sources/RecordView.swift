@@ -1,7 +1,7 @@
 import Engine
 import SwiftUI
 
-/// "Expediente": the credit-weighted average the brief asks for (§2), over subjects whose grades
+/// "Expediente", pushed from the account tab: the credit-weighted average the brief asks for (§2), over subjects whose grades
 /// are all in — a subject still in progress has no final grade yet to average.
 struct RecordView: View {
     @Environment(Library.self) private var library
@@ -23,32 +23,31 @@ struct RecordView: View {
     }
 
     var body: some View {
-        NavigationStack {
-            List {
-                Section {
-                    HStack(spacing: 0) {
-                        RecordStat(
-                            value: average?.formatted(.number.precision(.fractionLength(2))) ?? "—",
-                            label: "Media ponderada"
-                        )
-                        Divider()
-                        RecordStat(value: passedCredits.formatted(), label: "Créditos superados")
-                    }
-                    .padding(.vertical, 4)
-                } footer: {
-                    Text("La media cuenta las asignaturas con todas las notas puestas, ponderadas por sus créditos.")
+        List {
+            Section {
+                HStack(spacing: 0) {
+                    RecordStat(
+                        value: average?.formatted(.number.precision(.fractionLength(2))) ?? "—",
+                        label: "Media ponderada"
+                    )
+                    Divider()
+                    RecordStat(value: passedCredits.formatted(), label: "Créditos superados")
                 }
+                .padding(.vertical, 4)
+            } footer: {
+                Text("La media cuenta las asignaturas con todas las notas puestas, ponderadas por sus créditos.")
+            }
 
-                ForEach(library.courses) { course in
-                    Section(course.name) {
-                        ForEach(course.subjects) { record in
-                            RecordRow(record: record, progress: SubjectProgress(record))
-                        }
+            ForEach(library.courses) { course in
+                Section(course.name) {
+                    ForEach(course.subjects) { record in
+                        RecordRow(record: record, progress: SubjectProgress(record))
                     }
                 }
             }
-            .navigationTitle("Expediente")
         }
+        .navigationTitle("Expediente")
+        .navigationBarTitleDisplayMode(.inline)
     }
 }
 

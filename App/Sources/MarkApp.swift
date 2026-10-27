@@ -15,11 +15,8 @@ struct MarkApp: App {
                 Tab("Asignaturas", systemImage: "books.vertical", value: .subjects) {
                     HomeView()
                 }
-                Tab("Expediente", systemImage: "chart.bar.doc.horizontal", value: .record) {
-                    RecordView()
-                }
-                Tab("Ajustes", systemImage: "gearshape", value: .settings) {
-                    SettingsView()
+                Tab("Cuenta", systemImage: "person.crop.circle", value: .account) {
+                    AccountView()
                 }
             }
             .environment(library)
@@ -28,5 +25,5 @@ struct MarkApp: App {
 }
 
 private enum AppTab: Hashable {
-    case calendar, subjects, record, settings
+    case calendar, subjects, account
 }

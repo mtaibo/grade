@@ -1,237 +1,343 @@
 import Engine
 import SwiftUI
 
-/// The home screen: the selected course at a glance, then one card per subject with the two
-/// things the brief says must be visible — the current grade and what's still needed. The course
-/// is switched from the chips under the title.
+/// How the subjects are laid out on the home screen. Cards are the only one for now; the menu
+/// that picks it is already in place so another can slot in without reshaping the screen.
+enum SubjectLayout: String, CaseIterable, Identifiable {
+    case cards
+
+    var id: Self { self }
+
+    var title: LocalizedStringKey {
+        switch self {
+        case .cards: "Tarjetas"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .cards: "square.grid.2x2"
+        }
+    }
+}
+
+/// The home screen: the year and term as a big title, then one large card per subject — just the
+/// name. Everything else lives inside the subject.
 struct HomeView: View {
     @Environment(Library.self) private var library
-    /// Per-device convenience: reopen on the course last looked at.
-    @AppStorage("selectedCourseID") private var selectedCourseID = ""
-    @State private var editing: SubjectRecord?
+    /// Per-device conveniences: reopen on the period last looked at, in the layout last chosen.
+    @AppStorage("selectedYear") private var selectedYear = 0
+    @AppStorage("selectedTerm") private var selectedTerm = 0
+    @AppStorage("subjectLayout") private var layout = SubjectLayout.cards
 
-    private var course: Course? {
-        library.courses.first { $0.id.uuidString == selectedCourseID } ?? library.courses.first
+    @State private var placement: SubjectPlacement?
+    @State private var editing: SubjectRecord?
+    @State private var customizing: SubjectRecord?
+    @ScaledMetric(relativeTo: .largeTitle) private var yearSize = 32
+    @ScaledMetric(relativeTo: .title) private var termSize = 24
+    @State private var deleting: SubjectRecord?
+    /// The "jiggle" mode: tiles wobble, can be dragged into a new order, and the gap after the
+    /// last one offers a + to add a subject.
+    @State private var isEditing = false
+    @State private var viewportHeight: CGFloat = 0
+
+    /// Every period that has subjects, oldest first. A year with only year-long subjects is a
+    /// period of its own.
+    private var periods: [Period] {
+        var result: [Period] = []
+        for course in library.courses {
+            let terms = Set(course.subjects.compactMap(\.term)).sorted()
+            if terms.isEmpty {
+                if !course.subjects.isEmpty { result.append(Period(year: course.year)) }
+            } else {
+                result += terms.map { Period(year: course.year, term: $0) }
+            }
+        }
+        return result.sorted { ($0.year, $0.term ?? 0) < ($1.year, $1.term ?? 0) }
     }
+
+    private var period: Period {
+        let stored = Period(year: selectedYear, term: selectedTerm == 0 ? nil : selectedTerm)
+        return periods.contains(stored) ? stored : periods.first ?? Period(year: 1, term: 1)
+    }
+
+    private var yearSubjects: [SubjectRecord] {
+        library.courses.first { $0.year == period.year }?.subjects ?? []
+    }
+
+    private var termSubjects: [SubjectRecord] { yearSubjects.filter { $0.term == period.term } }
+
+    /// Year-long subjects, listed under the term's own when one is selected.
+    private var yearLongSubjects: [SubjectRecord] {
+        period.term == nil ? [] : yearSubjects.filter { $0.term == nil }
+    }
+
+    private let columns = [GridItem(.adaptive(minimum: 150), spacing: 12)]
 
     var body: some View {
         NavigationStack {
-            List {
-                if library.courses.count > 1 {
-                    CoursePicker(courses: library.courses, selection: Binding(
-                        get: { course?.id },
-                        set: { selectedCourseID = $0?.uuidString ?? "" }
-                    ))
-                    .listRowInsets(EdgeInsets())
-                    .listRowBackground(Color.clear)
-                }
-
-                if let course, !course.subjects.isEmpty {
-                    Section {
-                        TermSummary(statuses: course.subjects.map { SubjectProgress($0).status })
-                    } header: {
-                        Text("Cómo va el curso")
-                    }
-
-                    Section {
-                        ForEach(course.subjects) { record in
-                            NavigationLink(value: record.id) {
-                                SubjectCard(record: record, progress: SubjectProgress(record))
-                            }
-                            .swipeActions(edge: .trailing) {
-                                Button("Editar", systemImage: "slider.horizontal.3") { editing = record }
-                                    .tint(.accentColor)
-                            }
-                            .contextMenu {
-                                Button("Editar evaluación", systemImage: "slider.horizontal.3") { editing = record }
+            ScrollView {
+                if periods.isEmpty {
+                    EmptyHome { placement = .create(period) }
+                        .padding(.top, 80)
+                } else {
+                    VStack(spacing: 0) {
+                    VStack(alignment: .leading, spacing: 28) {
+                        header
+                        grid(termSubjects, canAdd: true)
+                        if !yearLongSubjects.isEmpty {
+                            VStack(alignment: .leading, spacing: 10) {
+                                Text("Todo el año")
+                                    .font(.footnote.weight(.semibold))
+                                    .foregroundStyle(.secondary)
+                                    .textCase(.uppercase)
+                                    .padding(.leading, 4)
+                                grid(yearLongSubjects)
                             }
                         }
-                    } header: {
-                        Text("Asignaturas")
-                    } footer: {
-                        Text("Toca una asignatura para poner tus notas. Desliza a la izquierda para cambiar cómo se evalúa.")
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 24)
+
+                    if !isEditing {
+                        Text("Mantén pulsado el fondo para reordenar o añadir asignaturas.")
+                            .font(.footnote)
+                            .foregroundStyle(.tertiary)
+                            .multilineTextAlignment(.center)
+                            .frame(maxWidth: .infinity)
+                            .padding(.horizontal, 32)
+                            .padding(.bottom, 16)
+                    }
+                    }
+                    // Fills the screen so a tap on the empty space can end editing.
+                    .frame(maxWidth: .infinity, minHeight: viewportHeight, alignment: .top)
+                    .background {
+                        if isEditing {
+                            Color.clear
+                                .contentShape(.rect)
+                                .onTapGesture { isEditing = false }
+                        } else {
+                            LongPressBackground { isEditing = true }
+                        }
                     }
                 }
             }
-            .overlay {
-                if course?.subjects.isEmpty ?? true {
-                    ContentUnavailableView(
-                        "Sin asignaturas",
-                        systemImage: "books.vertical",
-                        description: Text("Puedes recuperar las de ejemplo desde Ajustes.")
-                    )
-                }
-            }
-            .navigationTitle(course?.name ?? "Asignaturas")
+            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { viewportHeight = $0 }
+            .sensoryFeedback(.impact, trigger: isEditing)
+            .animation(.snappy, value: isEditing)
+            .background(Color(.systemGroupedBackground))
+            .navigationTitle("")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { toolbar }
             .navigationDestination(for: SubjectRecord.ID.self) { id in
                 SubjectDetailView(recordID: id)
+            }
+            .sheet(item: $placement) { placement in
+                NewSubjectView(placement: placement, degree: library.degree, onSaved: show)
             }
             .sheet(item: $editing) { record in
                 SubjectEditorView(record: record)
             }
+            .sheet(item: $customizing) { record in
+                CustomizeSubjectView(record: record)
+            }
+            .alert(
+                "¿Eliminar \(deleting?.subject.name ?? "la asignatura")?",
+                isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } })
+            ) {
+                Button("Cancelar", role: .cancel) { deleting = nil }
+                Button("Eliminar", role: .destructive) {
+                    if let deleting { library.deleteSubject(id: deleting.id) }
+                    deleting = nil
+                }
+            } message: {
+                Text("Se borran también sus notas y fechas. No se puede deshacer.")
+            }
         }
     }
-}
 
-/// The courses as a row of chips under the title, so switching course is visible at a glance
-/// instead of hidden in the title's menu.
-private struct CoursePicker: View {
-    let courses: [Course]
-    @Binding var selection: Course.ID?
+    /// The year and term as the screen's title, big enough to read at a glance.
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text(period.title)
+                .font(.system(size: yearSize, weight: .bold, design: .rounded))
+            if let subtitle = period.subtitle(in: library.degree) {
+                Text(subtitle)
+                    .font(.system(size: termSize, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(.leading, 4)
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isHeader)
+    }
 
-    var body: some View {
-        ScrollView(.horizontal) {
-            HStack(spacing: 8) {
-                ForEach(courses) { course in
-                    let isSelected = course.id == selection
-                    Button {
-                        withAnimation(.snappy) { selection = course.id }
-                    } label: {
-                        Text(course.name)
-                            .font(.subheadline.weight(.semibold))
-                            .padding(.horizontal, 16)
-                            .frame(minHeight: 36)
-                            .foregroundStyle(isSelected ? Color.white : Color.primary)
-                            .background(isSelected ? Color.accentColor : Color(.tertiarySystemFill), in: Capsule())
-                            .contentShape(.rect)
+    private func grid(_ records: [SubjectRecord], canAdd: Bool = false) -> some View {
+        let ids = records.map(\.id)
+        return ReorderableGrid(
+            records: records,
+            isEditing: isEditing,
+            columns: columns,
+            commit: { order in library.reorderSubjects(order, before: nil, among: ids) },
+            onDelete: { deleting = $0 },
+            normal: { record in
+                NavigationLink(value: record.id) {
+                    SubjectTile(record: record)
+                }
+                .buttonStyle(TilePressStyle())
+                .contextMenu {
+                    Button("Personalizar", systemImage: "paintpalette") { customizing = record }
+                    Button("Mover", systemImage: "arrow.right.circle") {
+                        placement = .move(record.id, name: record.subject.name, from: Period(year: period.year, term: record.term))
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityAddTraits(isSelected ? .isSelected : [])
+                    Button("Editar evaluación", systemImage: "slider.horizontal.3") { editing = record }
+                    Divider()
+                    Button("Eliminar", systemImage: "trash", role: .destructive) { deleting = record }
+                }
+            },
+            trailing: {
+                if canAdd {
+                    AddTile { placement = .create(period) }
                 }
             }
-            .padding(.vertical, 4)
-        }
-        .scrollIndicators(.hidden)
-        .sensoryFeedback(.selection, trigger: selection)
-    }
-}
-
-private struct TermSummary: View {
-    let statuses: [PassStatus]
-
-    var body: some View {
-        HStack(spacing: 0) {
-            SummaryStat(count: statuses.count { $0 == .guaranteed }, label: "Aprobadas", tint: .green)
-            Divider()
-            SummaryStat(count: statuses.count { $0 == .possible }, label: "En juego", tint: .orange)
-            Divider()
-            SummaryStat(count: statuses.count { $0 == .impossible }, label: "No llegan", tint: .red)
-        }
-        .padding(.vertical, 4)
-    }
-}
-
-private struct SummaryStat: View {
-    let count: Int
-    let label: String
-    let tint: Color
-
-    var body: some View {
-        VStack(spacing: 2) {
-            Text(count, format: .number)
-                .font(.system(.title, design: .rounded, weight: .semibold))
-                .foregroundStyle(count > 0 ? tint : .secondary)
-                .contentTransition(.numericText())
-            Text(label)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity)
-        .accessibilityElement(children: .combine)
-    }
-}
-
-private struct SubjectCard: View {
-    let record: SubjectRecord
-    let progress: SubjectProgress
-
-    /// Which sitting the numbers are for, plus its exam date when there is one.
-    private var sessionLine: String? {
-        let date = record.examDate(for: progress.session)
-        guard progress.session == .extraordinary || date != nil else { return nil }
-        let label = progress.session.label
-        guard let date else { return label }
-        return "\(label) · examen \(date.formatted(.dateTime.day().month(.abbreviated)))"
+        )
     }
 
-    private var tint: Color {
-        guard progress.enteredCount > 0 else { return .secondary }
-        return progress.status.tint
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .firstTextBaseline) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(record.subject.name)
-                        .font(.title3.weight(.semibold))
-                    if let sessionLine {
-                        Text(sessionLine)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                Spacer()
-                VStack(alignment: .trailing, spacing: 0) {
-                    SwiftUI.Group {
-                        if progress.enteredCount > 0 {
-                            Text(progress.worst, format: .number.precision(.fractionLength(1)))
-                        } else {
-                            Text("—")
+    @ToolbarContentBuilder
+    private var toolbar: some ToolbarContent {
+        if isEditing {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button("Listo") { isEditing = false }
+                    .fontWeight(.semibold)
+            }
+        } else {
+            ToolbarItemGroup(placement: .topBarTrailing) {
+                Menu {
+                    Picker("Vista", selection: $layout) {
+                        ForEach(SubjectLayout.allCases) { option in
+                            Label(option.title, systemImage: option.icon).tag(option)
                         }
                     }
-                    .font(.system(.title, design: .rounded, weight: .semibold))
-                    .monospacedDigit()
-                    .foregroundStyle(progress.enteredCount > 0 ? .primary : .tertiary)
-                    .contentTransition(.numericText())
-                    Text("de 10")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
+                } label: {
+                    Image(systemName: layout.icon)
+                }
+                .accessibilityLabel("Vista")
+
+                if periods.count > 1 {
+                    Menu {
+                        ForEach(Dictionary(grouping: periods, by: \.year).sorted { $0.key < $1.key }, id: \.key) { year, options in
+                            Section(Period(year: year).title) {
+                                ForEach(options, id: \.self) { option in
+                                    Button {
+                                        withAnimation(.snappy) { select(option) }
+                                    } label: {
+                                        if option == period {
+                                            Label(option.term.map(library.degree.termLabel) ?? "Todo el año", systemImage: "checkmark")
+                                        } else {
+                                            Text(option.term.map(library.degree.termLabel) ?? "Todo el año")
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    } label: {
+                        Image(systemName: "calendar.badge.clock")
+                    }
+                    .accessibilityLabel("Cambiar de año o cuatrimestre")
                 }
             }
-
-            GradeRangeBar(
-                worst: progress.worst,
-                best: progress.enteredCount > 0 ? progress.best : 0,
-                threshold: progress.threshold,
-                tint: tint
-            )
-
-            StatusLine(progress: progress)
         }
-        .padding(.vertical, 6)
+    }
+
+    private func select(_ period: Period) {
+        selectedYear = period.year
+        selectedTerm = period.term ?? 0
+    }
+
+    /// After adding or moving a subject, follow it — a year-long one shows in the year's first term.
+    private func show(_ saved: Period) {
+        select(saved.term == nil ? periods.first { $0.year == saved.year } ?? saved : saved)
+    }
+}
+
+/// One subject: a decorative icon and its name, nothing else.
+struct SubjectTile: View {
+    let name: String
+    let symbol: String
+    let tint: Color
+
+    init(record: SubjectRecord) {
+        let style = SubjectStyle(record)
+        self.init(name: record.subject.name, symbol: style.symbol, tint: style.tint)
+    }
+
+    init(name: String, symbol: String, tint: Color) {
+        self.name = name
+        self.symbol = symbol
+        self.tint = tint
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Image(systemName: symbol)
+                .font(.title3.weight(.semibold))
+                .foregroundStyle(.white)
+                .frame(width: 40, height: 40)
+                .background(tint.gradient, in: .rect(cornerRadius: 11))
+            Spacer(minLength: 10)
+            Text(name)
+                .font(.headline)
+                .foregroundStyle(.primary)
+                .multilineTextAlignment(.leading)
+                .lineLimit(3)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(16)
+        .frame(height: 156)
+        .background(Color(.secondarySystemGroupedBackground), in: .rect(cornerRadius: 22))
+        .contentShape(.rect(cornerRadius: 22))
         .accessibilityElement(children: .combine)
     }
 }
 
-private struct StatusLine: View {
-    let progress: SubjectProgress
+/// The blue round + that fills the gap after the last subject while editing.
+private struct AddTile: View {
+    let action: () -> Void
 
     var body: some View {
-        if progress.enteredCount == 0 {
-            line("Sin notas todavía · toca para empezar", icon: "circle.dashed", tint: .secondary)
-        } else {
-            switch progress.status {
-            case .guaranteed:
-                line("Aprobada", icon: "checkmark.circle.fill", tint: .green)
-            case .impossible:
-                line("Ya no llega al \(progress.threshold.formatted())", icon: "xmark.circle.fill", tint: .red)
-            case .possible:
-                if let needed = progress.neededAverage {
-                    line("Necesitas un **\(needed.formatted(.number.precision(.fractionLength(1))))** en lo que falta", icon: "target", tint: .orange)
-                }
-            }
+        Button(action: action) {
+            Image(systemName: "plus")
+                .font(.title2.weight(.bold))
+                .foregroundStyle(.white)
+                .frame(width: 56, height: 56)
+                .background(Color.accentColor, in: .circle)
+                .frame(maxWidth: .infinity, minHeight: 156)
         }
+        .buttonStyle(TilePressStyle())
+        .accessibilityLabel("Añadir asignatura")
     }
+}
 
-    private func line(_ text: LocalizedStringKey, icon: String, tint: Color) -> some View {
-        HStack(spacing: 6) {
-            Image(systemName: icon)
-                .imageScale(.small)
-            Text(text)
+struct TilePressStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.97 : 1)
+            .animation(.snappy(duration: 0.2), value: configuration.isPressed)
+    }
+}
+
+private struct EmptyHome: View {
+    let add: () -> Void
+
+    var body: some View {
+        ContentUnavailableView {
+            Label("Sin asignaturas", systemImage: "books.vertical")
+        } description: {
+            Text("Añade las de este cuatrimestre para empezar a apuntar fechas y notas.")
+        } actions: {
+            Button("Añadir asignatura", action: add)
+                .buttonStyle(.borderedProminent)
         }
-        .font(.subheadline)
-        .foregroundStyle(tint)
     }
 }
 
