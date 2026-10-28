@@ -20,7 +20,8 @@ struct NewSubjectView: View {
 
     let placement: SubjectPlacement
     /// Called with the subject's new period once saved, so the home screen can follow it.
-    var onSaved: (Period) -> Void = { _ in }
+    /// Where the subject ended up, and its id (the new one when creating).
+    var onSaved: (Period, SubjectRecord.ID) -> Void = { _, _ in }
 
     @State private var name = ""
     @State private var year: Int
@@ -28,7 +29,7 @@ struct NewSubjectView: View {
     @State private var relativeTerm: Int?
     @FocusState private var nameFocused: Bool
 
-    init(placement: SubjectPlacement, degree: DegreeSettings, onSaved: @escaping (Period) -> Void = { _ in }) {
+    init(placement: SubjectPlacement, degree: DegreeSettings, onSaved: @escaping (Period, SubjectRecord.ID) -> Void = { _, _ in }) {
         self.placement = placement
         self.onSaved = onSaved
         let period: Period = switch placement {
@@ -99,17 +100,19 @@ struct NewSubjectView: View {
 
     private func save() {
         let term = relativeTerm.map { degree.absoluteTerm(year: year, relative: $0) }
+        let id: SubjectRecord.ID
         switch placement {
         case .create:
-            library.addSubject(
+            id = library.addSubject(
                 name: name.trimmingCharacters(in: .whitespaces),
                 year: year,
                 term: term
             )
-        case .move(let id, _, _):
-            library.move(id, toYear: year, term: term)
+        case .move(let moved, _, _):
+            id = moved
+            library.move(moved, toYear: year, term: term)
         }
-        onSaved(Period(year: year, term: term))
+        onSaved(Period(year: year, term: term), id)
         dismiss()
     }
 }

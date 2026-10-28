@@ -87,6 +87,14 @@ struct HomeView: View {
         customSelection.map { .custom($0.id) } ?? .period(period)
     }
 
+    /// Where "Añadir asignatura" starts: the period on screen, or for a custom view the one its
+    /// title names (picked by hand, or its furthest subject's).
+    private var newSubjectPeriod: Period {
+        guard let customSelection else { return period }
+        if case .period(let year, let term) = customSelection.title { return Period(year: year, term: term) }
+        return library.furthestPeriod(of: customSelection.subjectIDs) ?? period
+    }
+
     private var customSubjects: [SubjectRecord] {
         customSelection?.subjectIDs.compactMap(library.record(id:)) ?? []
     }
@@ -123,7 +131,7 @@ struct HomeView: View {
                                 } description: {
                                     Text("Sus asignaturas se han borrado. Elige otras o cambia de vista.")
                                 } actions: {
-                                    Button("Cambiar de vista") { isChoosingView = true }
+                                    Button("Editar vistas") { isChoosingView = true }
                                 }
                             } else {
                                 grid(customSubjects, in: customSelection)
@@ -193,7 +201,14 @@ struct HomeView: View {
                 }
             }
             .sheet(item: $placement) { placement in
-                NewSubjectView(placement: placement, degree: library.degree, onSaved: show)
+                NewSubjectView(placement: placement, degree: library.degree) { saved, id in
+                    // A subject created from a custom view joins it.
+                    if case .create = placement, var selection = customSelection {
+                        selection.subjectIDs.append(id)
+                        library.saveSelection(selection)
+                    }
+                    show(saved)
+                }
             }
             .sheet(item: $editing) { record in
                 SubjectEditorView(record: record)
@@ -269,7 +284,7 @@ struct HomeView: View {
             },
             trailing: {
                 if canAdd {
-                    AddTile(isCompact: layout == .list) { placement = .create(period) }
+                    AddTile(isCompact: layout == .list) { placement = .create(newSubjectPeriod) }
                 }
             }
         )
@@ -283,6 +298,18 @@ struct HomeView: View {
                     .fontWeight(.semibold)
             }
         } else {
+            if periods.count + library.selections.count > 1 {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Menu {
+                        viewSwitcher
+                    } label: {
+                        Image(systemName: "calendar")
+                    }
+                    .accessibilityLabel("Cambiar de vista")
+                }
+                // Keeps the two buttons as separate glass capsules instead of one joined pill.
+                ToolbarSpacer(.fixed, placement: .topBarTrailing)
+            }
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
                     Picker("Diseño", selection: $layout) {
@@ -292,11 +319,49 @@ struct HomeView: View {
                     }
                     .pickerStyle(.inline)
                     Divider()
-                    Button("Vista", systemImage: "calendar") { isChoosingView = true }
+                    Button("Añadir asignatura", systemImage: "plus") { placement = .create(newSubjectPeriod) }
+                    Button("Editar vistas", systemImage: "rectangle.stack") { isChoosingView = true }
                 } label: {
                     Image(systemName: "ellipsis")
                 }
                 .accessibilityLabel("Más opciones")
+            }
+        }
+    }
+
+    /// The calendar button's menu: a quick jump to any period or custom view, ✓ on the current one.
+    /// Views are created and changed from "Editar vistas".
+    @ViewBuilder
+    private var viewSwitcher: some View {
+        ForEach(Dictionary(grouping: periods, by: \.year).sorted { $0.key < $1.key }, id: \.key) { year, options in
+            Section(Period(year: year).title) {
+                ForEach(options, id: \.self) { option in
+                    switcherButton(option.term.map(library.degree.termLabel) ?? "Todo el año", isCurrent: currentSelection == .period(option)) {
+                        select(option)
+                    }
+                }
+            }
+        }
+        if !library.selections.isEmpty {
+            Section("Personalizadas") {
+                ForEach(library.selections) { selection in
+                    let heading = library.heading(for: selection)
+                    switcherButton([heading.title, heading.subtitle].compactMap { $0 }.joined(separator: " · "), isCurrent: currentSelection == .custom(selection.id)) {
+                        selectedCustomView = selection.id.uuidString
+                    }
+                }
+            }
+        }
+    }
+
+    private func switcherButton(_ title: String, isCurrent: Bool, action: @escaping () -> Void) -> some View {
+        Button {
+            withAnimation(.snappy, action)
+        } label: {
+            if isCurrent {
+                Label(title, systemImage: "checkmark")
+            } else {
+                Text(title)
             }
         }
     }

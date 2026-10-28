@@ -106,7 +106,7 @@ struct HomeViewsScreen: View {
                 Text("Junta las asignaturas que llevas de verdad este cuatrimestre, sean del año que sean: una que repites, una adelantada o una convalidada.")
             }
         }
-        .navigationTitle("Vista")
+        .navigationTitle("Vistas")
         .navigationBarTitleDisplayMode(.inline)
         .sheet(item: $editing) { selection in
             CustomSelectionEditor(selection: selection, isNew: !library.selections.contains { $0.id == selection.id }) { saved in
