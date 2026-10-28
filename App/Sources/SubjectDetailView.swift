@@ -40,12 +40,14 @@ struct SubjectDetailView: View {
         return ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 if isSimulating {
-                    Label("Simulador · no se guarda nada", systemImage: "flask")
+                    Label("Simulador", systemImage: "flask")
                         .font(.footnote.weight(.semibold))
                         .foregroundStyle(.orange)
                         .padding(.horizontal, 10)
                         .padding(.vertical, 6)
                         .background(.orange.opacity(0.14), in: Capsule())
+                        .frame(maxWidth: .infinity, alignment: .trailing)
+                        .accessibilityLabel("Simulador: no se guarda nada")
                 }
                 Text(record.subject.name)
                     .font(.largeTitle.bold())
