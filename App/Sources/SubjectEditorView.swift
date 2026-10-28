@@ -356,11 +356,11 @@ private struct GroupSections: View {
                     .foregroundStyle(.tint)
             }
         } header: {
-            CheckedHeader(title: "Secciones", isValid: check.map { $0 == nil })
+            CheckedHeader(title: isRoot ? "Secciones" : "Subsecciones", isValid: check.map { $0 == nil })
         } footer: {
             CheckFooter(problem: check ?? nil, hint: isRoot
                 ? "Personaliza las secciones en las que se divide la nota final."
-                : "Personaliza las secciones en las que se divide esta sección.")
+                : "Personaliza las subsecciones en las que se divide esta sección.")
         }
     }
 
@@ -675,8 +675,8 @@ private struct ComponentEditorView: View {
                 }
             } footer: {
                 Text(isPoints
-                     ? "Los puntos que da esta sección y en cuántas secciones se divide."
-                     : "Lo que cuenta esta sección en la nota y en cuántas secciones se divide.")
+                     ? "Los puntos que da esta sección y en cuántas subsecciones se divide."
+                     : "Lo que cuenta esta sección en la nota y en cuántas subsecciones se divide.")
             }
 
             if child.node.asGroup != nil || child.node.asFormula != nil {
@@ -755,14 +755,14 @@ private struct NewSectionView: View {
     }
 }
 
-/// "Número de secciones" with glass − / + buttons: 1 is a single grade, more turns the part into
+/// "Subsecciones" with glass − / + buttons: 1 is a single grade, more turns the part into
 /// that many equal notes (see `Node.resizeNotes`).
 private struct NoteCountRow: View {
     @Binding var node: Node
 
     var body: some View {
         let count = node.noteCount
-        LabeledContent("Número de secciones") {
+        LabeledContent("Subsecciones") {
             HStack(spacing: 10) {
                 Text(count.formatted())
                     .monospacedDigit()
