@@ -211,7 +211,9 @@ private struct CalculationSection: View {
                 }
             }
         } footer: {
-            Text("Tipo de evaluación de la asignatura: cómo se juntan sus notas en la final.")
+            Text(allowsFormula
+                 ? "Tipo de evaluación de la asignatura: cómo se juntan sus notas en la final."
+                 : "Tipo de evaluación de la sección: cómo se juntan sus notas.")
         }
     }
 
@@ -237,8 +239,8 @@ private struct CalculationSection: View {
     }
 }
 
-/// A section title with a green ✓ on its right edge when what's inside adds up, a red ✗ when it
-/// doesn't, and nothing when there's nothing to check.
+/// A section title with a small green ✓ on its right edge when what's inside adds up, a red ✗
+/// when it doesn't, and nothing when there's nothing to check.
 private struct CheckedHeader: View {
     let title: String
     let isValid: Bool?
@@ -254,9 +256,9 @@ private struct CheckedHeader: View {
                             .font(.subheadline.weight(.semibold))
                             .foregroundStyle(.green)
                     } else {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.title3)
-                            .foregroundStyle(.white, .red)
+                        Image(systemName: "xmark")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.red)
                     }
                 }
                 .accessibilityLabel(isValid ? "Todo cuadra" : "Hay un error")
@@ -329,7 +331,9 @@ private struct GroupSections: View {
         } header: {
             CheckedHeader(title: "Secciones", isValid: check.map { $0 == nil })
         } footer: {
-            CheckFooter(problem: check ?? nil, hint: "Personaliza las secciones en las que se divide la nota final.")
+            CheckFooter(problem: check ?? nil, hint: isRoot
+                ? "Personaliza las secciones en las que se divide la nota final."
+                : "Personaliza las secciones en las que se divide esta sección.")
         }
     }
 
@@ -597,6 +601,11 @@ private struct ComponentEditorView: View {
         Form {
             Section {
                 NameField(node: $child.node, onRenameLeaf: onRenameLeaf)
+            } footer: {
+                Text("Nombre de la sección. Toca para cambiarlo.")
+            }
+
+            Section {
                 LabeledContent(isPoints ? "Puntos" : "Peso") {
                     HStack(spacing: 4) {
                         TextField("0", value: Binding(
@@ -608,10 +617,13 @@ private struct ComponentEditorView: View {
                         Text(isPoints ? "pts" : "%").foregroundStyle(.secondary)
                     }
                 }
-            }
-
-            if child.node.asGrade != nil || child.node.isGroupOfGrades {
-                NoteCountSection(node: $child.node)
+                if child.node.asGrade != nil || child.node.isGroupOfGrades {
+                    NoteCountRow(node: $child.node)
+                }
+            } footer: {
+                Text(isPoints
+                     ? "Los puntos que da esta sección y en cuántas secciones se divide."
+                     : "Lo que cuenta esta sección en la nota y en cuántas secciones se divide.")
             }
 
             if child.node.asGroup != nil {
@@ -633,9 +645,7 @@ private struct NoteCountSection: View {
     var body: some View {
         let count = node.noteCount
         Section {
-            Stepper(value: Binding(get: { node.noteCount }, set: { node.resizeNotes(to: $0) }), in: 1...20) {
-                LabeledContent("Cuántas notas", value: count.formatted())
-            }
+            NoteCountRow(node: $node)
         } footer: {
             Text(count == 1
                  ? "Una sola nota. Súbelo si en clase hay varias (por ejemplo, dos prácticas): la parte será su media. La nota ya puesta de esta parte se borra."
@@ -644,19 +654,63 @@ private struct NoteCountSection: View {
     }
 }
 
+/// "Número de secciones" with glass − / + buttons: 1 is a single grade, more turns the part into
+/// that many equal notes (see `Node.resizeNotes`).
+private struct NoteCountRow: View {
+    @Binding var node: Node
+
+    var body: some View {
+        let count = node.noteCount
+        LabeledContent("Número de secciones") {
+            HStack(spacing: 10) {
+                Text(count.formatted())
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
+                    .contentTransition(.numericText())
+                StepButton(systemImage: "minus", label: "Una menos", isEnabled: count > 1) { node.resizeNotes(to: count - 1) }
+                StepButton(systemImage: "plus", label: "Una más", isEnabled: count < 20) { node.resizeNotes(to: count + 1) }
+            }
+            .animation(.snappy, value: count)
+        }
+    }
+}
+
+private struct StepButton: View {
+    let systemImage: String
+    let label: String
+    let isEnabled: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: systemImage)
+                .font(.body.weight(.semibold))
+                .frame(width: 22, height: 22)
+        }
+        .buttonStyle(.glass)
+        .buttonBorderShape(.circle)
+        .disabled(!isEnabled)
+        .accessibilityLabel(label)
+    }
+}
+
 private struct NameField: View {
     @Binding var node: Node
     let onRenameLeaf: (String, String) -> Void
 
     var body: some View {
-        TextField("Nombre", text: Binding(
-            get: { node.title },
-            set: { newName in
-                let oldName = node.title
-                node.title = newName
-                if node.isLeaf { onRenameLeaf(oldName, newName) }
-            }
-        ))
+        LabeledContent("Nombre") {
+            TextField("Nombre", text: Binding(
+                get: { node.title },
+                set: { newName in
+                    let oldName = node.title
+                    node.title = newName
+                    if node.isLeaf { onRenameLeaf(oldName, newName) }
+                }
+            ))
+            .multilineTextAlignment(.trailing)
+            .foregroundStyle(.secondary)
+        }
     }
 }
 
