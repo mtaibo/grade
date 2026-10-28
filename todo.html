@@ -1,0 +1,296 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mark · TODO</title>
+<style>
+  :root {
+    --bg: #fafafa; --fg: #1c1c1e; --muted: #8e8e93; --line: #e5e5ea; --accent: #0a84ff; --danger: #ff3b30;
+    color-scheme: light dark;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #111113; --fg: #f2f2f7; --muted: #8e8e93; --line: #2c2c2e; }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font: 15px/1.5 -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+  }
+  main { max-width: 680px; margin: 0 auto; padding: 40px 16px 80px; }
+  header { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+  header h1 { font-size: 28px; margin: 0; flex: 1; }
+  button {
+    font: inherit; color: var(--accent); background: none; border: 1px solid var(--line);
+    border-radius: 999px; padding: 4px 12px; cursor: pointer;
+  }
+  button:hover { border-color: var(--accent); }
+  #status { color: var(--muted); font-size: 13px; margin: 0 0 24px; }
+  h2 { font-size: 20px; margin: 36px 0 4px; }
+  h3 { font-size: 16px; margin: 24px 0 4px; }
+  h4 { font-size: 14px; margin: 18px 0 4px; color: var(--muted); }
+  p.note { color: var(--muted); margin: 4px 0; }
+  ul { list-style: none; padding: 0; margin: 0; }
+  li {
+    display: flex; align-items: flex-start; gap: 10px; padding: 7px 0; border-bottom: 1px solid var(--line);
+  }
+  li input { margin-top: 4px; accent-color: var(--accent); }
+  li span { flex: 1; }
+  li.done span { color: var(--muted); text-decoration: line-through; }
+  li .del {
+    border: none; padding: 0 4px; color: var(--muted); opacity: 0; font-size: 18px; line-height: 1.2;
+  }
+  li:hover .del, li .del:focus { opacity: 1; }
+  li .del:hover { color: var(--danger); }
+  code { font: 13px ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--line); padding: 1px 5px; border-radius: 4px; }
+  form.add { margin: 6px 0 0; }
+  form.add input {
+    width: 100%; font: inherit; color: var(--fg); background: none; border: none;
+    border-bottom: 1px dashed var(--line); padding: 6px 0; outline: none;
+  }
+  form.add input:focus { border-bottom-color: var(--accent); }
+  form.add input::placeholder { color: var(--muted); }
+  #empty { color: var(--muted); }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>TODO</h1>
+    <button id="open">Abrir TODO.md</button>
+    <button id="download" hidden>Descargar</button>
+  </header>
+  <p id="status">Abre <code>TODO.md</code> para verlo y editarlo; los cambios se guardan en el archivo.</p>
+  <div id="doc"></div>
+</main>
+<script>
+// TODO.md stays the source of truth: the page keeps its lines, edits them in place and writes them
+// back. Chrome/Edge can write the file directly (File System Access API); elsewhere the edits stay in
+// this browser and "Descargar" saves a new TODO.md.
+const ITEM = /^(\s*)- \[( |x)\] (.*)$/i;
+const HEADING = /^(#{1,6}) (.*)$/;
+const PLACEHOLDER = /^_Nada todavía\._$/;
+const canWrite = 'showOpenFilePicker' in window;
+
+let lines = [];
+let handle = null;
+
+const $ = (id) => document.getElementById(id);
+
+function inline(text) {
+  return text
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+    .replace(/(^|\W)_([^_]+)_(?=\W|$)/g, '$1<em>$2</em>');
+}
+
+// Sections: each heading owns the lines up to the next heading.
+function sections() {
+  const result = [];
+  lines.forEach((line, index) => {
+    const match = line.match(HEADING);
+    if (match) result.push({ level: match[1].length, title: match[2], start: index, end: lines.length });
+  });
+  result.forEach((section, i) => { if (result[i + 1]) section.end = result[i + 1].start; });
+  return result;
+}
+
+function render() {
+  const doc = $('doc');
+  doc.innerHTML = '';
+  const all = sections();
+  if (all.length === 0) { doc.innerHTML = '<p id="empty">Sin contenido.</p>'; return; }
+  all.forEach((section, i) => {
+    if (section.level === 1) return;
+    const heading = document.createElement('h' + Math.min(section.level, 4));
+    heading.innerHTML = inline(section.title);
+    doc.append(heading);
+
+    const body = lines.slice(section.start + 1, section.end);
+    const hasItems = body.some((l) => ITEM.test(l));
+    const hasPlaceholder = body.some((l) => PLACEHOLDER.test(l.trim()));
+    const next = all[i + 1];
+    // A heading that only groups deeper ones (## v1 → ### P1…) gets no list of its own.
+    const isGroup = !hasItems && !hasPlaceholder && next && next.level > section.level;
+
+    if (!hasItems) {
+      body.filter((l) => l.trim() && !PLACEHOLDER.test(l.trim())).forEach((l) => {
+        const p = document.createElement('p'); p.className = 'note'; p.innerHTML = inline(l); doc.append(p);
+      });
+    }
+    if (isGroup) return;
+
+    const list = document.createElement('ul');
+    for (let index = section.start + 1; index < section.end; index++) {
+      const match = lines[index].match(ITEM);
+      if (!match) continue;
+      const done = match[2].toLowerCase() === 'x';
+      const li = document.createElement('li');
+      if (done) li.className = 'done';
+      const box = document.createElement('input');
+      box.type = 'checkbox'; box.checked = done;
+      box.onchange = () => update(() => { lines[index] = `${match[1]}- [${box.checked ? 'x' : ' '}] ${match[3]}`; });
+      const text = document.createElement('span');
+      text.innerHTML = inline(match[3]);
+      const del = document.createElement('button');
+      del.className = 'del'; del.textContent = '×'; del.title = 'Eliminar';
+      del.onclick = () => update(() => {
+        lines.splice(index, 1);
+        const rest = lines.slice(section.start + 1, section.end - 1);
+        if (!rest.some((l) => ITEM.test(l))) lines.splice(section.start + 1, 0, '', '_Nada todavía._');
+      });
+      li.append(box, text, del);
+      list.append(li);
+    }
+    doc.append(list);
+
+    const form = document.createElement('form');
+    form.className = 'add';
+    const input = document.createElement('input');
+    input.placeholder = 'Añadir…';
+    form.append(input);
+    form.onsubmit = (event) => {
+      event.preventDefault();
+      const text = input.value.trim();
+      if (!text) return;
+      update(() => {
+        const placeholder = lines.findIndex((l, n) => n > section.start && n < section.end && PLACEHOLDER.test(l.trim()));
+        if (placeholder >= 0) { lines[placeholder] = `- [ ] ${text}`; return; }
+        let last = section.start;
+        for (let n = section.start + 1; n < section.end; n++) if (ITEM.test(lines[n])) last = n;
+        if (last === section.start) lines.splice(section.start + 1, 0, '', `- [ ] ${text}`);
+        else lines.splice(last + 1, 0, `- [ ] ${text}`);
+      });
+      requestAnimationFrame(() => document.querySelectorAll('form.add input')[formIndex(section.start)]?.focus());
+    };
+    form.dataset.start = section.start;
+    doc.append(form);
+  });
+}
+
+function formIndex(start) {
+  return [...document.querySelectorAll('form.add')].findIndex((f) => Number(f.dataset.start) === start);
+}
+
+async function update(change) {
+  change();
+  render();
+  await save();
+}
+
+// Three ways to reach TODO.md, best first:
+// 1. served by `make todo` (http): read and written through the little server, nothing to pick;
+// 2. Chrome/Edge from file://: picked once, then remembered (IndexedDB) and reopened on load;
+// 3. anywhere else: picked each time, edits kept here and saved with «Descargar».
+const served = location.protocol.startsWith('http');
+
+async function save() {
+  const text = lines.join('\n');
+  try { localStorage.setItem('mark-todo', text); } catch {}
+  try {
+    if (served) {
+      const response = await fetch('TODO.md', { method: 'PUT', body: text });
+      if (!response.ok) throw new Error(response.statusText);
+    } else if (handle) {
+      const writable = await handle.createWritable();
+      await writable.write(text);
+      await writable.close();
+    } else {
+      $('status').textContent = 'Cambios guardados en este navegador. Pulsa «Descargar» para tener el TODO.md.';
+      return;
+    }
+    $('status').textContent = `Guardado · ${new Date().toLocaleTimeString()}`;
+  } catch (error) {
+    $('status').textContent = `No se pudo guardar: ${error.message}`;
+  }
+}
+
+function load(text) {
+  lines = text.replace(/\r\n/g, '\n').split('\n');
+  render();
+}
+
+// The picked file's handle, kept between visits (Chrome lets handles live in IndexedDB).
+function store(mode, value) {
+  return new Promise((resolve) => {
+    const request = indexedDB.open('mark-todo', 1);
+    request.onupgradeneeded = () => request.result.createObjectStore('handles');
+    request.onerror = () => resolve(null);
+    request.onsuccess = () => {
+      const tx = request.result.transaction('handles', mode);
+      const op = mode === 'readwrite' ? tx.objectStore('handles').put(value, 'todo') : tx.objectStore('handles').get('todo');
+      op.onsuccess = () => resolve(op.result ?? null);
+      op.onerror = () => resolve(null);
+    };
+  });
+}
+
+async function openHandle(picked) {
+  handle = picked;
+  load(await (await handle.getFile()).text());
+  $('open').hidden = true;
+  $('status').textContent = `Editando ${handle.name}: cada cambio se guarda en el archivo.`;
+}
+
+$('open').onclick = async () => {
+  if (canWrite) {
+    try {
+      // A remembered file only needs its permission back, no picker.
+      const saved = await store('readonly');
+      if (saved && (await saved.requestPermission({ mode: 'readwrite' })) === 'granted') return openHandle(saved);
+      const [picked] = await window.showOpenFilePicker({ types: [{ description: 'Markdown', accept: { 'text/markdown': ['.md'] } }] });
+      await store('readwrite', picked);
+      await openHandle(picked);
+    } catch {}
+    return;
+  }
+  const picker = document.createElement('input');
+  picker.type = 'file'; picker.accept = '.md,text/markdown';
+  picker.onchange = async () => {
+    const file = picker.files[0];
+    if (!file) return;
+    load(await file.text());
+    $('download').hidden = false;
+    $('status').textContent = 'Este navegador no puede escribir el archivo: edita y pulsa «Descargar». Con `make todo` se guarda solo.';
+  };
+  picker.click();
+};
+
+$('download').onclick = () => {
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(new Blob([lines.join('\n')], { type: 'text/markdown' }));
+  link.download = 'TODO.md';
+  link.click();
+};
+
+(async () => {
+  if (served) {
+    $('open').hidden = true;
+    try {
+      const response = await fetch('TODO.md', { cache: 'no-store' });
+      if (!response.ok) throw new Error(response.statusText);
+      load(await response.text());
+      $('status').textContent = 'Cada cambio se guarda en TODO.md.';
+    } catch (error) {
+      $('status').textContent = `No se pudo leer TODO.md: ${error.message}`;
+    }
+    return;
+  }
+  if (canWrite) {
+    const saved = await store('readonly');
+    if (saved && (await saved.queryPermission({ mode: 'readwrite' })) === 'granted') return openHandle(saved);
+    if (saved) {
+      $('open').textContent = 'Continuar con TODO.md';
+      $('status').textContent = 'El navegador pide permiso otra vez para el archivo: un clic y listo.';
+    }
+    return;
+  }
+  try {
+    const saved = localStorage.getItem('mark-todo');
+    if (saved) { load(saved); $('download').hidden = false; }
+  } catch {}
+})();
+</script>
+</body>
+</html>
