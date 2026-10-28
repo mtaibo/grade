@@ -66,7 +66,7 @@ struct NewSubjectView: View {
                     }
                     Picker(degree.termName.isEmpty ? "Cuatrimestre" : degree.termName, selection: $relativeTerm) {
                         Text("Todo el año").tag(Int?.none)
-                        ForEach(1...degree.termsPerYear, id: \.self) { n in
+                        ForEach(1...max(degree.termsPerYear, 1), id: \.self) { n in
                             Text(degree.termLabel(degree.absoluteTerm(year: year, relative: n))).tag(Int?.some(n))
                         }
                     }

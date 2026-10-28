@@ -73,10 +73,8 @@ struct AccountView: View {
                 }
 
                 Section {
-                    if let file = BackupFile(library: library) {
-                        ShareLink(item: file, preview: SharePreview("Copia de Mark")) {
-                            Label("Exportar datos", systemImage: "square.and.arrow.up")
-                        }
+                    ShareLink(item: BackupFile(library: library), preview: SharePreview("Copia de Mark")) {
+                        Label("Exportar datos", systemImage: "square.and.arrow.up")
                     }
                     Button("Importar datos", systemImage: "square.and.arrow.down") { backupCenter.isPicking = true }
                 } header: {
@@ -121,7 +119,7 @@ private struct TemplateView: View {
     var body: some View {
         List {
             ForEach(template.years, id: \.self) { year in
-                ForEach(1...library.degree.termsPerYear, id: \.self) { term in
+                ForEach(1...max(library.degree.termsPerYear, 1), id: \.self) { term in
                     let entries = template.entries(year: year, term: term)
                     if !entries.isEmpty {
                         Section("\(year)º Año · \(library.degree.termLabel(library.degree.absoluteTerm(year: year, relative: term)))") {

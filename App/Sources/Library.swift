@@ -103,7 +103,8 @@ struct SubjectRecord: Identifiable, Codable, Equatable {
 
     func entries(for session: Convocatoria) -> [String: GradeEntry] {
         let leaves = subject.root.allLeafNames()
-        return Dictionary(uniqueKeysWithValues: leaves.compactMap { leaf in entry(for: leaf, in: session).map { (leaf, $0) } })
+        // Not `uniqueKeysWithValues`: a tree from an old or hand-edited file can repeat a leaf name.
+        return Dictionary(leaves.compactMap { leaf in entry(for: leaf, in: session).map { (leaf, $0) } }) { first, _ in first }
     }
 }
 
@@ -162,19 +163,39 @@ final class Library {
         var degree: DegreeSettings?
     }
 
+    /// Both allow NaN and infinity, so a stray non-number can never make every later save fail.
+    nonisolated static var fileEncoder: JSONEncoder {
+        let encoder = JSONEncoder()
+        encoder.nonConformingFloatEncodingStrategy = .convertToString(positiveInfinity: "inf", negativeInfinity: "-inf", nan: "nan")
+        return encoder
+    }
+
+    nonisolated static var fileDecoder: JSONDecoder {
+        let decoder = JSONDecoder()
+        decoder.nonConformingFloatDecodingStrategy = .convertFromString(positiveInfinity: "inf", negativeInfinity: "-inf", nan: "nan")
+        return decoder
+    }
+
     init(fileURL: URL = URL.applicationSupportDirectory.appending(path: "library.json")) {
         self.fileURL = fileURL
         let data = try? Data(contentsOf: fileURL)
-        if let data, let snapshot = try? JSONDecoder().decode(Snapshot.self, from: data) {
+        if let data, let snapshot = try? Self.fileDecoder.decode(Snapshot.self, from: data) {
             courses = snapshot.courses
             degree = snapshot.degree ?? DegreeSettings()
-        } else if let data, let courses = try? JSONDecoder().decode([Course].self, from: data) {
+        } else if let data, let courses = try? Self.fileDecoder.decode([Course].self, from: data) {
             // The first file format was a bare list of courses.
             self.courses = courses
         } else {
             courses = []
+            // A file that's there but can't be read is kept aside instead of being overwritten by
+            // the empty library below, so a bad update never silently wipes someone's grades.
+            if data != nil {
+                let aside = fileURL.deletingLastPathComponent()
+                    .appending(path: "library-unreadable-\(Int(Date.now.timeIntervalSince1970)).json")
+                try? FileManager.default.copyItem(at: fileURL, to: aside)
+            }
         }
-        flagFinalExams()
+        normalize()
         let files = (try? FileManager.default.contentsOfDirectory(at: guidesDirectory, includingPropertiesForKeys: nil)) ?? []
         guideIDs = Set(files.filter { $0.pathExtension == "pdf" }.compactMap { UUID(uuidString: $0.deletingPathExtension().lastPathComponent) })
         save()
@@ -186,6 +207,33 @@ final class Library {
         fileURL = nil
         self.degree = degree
         courses = [Course(year: 1, subjects: [record])]
+    }
+
+    /// Makes whatever was loaded safe to show: one course per year (from the 1st), no subject id used twice, and
+    /// the final exam flagged on old subjects. Runs after loading the file and after a restore.
+    private func normalize() {
+        var merged: [Course] = []
+        for var course in courses {
+            course.year = max(course.year, 1)
+            if let index = merged.firstIndex(where: { $0.year == course.year }) {
+                merged[index].subjects += course.subjects
+            } else {
+                merged.append(course)
+            }
+        }
+        var seen: Set<SubjectRecord.ID> = []
+        for course in merged.indices {
+            for index in merged[course].subjects.indices {
+                if !seen.insert(merged[course].subjects[index].id).inserted {
+                    merged[course].subjects[index].id = UUID()
+                    seen.insert(merged[course].subjects[index].id)
+                }
+                // Terms count from 1; anything else is treated as year-long.
+                if let term = merged[course].subjects[index].term, term < 1 { merged[course].subjects[index].term = nil }
+            }
+        }
+        courses = merged.sorted { $0.year < $1.year }
+        flagFinalExams()
     }
 
     // MARK: Teaching guides
@@ -236,6 +284,7 @@ final class Library {
     }
 
     func setEntry(_ entry: GradeEntry?, forLeaf leaf: String, in recordID: SubjectRecord.ID, session: Convocatoria) {
+        if let entry, !(entry.value.isFinite && entry.outOf.isFinite && entry.outOf > 0) { return }
         mutateRecord(recordID) { record in
             switch session {
             case .ordinary: record.entries[leaf] = entry
@@ -314,8 +363,13 @@ final class Library {
         ordered.insert(contentsOf: moving, at: target.flatMap(ordered.firstIndex(of:)) ?? ordered.count)
 
         let slots = courses[course].subjects.indices.filter { group.contains(courses[course].subjects[$0].id) }
-        let byID = Dictionary(uniqueKeysWithValues: slots.map { (courses[course].subjects[$0].id, courses[course].subjects[$0]) })
-        for (slot, id) in zip(slots, ordered) { courses[course].subjects[slot] = byID[id]! }
+        let byID = Dictionary(slots.map { (courses[course].subjects[$0].id, courses[course].subjects[$0]) }) { first, _ in first }
+        // Only what really sits in those slots, once each — a stale id (a subject deleted meanwhile)
+        // or one from another year must never take a slot or leave one empty.
+        var placed: Set<SubjectRecord.ID> = []
+        let records = ordered.compactMap { id in placed.insert(id).inserted ? byID[id] : nil }
+        guard records.count == slots.count else { return }
+        for (slot, record) in zip(slots, records) { courses[course].subjects[slot] = record }
         save()
     }
 
@@ -362,11 +416,12 @@ final class Library {
     func restore(_ backup: MarkBackup) {
         courses = backup.courses
         degree = backup.degree
+        normalize()
         for id in guideIDs { removeGuide(for: id) }
+        let ids = Set(courses.flatMap(\.subjects).map(\.id))
         for (key, data) in backup.guides ?? [:] {
-            if let id = UUID(uuidString: key) { try? setGuide(data, for: id) }
+            if let id = UUID(uuidString: key), ids.contains(id) { try? setGuide(data, for: id) }
         }
-        flagFinalExams()
         save()
     }
 
@@ -410,7 +465,7 @@ final class Library {
         guard let fileURL else { return }
         do {
             try FileManager.default.createDirectory(at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
-            try JSONEncoder().encode(Snapshot(courses: courses, degree: degree))
+            try Self.fileEncoder.encode(Snapshot(courses: courses, degree: degree))
                 .write(to: fileURL, options: .atomic)
         } catch {
             assertionFailure("Couldn't save the library: \(error)")
@@ -438,7 +493,7 @@ struct SubjectProgress {
     init(_ record: SubjectRecord, session: Convocatoria? = nil) {
         let session = session ?? record.activeSession
         let root = record.subject.root
-        let inputs = Self.inputs(for: root, entries: record.entries(for: session))
+        let inputs = Self.inputs(record, session: session)
         self.session = session
         let threshold = root.minimumThreshold ?? 5
         let status = root.status(inputs)
@@ -453,11 +508,18 @@ struct SubjectProgress {
         self.leafCount = root.allLeafNames().count
     }
 
+    /// What the engine reads for one sitting — without the status and needed-grade search, for
+    /// views that only need the values.
+    static func inputs(_ record: SubjectRecord, session: Convocatoria) -> [String: Double] {
+        inputs(for: record.subject.root, entries: record.entries(for: session))
+    }
+
     /// Entries converted from whatever scale the user typed them on to each leaf's own scale.
     private static func inputs(for root: Node, entries: [String: GradeEntry]) -> [String: Double] {
         entries.reduce(into: [:]) { result, pair in
             let (name, entry) = pair
-            guard entry.outOf > 0, let max = root.leaf(named: name)?.scaleMax else { return }
+            guard entry.value.isFinite, entry.outOf.isFinite, entry.outOf > 0,
+                  let max = root.leaf(named: name)?.scaleMax, max.isFinite else { return }
             result[name] = min(Swift.max(entry.value / entry.outOf * max, 0), max)
         }
     }

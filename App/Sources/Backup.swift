@@ -43,12 +43,14 @@ extension MarkBackup {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         encoder.dateEncodingStrategy = .iso8601
+        encoder.nonConformingFloatEncodingStrategy = Library.fileEncoder.nonConformingFloatEncodingStrategy
         return encoder
     }
 
     static func decode(_ data: Data) throws -> MarkBackup {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
+        decoder.nonConformingFloatDecodingStrategy = Library.fileDecoder.nonConformingFloatDecodingStrategy
         guard let backup = try? decoder.decode(MarkBackup.self, from: data), backup.format == Self.format else {
             throw BackupError.notABackup
         }
@@ -57,24 +59,18 @@ extension MarkBackup {
     }
 }
 
-/// The file handed to the share sheet, written to a temporary `.mark` only when it's actually shared.
+/// The file handed to the share sheet. The library (with every guide PDF) is only encoded and
+/// written to a temporary `.mark` when it's actually shared — never while the screen just redraws.
 struct BackupFile: Transferable {
-    let data: Data
-    let name: String
+    let library: Library
 
     static var transferRepresentation: some TransferRepresentation {
         FileRepresentation(exportedContentType: .markBackup) { file in
-            let url = URL.temporaryDirectory.appending(path: file.name)
-            try file.data.write(to: url, options: .atomic)
+            let data = try await file.library.backupData()
+            let url = URL.temporaryDirectory.appending(path: "Mark \(Date.now.formatted(.iso8601.year().month().day())).mark")
+            try data.write(to: url, options: .atomic)
             return SentTransferredFile(url)
         }
-    }
-
-    @MainActor
-    init?(library: Library) {
-        guard let data = try? library.backupData() else { return nil }
-        self.data = data
-        name = "Mark \(Date.now.formatted(.iso8601.year().month().day())).mark"
     }
 }
 

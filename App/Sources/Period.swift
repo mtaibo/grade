@@ -17,19 +17,40 @@ struct DegreeSettings: Codable, Equatable {
         return trimmed.isEmpty ? Self.defaultTermName : trimmed
     }
 
+    /// Never below 1, whatever a file says, since it divides.
+    private var safeTermsPerYear: Int { Swift.max(termsPerYear, 1) }
+
     /// The term's position within its own year: with 2 per year, 3 → 1 and 4 → 2.
     func relativeTerm(_ term: Int) -> Int {
-        (term - 1) % termsPerYear + 1
+        let count = safeTermsPerYear
+        return ((term - 1) % count + count) % count + 1
     }
 
     /// The degree-wide term for the `n`th term of a year: year 2, 1st → 3.
     func absoluteTerm(year: Int, relative n: Int) -> Int {
-        (year - 1) * termsPerYear + n
+        (year - 1) * safeTermsPerYear + n
     }
 
     /// "1º Cuatrimestre", for a degree-wide term number.
     func termLabel(_ term: Int) -> String {
         "\(relativeTerm(term))º \(displayTermName)"
+    }
+}
+
+extension DegreeSettings {
+    private enum CodingKeys: String, CodingKey { case years, termsPerYear, termName }
+
+    /// Clamped to what the settings screen allows, so a hand-edited backup can't hand the app zero
+    /// terms a year (which it divides by) or a hundred years.
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let years = try container.decodeIfPresent(Int.self, forKey: .years) ?? 4
+        let terms = try container.decodeIfPresent(Int.self, forKey: .termsPerYear) ?? 2
+        self.init(
+            years: min(max(years, 1), Self.maxYears),
+            termsPerYear: min(max(terms, 1), Self.maxTermsPerYear),
+            termName: try container.decodeIfPresent(String.self, forKey: .termName) ?? Self.defaultTermName
+        )
     }
 }
 
