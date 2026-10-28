@@ -84,7 +84,12 @@ struct SubjectDetailView: View {
         .background(Color(.systemGroupedBackground))
         .overlay {
             if let target = gradeTarget {
-                GradePopup(recordID: recordID, target: target, isBlurred: $isBlurred) { gradeTarget = nil }
+                // A fresh popup per opening, and closing only clears its own: one closed and
+                // another opened within the close animation must not dismiss the new one.
+                GradePopup(recordID: recordID, target: target, isBlurred: $isBlurred) {
+                    if gradeTarget?.id == target.id { gradeTarget = nil }
+                }
+                .id(target.id)
             }
         }
 
@@ -223,7 +228,7 @@ private struct GradeTarget: Identifiable {
     let session: Convocatoria
     /// Where on screen it was tapped: the popup grows out of that point.
     var origin: CGPoint = .zero
-    var id: String { "\(partID)/\(session.rawValue)" }
+    let id = UUID()
 }
 
 // MARK: - Grade
@@ -559,7 +564,7 @@ private struct DateToggleRow: View {
                 get: { date != nil },
                 set: { date = $0 ? Calendar.current.date(bySettingHour: defaultHour, minute: defaultHour == 23 ? 59 : 0, second: 0, of: .now) : nil }
             ))
-            if let date = Binding($date) {
+            if let date = Binding(unwrapping: $date) {
                 DatePicker("Fecha", selection: date, displayedComponents: [.date, .hourAndMinute])
                     .labelsHidden()
             }
@@ -609,11 +614,11 @@ private struct PartSummary {
     let hasAnyGrade: Bool
 
     init(node: Node, record: SubjectRecord, session: Convocatoria) {
-        let progress = SubjectProgress(record, session: session)
+        let inputs = SubjectProgress.inputs(record, session: session)
         let leaves = node.allLeafNames()
-        let entered = leaves.count { progress.inputs[$0] != nil }
+        let entered = leaves.count { inputs[$0] != nil }
         let max = node.scaleMax
-        let value = node.evaluate(progress.inputs, pendingFraction: 0)
+        let value = node.evaluate(inputs, pendingFraction: 0)
         fraction = max > 0 ? Swift.min(Swift.max(value / max, 0), 1) : 0
         hasAnyGrade = entered > 0
         let complete = !leaves.isEmpty && entered == leaves.count
@@ -630,7 +635,7 @@ private struct PartSummary {
     }
 
     static func display(of grade: Grade, record: SubjectRecord, session: Convocatoria) -> String {
-        guard let entry = record.entry(for: grade.name, in: session) else { return "—" }
+        guard let entry = record.entry(for: grade.name, in: session), entry.value.isFinite, entry.outOf.isFinite, entry.outOf > 0 else { return "—" }
         let number = { (value: Double) in value.formatted(.number.precision(.fractionLength(0...2))) }
         if let letter = entry.letter { return letter }
         switch grade.inputStyle ?? .points {
@@ -780,6 +785,7 @@ private struct GradePopup: View {
     }
 
     private func close() {
+        guard shown else { return }
         withAnimation(.spring(duration: 0.25, bounce: 0)) { shown = false }
         withAnimation(.easeOut(duration: 0.15)) { isBlurred = false }
         focusedField = nil
@@ -792,7 +798,7 @@ private struct GradePopup: View {
     var body: some View {
         if let record = library.record(id: recordID), let item = PartItem.items(of: record).first(where: { $0.id == target.partID }) {
             let session = target.session
-            let progress = SubjectProgress(record, session: session)
+            let inputs = SubjectProgress.inputs(record, session: session)
             ZStack(alignment: .top) {
                 Color.black.opacity(shown ? 0.16 : 0)
                     .ignoresSafeArea()
@@ -808,7 +814,7 @@ private struct GradePopup: View {
                     }
                     ScrollView {
                         PartContent(node: item.node, context: PartContext(
-                            record: record, session: session, inputs: progress.inputs, focus: $focusedField
+                            record: record, session: session, inputs: inputs, focus: $focusedField
                         ) { leaf, entry in
                             library.setEntry(entry, forLeaf: leaf, in: recordID, session: session)
                         })
@@ -1032,8 +1038,14 @@ private struct LeafInput: View {
         context.onEntry(grade.name, GradeEntry(value: value, outOf: 100))
     }
 
+    /// A plain non-negative number with a comma or a point — not "nan", "inf" or "1e999", which a
+    /// pasted text or a hardware keyboard could otherwise sneak past the decimal pad.
     private static func parse(_ text: String) -> Double? {
-        Double(text.replacingOccurrences(of: ",", with: "."))
+        let normalized = text.trimmingCharacters(in: .whitespaces).replacingOccurrences(of: ",", with: ".")
+        guard !normalized.isEmpty, normalized.allSatisfy({ $0.isASCII && ($0.isNumber || $0 == ".") }),
+              let value = Double(normalized), value.isFinite
+        else { return nil }
+        return value
     }
 
     private static func format(_ value: Double) -> String {

@@ -115,6 +115,35 @@ extension Node {
         }
     }
 
+    /// Brings back into range what a form can leave out of it — an empty, negative or non-numeric
+    /// weight, a scale of 0 — so the engine never divides by it or averages a negative share.
+    mutating func sanitize() {
+        switch self {
+        case .grade(var grade):
+            if !(grade.scaleMax.isFinite && grade.scaleMax > 0) { grade.scaleMax = 10 }
+            if case .letters(var letters) = grade.inputStyle {
+                for index in letters.indices where !letters[index].value.isFinite { letters[index].value = 0 }
+                grade.inputStyle = .letters(letters)
+            }
+            self = .grade(grade)
+        case .group(var group):
+            for index in group.children.indices {
+                let weight = group.children[index].weight
+                if !(weight.isFinite && weight >= 0) { group.children[index].weight = 0 }
+                group.children[index].node.sanitize()
+            }
+            self = .group(group)
+        case .formula(var formula):
+            for key in formula.variables.keys { formula.variables[key]?.sanitize() }
+            self = .formula(formula)
+        case .alternatives(var alternatives):
+            for index in alternatives.branches.indices { alternatives.branches[index].node.sanitize() }
+            self = .alternatives(alternatives)
+        case .bonus, .requirement:
+            break
+        }
+    }
+
     /// Sets the due date of the grade named `leaf`, wherever it sits in the tree.
     mutating func setDate(_ date: Date?, forLeaf leaf: String) {
         switch self {

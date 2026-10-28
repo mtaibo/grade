@@ -75,6 +75,8 @@ struct SubjectEditorView: View {
     /// Moves grades onto renamed leaves and drops grades for leaves that no longer exist.
     private func save() {
         var record = draft
+        record.subject.root.sanitize()
+        record.subject.name = record.subject.name.trimmingCharacters(in: .whitespacesAndNewlines)
         let leaves = Set(record.subject.root.allLeafNames())
         func migrated(_ entries: [String: GradeEntry]) -> [String: GradeEntry] {
             var moved: [String: GradeEntry] = [:]
@@ -98,15 +100,15 @@ private struct NodeContentsSections: View {
     let onRenameLeaf: (String, String) -> Void
 
     var body: some View {
-        if let group = Binding($node.asGroup) {
+        if let group = Binding(unwrapping: $node.asGroup) {
             GroupSections(
                 group: group,
                 onRenameLeaf: onRenameLeaf,
                 convertToFormula: isRoot ? group.wrappedValue.asFormula().map { formula in { node = .formula(formula) } } : nil
             )
-        } else if let formula = Binding($node.asFormula) {
+        } else if let formula = Binding(unwrapping: $node.asFormula) {
             FormulaSections(node: $node, formula: formula, onRenameLeaf: onRenameLeaf)
-        } else if let grade = Binding($node.asGrade) {
+        } else if let grade = Binding(unwrapping: $node.asGrade) {
             GradeSettingsSections(grade: grade)
         } else {
             Section {
@@ -427,7 +429,7 @@ private struct FormulaVariableEditor: View {
             }
             if node.wrappedValue.asGroup != nil {
                 NodeContentsSections(node: node, onRenameLeaf: onRenameLeaf)
-            } else if let grade = Binding(node.asGrade) {
+            } else if let grade = Binding(unwrapping: node.asGrade) {
                 GradeSettingsSections(grade: grade)
             }
         }
@@ -480,7 +482,7 @@ private struct ComponentEditorView: View {
 
             if child.node.asGroup != nil {
                 NodeContentsSections(node: $child.node, onRenameLeaf: onRenameLeaf)
-            } else if let grade = Binding($child.node.asGrade) {
+            } else if let grade = Binding(unwrapping: $child.node.asGrade) {
                 GradeSettingsSections(grade: grade)
             }
         }
@@ -534,7 +536,7 @@ private struct DateFields: View {
             get: { date != nil },
             set: { date = $0 ? Self.defaultDate : nil }
         ))
-        if let date = Binding($date) {
+        if let date = Binding(unwrapping: $date) {
             DatePicker("Fecha", selection: date, displayedComponents: [.date, .hourAndMinute])
         }
     }
@@ -585,16 +587,18 @@ private struct GradeSettingsSections: View {
         )
     }
 
+    private var isKeptForExtraordinary: Bool {
+        switch grade.recovery {
+        case .notRecoverable, .savedForExtraordinary, .savedForNextYear, .partiallyRecoverableInFinal: true
+        case .recoverableInExtraordinary, nil: false
+        }
+    }
+
     private var keepsForExtraordinary: Binding<Bool> {
         Binding(
-            get: {
-                switch grade.recovery {
-                case .notRecoverable, .savedForExtraordinary, .savedForNextYear, .partiallyRecoverableInFinal: true
-                case .recoverableInExtraordinary, nil: false
-                }
-            },
+            get: { isKeptForExtraordinary },
             set: { keeps in
-                if keeps, !keepsForExtraordinary.wrappedValue { grade.recovery = .savedForExtraordinary }
+                if keeps, !isKeptForExtraordinary { grade.recovery = .savedForExtraordinary }
                 if !keeps { grade.recovery = nil }
             }
         )

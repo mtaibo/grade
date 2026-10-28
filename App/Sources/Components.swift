@@ -100,3 +100,17 @@ extension View {
             .background(Color(.secondarySystemGroupedBackground), in: .rect(cornerRadius: 18))
     }
 }
+
+extension Binding {
+    /// Like SwiftUI's `Binding(_: Binding<Value?>)`, which force-unwraps on every read: when the
+    /// value turns `nil` (a date switched off, a group turned into a single grade) a view that
+    /// hasn't been torn down yet can still read it and crash. This one keeps answering with the
+    /// last value it had, and ignores writes once the value is gone.
+    init?(unwrapping base: Binding<Value?>) {
+        guard let initial = base.wrappedValue else { return nil }
+        self.init(
+            get: { base.wrappedValue ?? initial },
+            set: { if base.wrappedValue != nil { base.wrappedValue = $0 } }
+        )
+    }
+}

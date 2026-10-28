@@ -42,13 +42,19 @@ struct ReorderableGrid<Normal: View, Trailing: View>: View {
     @State private var dragging: SubjectRecord.ID?
     @State private var grabOffset = CGSize.zero
     @State private var finger = CGPoint.zero
+    /// True while a tile's press-and-drag is in progress. A gesture the system cancels (a call, a
+    /// notification pulled down) never calls `onEnded`, but this always resets, so the drag is
+    /// finished either way instead of leaving a tile stuck under the finger.
+    @GestureState private var isPressing = false
 
     private let space = "reorderableGrid"
 
     private var displayed: [SubjectRecord] {
         guard let order else { return records }
-        let byID = Dictionary(uniqueKeysWithValues: records.map { ($0.id, $0) })
-        return order.compactMap { byID[$0] }
+        let byID = Dictionary(records.map { ($0.id, $0) }) { first, _ in first }
+        // A subject added or deleted mid-drag still shows (or goes) instead of trapping.
+        let ordered = order.compactMap { byID[$0] }
+        return ordered + records.filter { !order.contains($0.id) }
     }
 
     var body: some View {
@@ -65,6 +71,9 @@ struct ReorderableGrid<Normal: View, Trailing: View>: View {
         .coordinateSpace(.named(space))
         .onChange(of: isEditing) { _, editing in
             if !editing { reset() }
+        }
+        .onChange(of: isPressing) { _, pressing in
+            if !pressing { finish() }
         }
     }
 
@@ -114,6 +123,7 @@ struct ReorderableGrid<Normal: View, Trailing: View>: View {
     private func reorderGesture(for record: SubjectRecord) -> some Gesture {
         LongPressGesture(minimumDuration: 0.15)
             .sequenced(before: DragGesture(minimumDistance: 0, coordinateSpace: .named(space)))
+            .updating($isPressing) { _, state, _ in state = true }
             .onChanged { value in
                 guard case .second(true, let drag?) = value else { return }
                 if dragging == nil { begin(record, at: drag.startLocation) }
