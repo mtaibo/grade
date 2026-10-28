@@ -42,7 +42,7 @@ struct ReorderableGrid<Normal: View, Trailing: View>: View {
     @State private var dragging: SubjectRecord.ID?
     @State private var grabOffset = CGSize.zero
     @State private var finger = CGPoint.zero
-    /// True while a tile's press-and-drag is in progress. A gesture the system cancels (a call, a
+    /// True while a tile's drag is in progress. A gesture the system cancels (a call, a
     /// notification pulled down) never calls `onEnded`, but this always resets, so the drag is
     /// finished either way instead of leaving a tile stuck under the finger.
     @GestureState private var isPressing = false
@@ -125,12 +125,12 @@ struct ReorderableGrid<Normal: View, Trailing: View>: View {
         return CGSize(width: finger.x - grabOffset.width - origin.x, height: finger.y - grabOffset.height - origin.y)
     }
 
+    /// Already in edit mode, so a plain drag moves the tile — no hold first, like the Home Screen.
+    /// The few points of slack keep a tap on the tile from counting as a drag.
     private func reorderGesture(for record: SubjectRecord) -> some Gesture {
-        LongPressGesture(minimumDuration: 0.15)
-            .sequenced(before: DragGesture(minimumDistance: 0, coordinateSpace: .named(space)))
+        DragGesture(minimumDistance: 4, coordinateSpace: .named(space))
             .updating($isPressing) { _, state, _ in state = true }
-            .onChanged { value in
-                guard case .second(true, let drag?) = value else { return }
+            .onChanged { drag in
                 if dragging == nil { begin(record, at: drag.startLocation) }
                 finger = drag.location
                 moveIfNeeded()
