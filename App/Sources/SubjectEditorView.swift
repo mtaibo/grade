@@ -13,6 +13,12 @@ struct SubjectEditorView: View {
     @State private var renames: [String: String] = [:]
 
     init(record: SubjectRecord) {
+        // Grades from before the type was required show the type they were already guessed as, so
+        // only sections added from now on start without one.
+        var record = record
+        record.subject.root.updateGrades { grade in
+            if grade.category == nil { grade.category = grade.kind }
+        }
         _draft = State(initialValue: record)
     }
 
@@ -21,8 +27,13 @@ struct SubjectEditorView: View {
         return Array(Set(names.filter { name in names.count { $0 == name } > 1 })).sorted()
     }
 
+    /// Notes whose "Tipo" is still unpicked — it's required.
+    private var untypedLeafNames: [String] {
+        draft.subject.root.grades.filter { GradeType($0) == nil }.map(\.name)
+    }
+
     private var canSave: Bool {
-        !draft.subject.name.trimmingCharacters(in: .whitespaces).isEmpty && duplicateLeafNames.isEmpty
+        !draft.subject.name.trimmingCharacters(in: .whitespaces).isEmpty && duplicateLeafNames.isEmpty && untypedLeafNames.isEmpty
     }
 
     var body: some View {
@@ -44,6 +55,16 @@ struct SubjectEditorView: View {
                     Section {
                         Label(
                             "Hay notas con el mismo nombre (\(duplicateLeafNames.formatted(.list(type: .and)))). Cambia uno para poder guardar.",
+                            systemImage: "exclamationmark.triangle.fill"
+                        )
+                        .foregroundStyle(.orange)
+                    }
+                }
+
+                if !untypedLeafNames.isEmpty {
+                    Section {
+                        Label(
+                            "Falta elegir el tipo de \(untypedLeafNames.formatted(.list(type: .and))). Entra en cada una para poder guardar.",
                             systemImage: "exclamationmark.triangle.fill"
                         )
                         .foregroundStyle(.orange)
@@ -139,14 +160,16 @@ private struct NodeContentsSections: View {
 
     var body: some View {
         if node.asGroup != nil || node.asFormula != nil {
-            CalculationSection(node: $node, allowsFormula: isRoot)
+            CalculationSection(node: $node, isRoot: isRoot)
         }
         if let group = Binding(unwrapping: $node.asGroup) {
             GroupSections(group: group, isRoot: isRoot, onRenameLeaf: onRenameLeaf)
         } else if let formula = Binding(unwrapping: $node.asFormula) {
             FormulaSections(formula: formula, onRenameLeaf: onRenameLeaf)
         } else if let grade = Binding(unwrapping: $node.asGrade) {
-            GradeSettingsSections(grade: grade)
+            GradeTypeSection(grade: grade)
+            GradeInputSections(grade: grade)
+            GradeDateSection(grade: grade)
         } else {
             Section {
                 Text("Este tipo de componente todavía no se puede editar desde la app.")
@@ -161,32 +184,36 @@ private struct NodeContentsSections: View {
 /// lost; cancelling the editor undoes it.
 private struct CalculationSection: View {
     @Binding var node: Node
-    /// Only the subject's own result can be a formula; a group inside it stays a group.
-    let allowsFormula: Bool
+    /// The subject's own result (Media ponderada / Fórmula / Suma); a section inside it also offers
+    /// "Examen final".
+    let isRoot: Bool
 
     private enum Method: Hashable {
         case group(CombinationKind)
         case formula
+        case finalExam
 
         var label: String {
             switch self {
             case .group(let kind): kind.label
             case .formula: "Fórmula"
+            case .finalExam: "Examen final"
             }
         }
     }
 
     private var current: Method {
+        if !isRoot, node.isFinalExamPart { return .finalExam }
         if node.asFormula != nil { return .formula }
         return .group(node.asGroup?.combination.kind ?? .weightedAverage)
     }
 
-    /// The three methods offered for now, plus whatever an existing subject already uses (the best,
-    /// the worst…) so editing it doesn't silently change it.
+    /// The methods offered for now, plus whatever an existing subject already uses (the best, the
+    /// worst…) so editing it doesn't silently change it.
     private var methods: [Method] {
-        var methods: [Method] = [.group(.weightedAverage)]
-        if allowsFormula { methods.append(.formula) }
-        methods.append(.group(.sum))
+        var methods: [Method] = isRoot
+            ? [.group(.weightedAverage), .formula, .group(.sum)]
+            : [.group(.weightedAverage), .group(.sum), .formula, .finalExam]
         if !methods.contains(current) { methods.append(current) }
         return methods
     }
@@ -211,14 +238,25 @@ private struct CalculationSection: View {
                 }
             }
         } footer: {
-            Text(allowsFormula
+            Text(isRoot
                  ? "Tipo de evaluación de la asignatura: cómo se juntan sus notas en la final."
+                 : current == .finalExam
+                 ? "Es el examen final: va en su propia tarjeta, con la ordinaria y la extraordinaria. Sus notas se juntan con los pesos de abajo."
                  : "Tipo de evaluación de la sección: cómo se juntan sus notas.")
         }
     }
 
+    /// "Examen final" marks every note inside as the exam and keeps how they're combined; leaving it
+    /// clears the mark first, then reshapes like any other change.
     private func apply(_ method: Method) {
         guard method != current else { return }
+        if method == .finalExam {
+            node.updateGrades { $0.isFinalExam = true }
+            return
+        }
+        if current == .finalExam {
+            node.updateGrades { $0.isFinalExam = nil }
+        }
         switch (node, method) {
         case (.formula(let formula), .group(let kind)):
             node = .group(formula.asGroup(kind: kind))
@@ -308,25 +346,22 @@ private struct GroupSections: View {
         Section {
             ForEach($group.children) { $child in
                 NavigationLink {
-                    ComponentEditorView(child: $child, combination: group.combination, onRenameLeaf: onRenameLeaf)
+                    ComponentEditorView(child: $child, combination: group.combination, onRenameLeaf: onRenameLeaf) {
+                        group.children.removeAll { $0.id == child.id }
+                    }
                 } label: {
                     ComponentRow(title: child.node.title, subtitle: child.node.kindLabel, value: share(of: child))
                 }
             }
             .onDelete { group.children.remove(atOffsets: $0) }
 
-            Menu {
-                Button("Una nota", systemImage: "number") { add(.grade(Grade(name: uniqueName("Nota nueva")))) }
-                Menu("Varias notas", systemImage: "square.grid.3x2") {
-                    ForEach([3, 4, 5, 6, 8, 10, 12], id: \.self) { count in
-                        Button("\(count) notas") { addMany(count) }
-                    }
-                }
-                Button("Grupo de notas", systemImage: "square.stack") {
-                    add(.group(Engine.Group(name: uniqueName("Grupo nuevo"), combination: .weightedAverage, children: [])))
-                }
+            // A new section is a single note; more notes come from its "Número de secciones".
+            Button {
+                add(.grade(Grade(name: uniqueName("Nueva sección"))))
             } label: {
-                Label("Añadir sección", systemImage: "plus.circle.fill")
+                Label("Añadir", systemImage: "plus.circle.fill")
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(.rect)
             }
         } header: {
             CheckedHeader(title: "Secciones", isValid: check.map { $0 == nil })
@@ -358,15 +393,15 @@ private struct GroupSections: View {
     /// leaves the total off.
     private func add(_ node: Node) {
         let fills = group.combination == .weightedAverage || group.combination == .sum
-        group.children.append(WeightedChild(weight: fills ? max(0, 1 - totalWeight) : 0, node: node))
+        group.children.append(WeightedChild(weight: fills ? max(0, 1 - totalWeight) : 0, node: asExamIfNeeded(node)))
     }
 
-    /// "Prueba 1" … "Prueba N", weighted equally — the usual "media de las prácticas".
-    private func addMany(_ count: Int) {
-        let start = (1...).first { !Set(group.children.map(\.node.title)).contains("Prueba \($0)") } ?? 1
-        for number in start..<(start + count) {
-            group.children.append(WeightedChild(weight: 1 / Double(count), node: .grade(Grade(name: "Prueba \(number)"))))
-        }
+    /// A note added to the final exam is part of the exam too, or the part would stop being one.
+    private func asExamIfNeeded(_ node: Node) -> Node {
+        guard Node.group(group).isFinalExamPart else { return node }
+        var node = node
+        node.updateGrades { $0.isFinalExam = true }
+        return node
     }
 
     private func uniqueName(_ base: String) -> String {
@@ -490,7 +525,7 @@ private struct FormulaSections: View {
         let key = letters.first { formula.variables[$0] == nil } ?? "V\(formula.variables.count + 1)"
         let taken = Set(formula.variables.values.map(\.title))
         let name = taken.contains("Nota nueva") ? ((2...).lazy.map { "Nota nueva \($0)" }.first { !taken.contains($0) }!) : "Nota nueva"
-        formula.variables[key] = .grade(Grade(name: name))
+        formula.variables[key] = .grade(Grade(name: name, isFinalExam: Node.formula(formula).isFinalExamPart ? true : nil))
     }
 }
 
@@ -555,13 +590,17 @@ private struct FormulaVariableEditor: View {
                 }
             }
 
+            if let grade = Binding(unwrapping: node.asGrade) {
+                GradeTypeSection(grade: grade)
+            }
             if node.wrappedValue.asGrade != nil || node.wrappedValue.isGroupOfGrades {
                 NoteCountSection(node: node)
             }
-            if node.wrappedValue.asGroup != nil {
+            if node.wrappedValue.asGroup != nil || node.wrappedValue.asFormula != nil {
                 NodeContentsSections(node: node, onRenameLeaf: onRenameLeaf)
             } else if let grade = Binding(unwrapping: node.asGrade) {
-                GradeSettingsSections(grade: grade)
+                GradeInputSections(grade: grade)
+                GradeDateSection(grade: grade)
             }
         }
         .navigationTitle(key)
@@ -594,6 +633,12 @@ private struct ComponentEditorView: View {
     /// How the parent combines its parts: a sum counts each in points, anything else in percent.
     let combination: Engine.Group.Combination
     let onRenameLeaf: (String, String) -> Void
+    /// Removes this section from its parent; called once the screen has gone, so nothing here
+    /// reads the removed child.
+    let onDelete: () -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var isDeleting = false
 
     private var isPoints: Bool { combination == .sum }
 
@@ -603,6 +648,10 @@ private struct ComponentEditorView: View {
                 NameField(node: $child.node, onRenameLeaf: onRenameLeaf)
             } footer: {
                 Text("Nombre de la sección. Toca para cambiarlo.")
+            }
+
+            if let grade = Binding(unwrapping: $child.node.asGrade) {
+                GradeTypeSection(grade: grade)
             }
 
             Section {
@@ -626,14 +675,28 @@ private struct ComponentEditorView: View {
                      : "Lo que cuenta esta sección en la nota y en cuántas secciones se divide.")
             }
 
-            if child.node.asGroup != nil {
+            if child.node.asGroup != nil || child.node.asFormula != nil {
                 NodeContentsSections(node: $child.node, onRenameLeaf: onRenameLeaf)
             } else if let grade = Binding(unwrapping: $child.node.asGrade) {
-                GradeSettingsSections(grade: grade)
+                GradeInputSections(grade: grade)
+                GradeDateSection(grade: grade)
+            }
+
+            Section {
+                Button(role: .destructive) {
+                    isDeleting = true
+                    dismiss()
+                } label: {
+                    Label("Eliminar sección", systemImage: "trash")
+                        .foregroundStyle(.red)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(.rect)
+                }
             }
         }
         .navigationTitle(child.node.title)
         .navigationBarTitleDisplayMode(.inline)
+        .onDisappear { if isDeleting { onDelete() } }
     }
 }
 
@@ -714,18 +777,29 @@ private struct NameField: View {
     }
 }
 
-/// An optional due date: off by default, and when switched on it starts at today 23:59 — the
-/// usual deadline for a hand-in.
-private struct DateFields: View {
+/// "Fecha" with nothing set until one is picked: "Añadir" puts today 23:59 (the usual deadline for a
+/// hand-in) and shows the picker; the ✕ takes it away again.
+private struct DateRow: View {
     @Binding var date: Date?
 
     var body: some View {
-        Toggle("Fecha de entrega o examen", isOn: Binding(
-            get: { date != nil },
-            set: { date = $0 ? Self.defaultDate : nil }
-        ))
-        if let date = Binding(unwrapping: $date) {
-            DatePicker("Fecha", selection: date, displayedComponents: [.date, .hourAndMinute])
+        LabeledContent("Fecha") {
+            if let date = Binding(unwrapping: $date) {
+                HStack(spacing: 8) {
+                    DatePicker("Fecha", selection: date, displayedComponents: [.date, .hourAndMinute])
+                        .labelsHidden()
+                    Button {
+                        self.date = nil
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundStyle(.tertiary)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Quitar fecha")
+                }
+            } else {
+                Button("Añadir") { date = Self.defaultDate }
+            }
         }
     }
 
@@ -734,9 +808,76 @@ private struct DateFields: View {
     }
 }
 
-/// Everything about one grade: how the teacher gives it, whether it survives to the extraordinary
-/// sitting, and its due date.
-private struct GradeSettingsSections: View {
+/// What a grade is — Trabajo, Control, Examen parcial or Examen final. Required: a new section
+/// starts with none and the subject can't be saved until it has one. "Examen final" is also what
+/// marks the grade as the exam (its own card, a date per sitting).
+private struct GradeTypeSection: View {
+    @Binding var grade: Grade
+
+    var body: some View {
+        let type = GradeType(grade)
+        Section {
+            LabeledContent("Tipo") {
+                Menu {
+                    Picker("Tipo", selection: Binding(get: { type }, set: { $0?.apply(to: &grade) })) {
+                        ForEach(GradeType.allCases) { type in
+                            Text(type.label).tag(GradeType?.some(type))
+                        }
+                    }
+                } label: {
+                    HStack(spacing: 4) {
+                        Text(type?.label ?? "Elegir")
+                        Image(systemName: "chevron.up.chevron.down")
+                            .font(.caption.weight(.semibold))
+                    }
+                    .foregroundStyle(type == nil ? AnyShapeStyle(.red) : AnyShapeStyle(.secondary))
+                }
+            }
+        } footer: {
+            Text(type == nil
+                 ? "Obligatorio: elige qué es esta nota."
+                 : "Es el color con el que sale en el Calendario y lo que filtra.")
+        }
+    }
+}
+
+enum GradeType: CaseIterable, Identifiable {
+    case work, quiz, partialExam, finalExam
+
+    var id: Self { self }
+
+    var label: String {
+        switch self {
+        case .work: "Trabajo"
+        case .quiz: "Control"
+        case .partialExam: "Examen parcial"
+        case .finalExam: "Examen final"
+        }
+    }
+
+    /// `nil` while the grade has no type yet.
+    init?(_ grade: Grade) {
+        if grade.isFinalExam == true { self = .finalExam; return }
+        switch grade.category {
+        case .work: self = .work
+        case .quiz: self = .quiz
+        case .exam: self = .partialExam
+        case nil: return nil
+        }
+    }
+
+    func apply(to grade: inout Grade) {
+        switch self {
+        case .work: grade.category = .work
+        case .quiz: grade.category = .quiz
+        case .partialExam, .finalExam: grade.category = .exam
+        }
+        grade.isFinalExam = self == .finalExam ? true : nil
+    }
+}
+
+/// How the grade is given: in points out of a maximum, or with letters and what each is worth.
+private struct GradeInputSections: View {
     @Binding var grade: Grade
 
     private static let defaultLetters = [
@@ -747,22 +888,19 @@ private struct GradeSettingsSections: View {
         LetterGrade(letter: "E", value: 0),
     ]
 
+    private var isLetters: Bool {
+        if case .letters = grade.inputStyle { true } else { false }
+    }
+
+    /// Percent isn't offered any more; a grade still set to it shows (and is typed) as points.
     private var style: Binding<InputStyleKind> {
         Binding(
-            get: {
-                switch grade.inputStyle ?? .points {
-                case .points: .points
-                case .percent: .percent
-                case .letters: .letters
-                }
-            },
+            get: { isLetters ? .letters : .points },
             set: { kind in
                 switch kind {
                 case .points: grade.inputStyle = nil
-                case .percent: grade.inputStyle = .percent
                 case .letters:
-                    if case .letters = grade.inputStyle { return }
-                    grade.inputStyle = .letters(Self.defaultLetters)
+                    if !isLetters { grade.inputStyle = .letters(Self.defaultLetters) }
                 }
             }
         )
@@ -775,39 +913,24 @@ private struct GradeSettingsSections: View {
         )
     }
 
-    private var isKeptForExtraordinary: Bool {
-        switch grade.recovery {
-        case .notRecoverable, .savedForExtraordinary, .savedForNextYear, .partiallyRecoverableInFinal: true
-        case .recoverableInExtraordinary, nil: false
-        }
-    }
-
-    private var keepsForExtraordinary: Binding<Bool> {
-        Binding(
-            get: { isKeptForExtraordinary },
-            set: { keeps in
-                if keeps, !isKeptForExtraordinary { grade.recovery = .savedForExtraordinary }
-                if !keeps { grade.recovery = nil }
-            }
-        )
-    }
-
     var body: some View {
         Section {
-            Picker("Cómo te la dan", selection: style) {
+            Picker("Cómo se evalúa", selection: style) {
                 ForEach(InputStyleKind.allCases) { kind in
                     Text(kind.label).tag(kind)
                 }
             }
             .pickerStyle(.segmented)
-            ScaleField(scaleMax: $grade.scaleMax)
-        } header: {
-            Text("Cómo te dan la nota")
+            if !isLetters {
+                ScaleField(scaleMax: $grade.scaleMax)
+            }
         } footer: {
-            Text("Elige cómo la escribirás: en puntos (puedes cambiar sobre cuánto al ponerla), en porcentaje o con letras.")
+            Text(isLetters
+                 ? "Te la dan con letras; abajo pones lo que vale cada una."
+                 : "Te la dan en puntos, sobre esta nota máxima.")
         }
 
-        if case .letters = grade.inputStyle {
+        if isLetters {
             Section {
                 ForEach(letters) { $letter in
                     HStack {
@@ -831,39 +954,19 @@ private struct GradeSettingsSections: View {
                 Text("Lo que vale cada letra, sobre 10.")
             }
         }
+    }
+}
 
-        Section {
-            Picker("Tipo", selection: $grade.category) {
-                Text("Automático (\(grade.kind.singular))").tag(GradeCategory?.none)
-                ForEach(GradeCategory.allCases, id: \.self) { kind in
-                    Text(kind.singular).tag(GradeCategory?.some(kind))
-                }
-            }
-        } footer: {
-            Text("Trabajo, control o examen: es el color con el que sale en el Calendario y lo que filtra.")
-        }
+/// The due date, last on the screen. The final exam has one per sitting instead, set from "Fechas".
+private struct GradeDateSection: View {
+    @Binding var grade: Grade
 
-        Section {
-            Toggle("Es el examen final", isOn: Binding(
-                get: { grade.isFinalExam == true },
-                set: { grade.isFinalExam = $0 ? true : nil }
-            ))
-        } footer: {
-            Text("Va en su propia tarjeta, con huecos para la ordinaria y la extraordinaria.")
-        }
-
-        Section {
-            Toggle("Se guarda para la extraordinaria", isOn: keepsForExtraordinary)
-        } footer: {
-            Text("Si está activado, en la extraordinaria aparece ya puesta con la nota de la ordinaria (y puedes cambiarla). Si no, se repite y empieza vacía, como un examen.")
-        }
-
+    var body: some View {
         Section {
             if grade.isFinalExam == true {
-                Label("Fecha en «Fechas»", systemImage: "calendar")
-                    .foregroundStyle(.secondary)
+                LabeledContent("Fecha", value: "En «Fechas»")
             } else {
-                DateFields(date: $grade.date)
+                DateRow(date: $grade.date)
             }
         } footer: {
             Text(grade.isFinalExam == true
@@ -874,14 +977,13 @@ private struct GradeSettingsSections: View {
 }
 
 private enum InputStyleKind: String, CaseIterable, Identifiable {
-    case points, percent, letters
+    case points, letters
 
     var id: Self { self }
 
     var label: String {
         switch self {
         case .points: "Puntos"
-        case .percent: "Porcentaje"
         case .letters: "Letras"
         }
     }

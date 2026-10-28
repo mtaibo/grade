@@ -28,8 +28,8 @@ enum Convocatoria: String, CaseIterable, Identifiable {
 /// One subject in a course: its (editable) evaluation tree plus the grades entered for it, keyed
 /// by leaf name, for each sitting.
 ///
-/// The extraordinary sitting reuses the same tree: a part the guide keeps (`Grade.recovery`) carries
-/// its ordinary grade over unless re-entered; anything else (usually the exam) starts empty.
+/// The extraordinary sitting reuses the same tree: every part carries its ordinary grade over unless
+/// re-entered, except the final exam, which is retaken and starts empty.
 struct SubjectRecord: Identifiable, Codable, Equatable {
     var id: UUID
     var subject: Subject
@@ -89,12 +89,11 @@ struct SubjectRecord: Identifiable, Codable, Equatable {
         subject.root.updateGrades { if $0.isFinalExam == true { $0.date = nil } }
     }
 
-    /// Whether this leaf's ordinary grade carries over to the extraordinary sitting.
+    /// Whether this leaf's ordinary grade carries over to the extraordinary sitting: for now
+    /// everything but the final exam does (`Grade.recovery` isn't asked for in the editor yet).
     func keepsForExtraordinary(_ leaf: String) -> Bool {
-        switch subject.root.leaf(named: leaf)?.asGrade?.recovery {
-        case .notRecoverable, .savedForExtraordinary, .savedForNextYear, .partiallyRecoverableInFinal: true
-        case .recoverableInExtraordinary, nil: false
-        }
+        guard let grade = subject.root.leaf(named: leaf)?.asGrade else { return false }
+        return grade.isFinalExam != true
     }
 
     func entry(for leaf: String, in session: Convocatoria) -> GradeEntry? {
