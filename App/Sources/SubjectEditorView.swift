@@ -72,6 +72,7 @@ struct SubjectEditorView: View {
                     Text("Opciones extra para personalizar la asignatura.")
                 }
             }
+            .dismissesKeyboardOnBackgroundTap()
             .navigationTitle("Editar asignatura")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
