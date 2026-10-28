@@ -181,8 +181,11 @@ extension Node {
 
     var kindLabel: String {
         switch self {
-        case .grade: "Nota"
-        case .group(let group): "Grupo · \(group.children.count) \(group.children.count == 1 ? "parte" : "partes")"
+        case .grade: "Nota única"
+        case .group(let group):
+            isGroupOfGrades
+                ? "\(group.children.count) \(group.children.count == 1 ? "nota" : "notas")"
+                : "\(group.children.count) \(group.children.count == 1 ? "parte" : "partes")"
         case .alternatives: "Alternativas"
         case .bonus: "Bonificación"
         case .requirement: "Requisito"
@@ -224,16 +227,6 @@ enum CombinationKind: String, CaseIterable, Identifiable {
         case .max: "La mejor"
         case .min: "La peor"
         case .bestOf: "Las mejores N"
-        }
-    }
-
-    var explanation: String {
-        switch self {
-        case .weightedAverage: "Cada parte cuenta según su peso. Es lo más habitual."
-        case .sum: "Se suman los puntos de todas las partes."
-        case .max: "Cuenta solo la mejor de las partes."
-        case .min: "Cuenta solo la peor de las partes."
-        case .bestOf: "Cuentan solo las mejores, haciendo la media entre ellas."
         }
     }
 }

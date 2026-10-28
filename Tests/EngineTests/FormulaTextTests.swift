@@ -69,4 +69,46 @@ struct FormulaTextTests {
         #expect(abs(formula.maxShare(of: "P") - 2) < 1e-9)
         #expect(abs(formula.maxShare(of: "E") - 8) < 1e-9)
     }
+
+    @Test func rangesOfAFixedWeightFormula() throws {
+        let formula = Formula(
+            name: "Fija",
+            expression: try Expression.parse("0,3 * A + 0,7 * B", variables: ["A", "B"]),
+            variables: ["A": .grade(Grade(name: "A")), "B": .grade(Grade(name: "B"))]
+        )
+        #expect(abs(formula.resultRange.lowerBound) < 1e-9)
+        #expect(abs(formula.resultRange.upperBound - 10) < 1e-9)
+        let a = formula.contributionRange(of: "A")
+        #expect(abs(a.lowerBound - 3) < 1e-9 && abs(a.upperBound - 3) < 1e-9)
+    }
+
+    @Test func rangesFollowAWeightThatMoves() throws {
+        // The exam weighs 80 % when the tests give 0, and 60 % when they give their maximum.
+        let formula = Formula(
+            name: "Variable",
+            expression: try Expression.parse("max(E; 0,6 * E + 0,4 * T)", variables: ["E", "T"]),
+            variables: ["E": .grade(Grade(name: "E")), "T": .grade(Grade(name: "T"))]
+        )
+        let exam = formula.contributionRange(of: "E")
+        #expect(abs(exam.lowerBound - 6) < 1e-9)
+        #expect(abs(exam.upperBound - 10) < 1e-9)
+        #expect(formula.resultRange.upperBound <= 10 + 1e-9)
+    }
+
+    @Test func aFormulaThatOverflowsShowsIt() throws {
+        let formula = Formula(
+            name: "Mal",
+            expression: try Expression.parse("A + B", variables: ["A", "B"]),
+            variables: ["A": .grade(Grade(name: "A")), "B": .grade(Grade(name: "B"))]
+        )
+        #expect(abs(formula.resultRange.upperBound - 20) < 1e-9)
+    }
+
+    @Test func everyReferenceFormulaStaysWithinTen() {
+        for subject in Subject.all {
+            guard case .formula(let formula) = subject.root else { continue }
+            let range = formula.resultRange
+            #expect(range.lowerBound >= -1e-9 && range.upperBound <= 10 + 1e-9, "\(subject.name): \(range)")
+        }
+    }
 }

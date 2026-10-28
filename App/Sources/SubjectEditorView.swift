@@ -1,7 +1,7 @@
 import Engine
 import SwiftUI
 
-/// Edits a subject's details and evaluation tree on a draft, committed only on "Guardar" — the
+/// Edits a subject's details and evaluation tree on a draft, committed only on the checkmark — the
 /// modular part of the app: any subject's structure can be reshaped to match its real syllabus.
 struct SubjectEditorView: View {
     @Environment(Library.self) private var library
@@ -28,14 +28,10 @@ struct SubjectEditorView: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("Asignatura") {
+                Section {
                     TextField("Nombre", text: $draft.subject.name)
-                    Stepper(value: $draft.subject.ectsCredits, in: 0...30, step: 0.5) {
-                        LabeledContent("Créditos ECTS", value: draft.subject.ectsCredits.formatted())
-                    }
-                    Stepper(value: $draft.subject.root.passThreshold, in: 0...10, step: 0.5) {
-                        LabeledContent("Nota para aprobar", value: draft.subject.root.passThreshold.formatted())
-                    }
+                } footer: {
+                    Text("Insertar texto")
                 }
 
                 NodeContentsSections(node: $draft.subject.root, isRoot: true, onRenameLeaf: recordRename)
@@ -49,15 +45,26 @@ struct SubjectEditorView: View {
                         .foregroundStyle(.orange)
                     }
                 }
+
+                Section {
+                    NavigationLink {
+                        AdvancedSubjectView(subject: $draft.subject)
+                    } label: {
+                        Label("Opciones avanzadas", systemImage: "slider.horizontal.3")
+                    }
+                } footer: {
+                    Text("Insertar texto")
+                }
             }
             .navigationTitle("Editar asignatura")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancelar") { dismiss() }
+                    Button(role: .close) { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Guardar", action: save)
+                    Button(role: .confirm, action: save)
+                        .tint(.blue)
                         .disabled(!canSave)
                 }
             }
@@ -92,6 +99,32 @@ struct SubjectEditorView: View {
     }
 }
 
+/// What rarely changes once a subject is set up: its credits and the grade it takes to pass.
+private struct AdvancedSubjectView: View {
+    @Binding var subject: Subject
+
+    var body: some View {
+        Form {
+            Section {
+                Stepper(value: $subject.ectsCredits, in: 0...30, step: 0.5) {
+                    LabeledContent("Créditos ECTS", value: subject.ectsCredits.formatted())
+                }
+            } footer: {
+                Text("Insertar texto")
+            }
+            Section {
+                Stepper(value: $subject.root.passThreshold, in: 0...10, step: 0.5) {
+                    LabeledContent("Nota para aprobar", value: subject.root.passThreshold.formatted())
+                }
+            } footer: {
+                Text("Insertar texto")
+            }
+        }
+        .navigationTitle("Opciones avanzadas")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
 /// The editable contents of one node — reused for the subject's root and, recursively, for any
 /// group inside it.
 private struct NodeContentsSections: View {
@@ -100,14 +133,13 @@ private struct NodeContentsSections: View {
     let onRenameLeaf: (String, String) -> Void
 
     var body: some View {
+        if node.asGroup != nil || node.asFormula != nil {
+            CalculationSection(node: $node, allowsFormula: isRoot)
+        }
         if let group = Binding(unwrapping: $node.asGroup) {
-            GroupSections(
-                group: group,
-                onRenameLeaf: onRenameLeaf,
-                convertToFormula: isRoot ? group.wrappedValue.asFormula().map { formula in { node = .formula(formula) } } : nil
-            )
+            GroupSections(group: group, isRoot: isRoot, onRenameLeaf: onRenameLeaf)
         } else if let formula = Binding(unwrapping: $node.asFormula) {
-            FormulaSections(node: $node, formula: formula, onRenameLeaf: onRenameLeaf)
+            FormulaSections(formula: formula, onRenameLeaf: onRenameLeaf)
         } else if let grade = Binding(unwrapping: $node.asGrade) {
             GradeSettingsSections(grade: grade)
         } else {
@@ -119,51 +151,150 @@ private struct NodeContentsSections: View {
     }
 }
 
-private struct GroupSections: View {
-    @Binding var group: Engine.Group
-    let onRenameLeaf: (String, String) -> Void
-    /// Set for the subject's own group when a formula can express it exactly.
-    var convertToFormula: (() -> Void)?
+/// "Cómo se calcula": a weighted average, a hand-written formula or a sum of points. Switching
+/// reshapes the node in place — the same parts become variables or sections — so nothing typed is
+/// lost; cancelling the editor undoes it.
+private struct CalculationSection: View {
+    @Binding var node: Node
+    /// Only the subject's own result can be a formula; a group inside it stays a group.
+    let allowsFormula: Bool
 
-    private var combinationKind: Binding<CombinationKind> {
-        Binding(
-            get: { group.combination.kind },
-            set: { group.combination = Engine.Group.Combination(kind: $0, bestOf: group.combination.bestOfCount ?? 1) }
-        )
+    private enum Method: Hashable {
+        case group(CombinationKind)
+        case formula
+
+        var label: String {
+            switch self {
+            case .group(let kind): kind.label
+            case .formula: "Fórmula"
+            }
+        }
     }
 
-    private var totalWeight: Double { group.children.reduce(0) { $0 + $1.weight } }
+    private var current: Method {
+        if node.asFormula != nil { return .formula }
+        return .group(node.asGroup?.combination.kind ?? .weightedAverage)
+    }
+
+    /// The three methods offered for now, plus whatever an existing subject already uses (the best,
+    /// the worst…) so editing it doesn't silently change it.
+    private var methods: [Method] {
+        var methods: [Method] = [.group(.weightedAverage)]
+        if allowsFormula { methods.append(.formula) }
+        methods.append(.group(.sum))
+        if !methods.contains(current) { methods.append(current) }
+        return methods
+    }
+
+    private var selection: Binding<Method> {
+        Binding(get: { current }, set: apply)
+    }
 
     var body: some View {
         Section {
-            Picker("Cómo se calcula", selection: combinationKind) {
-                ForEach(CombinationKind.allCases) { kind in
-                    Text(kind.label).tag(kind)
+            Picker("Cómo se calcula", selection: selection) {
+                ForEach(methods, id: \.self) { method in
+                    Text(method.label).tag(method)
                 }
             }
-            if let count = group.combination.bestOfCount {
-                Stepper(value: Binding(get: { count }, set: { group.combination = .bestOf($0) }), in: 1...max(group.children.count, 1)) {
+            if let group = node.asGroup, let count = group.combination.bestOfCount {
+                Stepper(
+                    value: Binding(get: { count }, set: { node.asGroup?.combination = .bestOf($0) }),
+                    in: 1...max(group.children.count, 1)
+                ) {
                     LabeledContent("Cuántas cuentan", value: count.formatted())
                 }
             }
         } footer: {
-            Text(group.combination.kind.explanation)
+            Text("Insertar texto")
         }
+    }
 
-        if let convertToFormula {
-            Section {
-                Button("Convertir en fórmula", systemImage: "function", action: convertToFormula)
-            } footer: {
-                Text("Para cuando la nota final no sale de porcentajes fijos, sino de una fórmula de la guía. Cada parte pasa a ser una variable con su letra y podrás escribir la fórmula a mano.")
+    private func apply(_ method: Method) {
+        guard method != current else { return }
+        switch (node, method) {
+        case (.formula(let formula), .group(let kind)):
+            node = .group(formula.asGroup(kind: kind))
+        case (.group(var group), .group(let kind)):
+            group.combination = Engine.Group.Combination(kind: kind, bestOf: group.combination.bestOfCount ?? 1)
+            node = .group(group)
+        case (.group(var group), .formula):
+            // A formula can only spell out fixed weights; anything else starts from equal ones.
+            if group.combination != .weightedAverage, group.combination != .sum { group.combination = .weightedAverage }
+            if group.children.reduce(0, { $0 + $1.weight }) <= 0 {
+                for index in group.children.indices { group.children[index].weight = 1 / Double(group.children.count) }
+            }
+            node = .formula(group.asFormula()
+                ?? Formula(name: group.name, expression: .constant(0), variables: [:], minimum: group.minimum))
+        default:
+            break
+        }
+    }
+}
+
+/// A section title with a red ✗ on its right edge while what's inside doesn't add up.
+private struct CheckedHeader: View {
+    let title: String
+    let isValid: Bool
+
+    var body: some View {
+        HStack {
+            Text(title)
+            Spacer()
+            if !isValid {
+                Image(systemName: "xmark")
+                    .fontWeight(.bold)
+                    .foregroundStyle(.red)
+                    .accessibilityLabel("Hay un error")
             }
         }
+    }
+}
 
+/// The green "all correct" line under a section, or the red one saying what's off.
+private struct CheckMessage: View {
+    let isValid: Bool
+    let valid: String
+    let invalid: String
+
+    var body: some View {
+        if isValid {
+            Label(valid, systemImage: "checkmark.circle.fill").foregroundStyle(.green)
+        } else {
+            Label(invalid, systemImage: "xmark.circle.fill").foregroundStyle(.red)
+        }
+    }
+}
+
+private struct GroupSections: View {
+    @Binding var group: Engine.Group
+    var isRoot = false
+    let onRenameLeaf: (String, String) -> Void
+
+    private var totalWeight: Double { group.children.reduce(0) { $0 + $1.weight } }
+
+    /// A weighted average should share out exactly 100 %, and the subject's own sum exactly its 10
+    /// points. A sum inside another part can add up to anything: its parent scales it.
+    private var check: (isValid: Bool, valid: String, invalid: String)? {
+        guard !group.children.isEmpty else { return nil }
+        let isOff = abs(totalWeight - 1) > 0.001
+        switch group.combination {
+        case .weightedAverage:
+            return (!isOff, "Los porcentajes suman 100\u{00A0}%.", "Los porcentajes suman \(formatted(totalWeight * 100))\u{00A0}%; deberían sumar 100\u{00A0}%.")
+        case .sum where isRoot:
+            return (!isOff, "Los puntos suman 10.", "Los puntos suman \(formatted(totalWeight * 10)); deberían sumar 10.")
+        default:
+            return nil
+        }
+    }
+
+    var body: some View {
         Section {
             ForEach($group.children) { $child in
                 NavigationLink {
-                    ComponentEditorView(child: $child, onRenameLeaf: onRenameLeaf)
+                    ComponentEditorView(child: $child, combination: group.combination, onRenameLeaf: onRenameLeaf)
                 } label: {
-                    ComponentRow(child: child)
+                    ComponentRow(title: child.node.title, subtitle: child.node.kindLabel, value: share(of: child))
                 }
             }
             .onDelete { group.children.remove(atOffsets: $0) }
@@ -179,39 +310,41 @@ private struct GroupSections: View {
                     add(.group(Engine.Group(name: uniqueName("Grupo nuevo"), combination: .weightedAverage, children: [])))
                 }
             } label: {
-                Label("Añadir parte", systemImage: "plus.circle.fill")
+                Label("Añadir sección", systemImage: "plus.circle.fill")
             }
         } header: {
-            Text("Partes")
+            CheckedHeader(title: "Secciones", isValid: check?.isValid ?? true)
         } footer: {
-            VStack(alignment: .leading, spacing: 6) {
-                if !group.children.isEmpty, group.combination == .weightedAverage {
-                    if weightsAreOff {
-                        Label("Los pesos suman \(totalPercent) %. Normalmente suman 100 %; si no, se reparten en proporción.", systemImage: "exclamationmark.triangle.fill")
-                            .foregroundStyle(.orange)
-                    } else {
-                        Label("Los pesos suman 100 %.", systemImage: "checkmark.circle.fill")
-                            .foregroundStyle(.green)
-                    }
-                }
-                Text(group.children.isEmpty
-                     ? "Añade las partes que aparecen en la guía docente: exámenes, prácticas, trabajos…"
-                     : "Toca una parte para cambiar su nombre, su peso o cómo se pone la nota. Desliza a la izquierda para borrarla.")
+            if let check {
+                CheckMessage(isValid: check.isValid, valid: check.valid, invalid: check.invalid)
+            } else {
+                Text("Insertar texto")
             }
         }
     }
 
-    private var weightsAreOff: Bool { abs(totalWeight - 1) > 0.001 }
-
-    private var totalPercent: String {
-        (totalWeight * 100).formatted(.number.precision(.fractionLength(0...1)))
+    /// What a section counts for, in the group's own terms: its percentage or its points.
+    private func share(of child: WeightedChild) -> String {
+        switch group.combination {
+        case .sum:
+            let points = child.weight * 10
+            return "\(formatted(points)) \(abs(points - 1) < 1e-9 ? "pt" : "pts")"
+        case .weightedAverage:
+            return "\(formatted(child.weight * 100))\u{00A0}%"
+        case .max, .min, .bestOf:
+            return ""
+        }
     }
 
-    /// A new part takes whatever weight is still unassigned, so adding one rarely leaves the
-    /// weights summing to something other than 100 %.
+    private func formatted(_ value: Double) -> String {
+        value.formatted(.number.precision(.fractionLength(0...1)))
+    }
+
+    /// A new part takes whatever weight (or points) is still unassigned, so adding one rarely
+    /// leaves the total off.
     private func add(_ node: Node) {
-        let remaining = group.combination == .weightedAverage ? max(0, 1 - totalWeight) : 0
-        group.children.append(WeightedChild(weight: remaining, node: node))
+        let fills = group.combination == .weightedAverage || group.combination == .sum
+        group.children.append(WeightedChild(weight: fills ? max(0, 1 - totalWeight) : 0, node: node))
     }
 
     /// "Prueba 1" … "Prueba N", weighted equally — the usual "media de las prácticas".
@@ -230,51 +363,26 @@ private struct GroupSections: View {
 }
 
 private struct FormulaSections: View {
-    @Binding var node: Node
     @Binding var formula: Formula
     let onRenameLeaf: (String, String) -> Void
 
     @State private var text = ""
     @State private var parseError: String?
 
-    /// "Fórmula" stays selected; picking anything else turns the subject into ordinary weighted
-    /// parts, which are edited like any other. Cancel in the editor to undo it.
-    private var mode: Binding<CombinationKind?> {
-        Binding(
-            get: { nil },
-            set: { kind in
-                guard let kind else { return }
-                node = .group(formula.asGroup(kind: kind))
-            }
-        )
-    }
-
     private var orderedKeys: [String] {
         let used = formula.expression.variableOrder.filter { formula.variables[$0] != nil }
         return used + formula.variables.keys.sorted().filter { !used.contains($0) }
     }
 
-    private var preview: String? {
-        let maxima = formula.variables.mapValues(\.scaleMax)
-        let best = formula.expression.evaluate(maxima)
-        let worst = formula.expression.evaluate(maxima.mapValues { _ in 0.0 })
-        guard best.isFinite, worst.isFinite else { return nil }
-        let format = { (value: Double) in value.formatted(.number.precision(.fractionLength(0...2))) }
-        return "Con todo al máximo da \(format(best)); con todo a 0, \(format(worst))."
+    /// The formula reads, and no mix of grades takes the result below 0 or above 10.
+    private var check: (isValid: Bool, invalid: String) {
+        if parseError != nil { return (false, "La fórmula tiene un error.") }
+        let range = formula.resultRange
+        let isValid = range.lowerBound >= -0.001 && range.upperBound <= 10.001
+        return (isValid, "La fórmula puede dar de \(formatted(range.lowerBound)) a \(formatted(range.upperBound)); debería quedarse entre 0 y 10.")
     }
 
     var body: some View {
-        Section {
-            Picker("Cómo se calcula", selection: mode) {
-                Text("Fórmula").tag(CombinationKind?.none)
-                ForEach(CombinationKind.allCases) { kind in
-                    Text(kind.label).tag(CombinationKind?.some(kind))
-                }
-            }
-        } footer: {
-            Text("Elige otra forma para editarla con partes y pesos como el resto de asignaturas. Los pesos salen aproximados de la fórmula: revísalos.")
-        }
-
         Section {
             TextField("Fórmula", text: $text, axis: .vertical)
                 .font(.body.monospaced())
@@ -298,15 +406,11 @@ private struct FormulaSections: View {
                 Label(parseError, systemImage: "exclamationmark.triangle.fill")
                     .font(.footnote)
                     .foregroundStyle(.orange)
-            } else if let preview {
-                Text(preview)
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
             }
         } header: {
             Text("Fórmula")
         } footer: {
-            Text("Usa las letras de las variables con + - * / y paréntesis, min(a; b), max(a; b) y si(a >= b; entonces; si no). Decimales con coma; separa con «;».")
+            Text("Insertar texto")
         }
         .onAppear { text = formula.expression.source }
 
@@ -315,11 +419,11 @@ private struct FormulaSections: View {
                 NavigationLink {
                     FormulaVariableEditor(key: key, formula: $formula, onRenameKey: renameKey, onRenameLeaf: onRenameLeaf)
                 } label: {
-                    LabeledContent {
-                        Text("sobre \((formula.variables[key]?.scaleMax ?? 10).formatted())")
-                    } label: {
-                        Text("\(Text(key).bold())  \(formula.variables[key]?.title ?? key)")
-                    }
+                    ComponentRow(
+                        title: "\(key) · \(formula.variables[key]?.title ?? key)",
+                        subtitle: formula.variables[key]?.kindLabel ?? "",
+                        value: share(of: key)
+                    )
                 }
                 .deleteDisabled(formula.expression.variableOrder.contains(key))
             }
@@ -330,10 +434,22 @@ private struct FormulaSections: View {
             }
             Button("Añadir variable", systemImage: "plus.circle.fill", action: addVariable)
         } header: {
-            Text("Variables")
+            CheckedHeader(title: "Variables", isValid: check.isValid)
         } footer: {
-            Text("Cada parte de la nota es una variable con su letra. Una variable que usa la fórmula no se puede borrar: quítala antes de la fórmula.")
+            CheckMessage(isValid: check.isValid, valid: "La fórmula da siempre entre 0 y 10.", invalid: check.invalid)
         }
+    }
+
+    /// How much of the final grade a variable can account for, estimated from the formula: one
+    /// percentage for a fixed weight, a range when its weight moves with other grades.
+    private func share(of key: String) -> String {
+        let range = formula.contributionRange(of: key)
+        let low = max(0, range.lowerBound) * 10, high = max(0, range.upperBound) * 10
+        return high - low < 0.5 ? "\(formatted(high))\u{00A0}%" : "\(formatted(low))–\(formatted(high))\u{00A0}%"
+    }
+
+    private func formatted(_ value: Double) -> String {
+        value.formatted(.number.precision(.fractionLength(0...1)))
     }
 
     /// Applies the text as the formula as soon as it reads; until it does, the last good one stays.
@@ -460,18 +576,25 @@ private struct FormulaVariableEditor: View {
 /// (a nested group).
 private struct ComponentEditorView: View {
     @Binding var child: WeightedChild
+    /// How the parent combines its parts: a sum counts each in points, anything else in percent.
+    let combination: Engine.Group.Combination
     let onRenameLeaf: (String, String) -> Void
+
+    private var isPoints: Bool { combination == .sum }
 
     var body: some View {
         Form {
             Section {
                 NameField(node: $child.node, onRenameLeaf: onRenameLeaf)
-                LabeledContent("Peso") {
+                LabeledContent(isPoints ? "Puntos" : "Peso") {
                     HStack(spacing: 4) {
-                        TextField("0", value: Binding(get: { child.weight * 100 }, set: { child.weight = $0 / 100 }), format: .number)
+                        TextField("0", value: Binding(
+                            get: { child.weight * (isPoints ? 10 : 100) },
+                            set: { child.weight = $0 / (isPoints ? 10 : 100) }
+                        ), format: .number)
                             .keyboardType(.decimalPad)
                             .multilineTextAlignment(.trailing)
-                        Text("%").foregroundStyle(.secondary)
+                        Text(isPoints ? "pts" : "%").foregroundStyle(.secondary)
                     }
                 }
             }
@@ -704,17 +827,21 @@ private struct ScaleField: View {
     }
 }
 
+/// One section or variable in the list: its name, what it's made of underneath, and what it counts
+/// for on the right.
 private struct ComponentRow: View {
-    let child: WeightedChild
+    let title: String
+    let subtitle: String
+    let value: String
 
     var body: some View {
         LabeledContent {
-            Text("\((child.weight * 100).formatted(.number.precision(.fractionLength(0...1)))) %")
+            Text(value)
                 .monospacedDigit()
         } label: {
             VStack(alignment: .leading, spacing: 2) {
-                Text(child.node.title)
-                Text(child.node.kindLabel)
+                Text(title)
+                Text(subtitle)
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

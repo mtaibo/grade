@@ -298,3 +298,71 @@ extension Formula {
         return share > 0 ? share : maxima[key] ?? 0
     }
 }
+
+extension Formula {
+    /// The lowest and highest final grade the formula can give, sampled over every variable from 0
+    /// to its maximum. Exact for the sums and weights the guides use; for `min`, `max` and `si`
+    /// it's an estimate on a grid, which is what the editor needs to warn about a formula that
+    /// can leave the 0–10 range.
+    public var resultRange: ClosedRange<Double> {
+        let results = samples(over: Array(variables.keys)).map(value)
+        guard let low = results.min(), let high = results.max() else {
+            let constant = value([:])
+            return constant...constant
+        }
+        return low...high
+    }
+
+    /// How many points (out of 10) this variable adds going from 0 to its maximum, lowest and
+    /// highest depending on the other grades — a fixed weight gives a single value, a weight that
+    /// moves with another grade gives the "between 20 % and 40 %" a guide describes.
+    public func contributionRange(of key: String) -> ClosedRange<Double> {
+        guard let top = variables[key]?.scaleMax else { return 0...0 }
+        let contributions = samples(over: variables.keys.filter { $0 != key }).map { others in
+            var high = others, low = others
+            high[key] = top
+            low[key] = 0
+            return value(high) - value(low)
+        }
+        guard let low = contributions.min(), let high = contributions.max() else { return 0...0 }
+        return low...high
+    }
+
+    private func value(_ values: [String: Double]) -> Double {
+        let result = expression.evaluate(values)
+        return result.isFinite ? result : 0
+    }
+
+    /// Points to evaluate the formula at: a grid of evenly spaced grades per variable, as fine as
+    /// stays under ~5 000 points, or a fixed pseudo-random spread (plus all-0 and all-max) for
+    /// formulas with too many variables for even a 0-or-max grid.
+    private func samples(over keys: [String]) -> [[String: Double]] {
+        let keys = keys.sorted()
+        let maxima = keys.map { variables[$0]?.scaleMax ?? 10 }
+        guard !keys.isEmpty else { return [[:]] }
+        let budget = 5_000.0
+        let levels = Swift.min(11, Int(pow(budget, 1 / Double(keys.count))))
+        if levels >= 2 {
+            var points: [[String: Double]] = [[:]]
+            for (key, top) in zip(keys, maxima) {
+                points = points.flatMap { point in
+                    (0..<levels).map { step in
+                        var next = point
+                        next[key] = top * Double(step) / Double(levels - 1)
+                        return next
+                    }
+                }
+            }
+            return points
+        }
+        var state: UInt64 = 0x9E37_79B9_7F4A_7C15
+        func fraction() -> Double {
+            state = state &* 6_364_136_223_846_793_005 &+ 1_442_695_040_888_963_407
+            return Double(state >> 11) / Double(1 << 53)
+        }
+        let random = (0..<4_000).map { _ in
+            Dictionary(uniqueKeysWithValues: zip(keys, maxima.map { $0 * fraction() }))
+        }
+        return random + [Dictionary(uniqueKeysWithValues: zip(keys, maxima.map { _ in 0 })), Dictionary(uniqueKeysWithValues: zip(keys, maxima))]
+    }
+}
