@@ -29,9 +29,13 @@ struct SubjectEditorView: View {
         NavigationStack {
             Form {
                 Section {
-                    TextField("Nombre", text: $draft.subject.name)
+                    LabeledContent("Nombre") {
+                        TextField("Nombre", text: $draft.subject.name)
+                            .multilineTextAlignment(.trailing)
+                            .foregroundStyle(.secondary)
+                    }
                 } footer: {
-                    Text("Insertar texto")
+                    Text("Nombre de la asignatura. Toca para cambiarlo.")
                 }
 
                 NodeContentsSections(node: $draft.subject.root, isRoot: true, onRenameLeaf: recordRename)
@@ -50,10 +54,10 @@ struct SubjectEditorView: View {
                     NavigationLink {
                         AdvancedSubjectView(subject: $draft.subject)
                     } label: {
-                        Label("Opciones avanzadas", systemImage: "slider.horizontal.3")
+                        Label("Avanzado", systemImage: "slider.horizontal.3")
                     }
                 } footer: {
-                    Text("Insertar texto")
+                    Text("Opciones extra para personalizar la asignatura.")
                 }
             }
             .navigationTitle("Editar asignatura")
@@ -120,7 +124,7 @@ private struct AdvancedSubjectView: View {
                 Text("Insertar texto")
             }
         }
-        .navigationTitle("Opciones avanzadas")
+        .navigationTitle("Avanzado")
         .navigationBarTitleDisplayMode(.inline)
     }
 }
@@ -192,7 +196,7 @@ private struct CalculationSection: View {
 
     var body: some View {
         Section {
-            Picker("Cómo se calcula", selection: selection) {
+            Picker("Evaluación", selection: selection) {
                 ForEach(methods, id: \.self) { method in
                     Text(method.label).tag(method)
                 }
@@ -206,7 +210,7 @@ private struct CalculationSection: View {
                 }
             }
         } footer: {
-            Text("Insertar texto")
+            Text("Tipo de evaluación de la asignatura: cómo se juntan sus notas en la final.")
         }
     }
 
@@ -232,36 +236,35 @@ private struct CalculationSection: View {
     }
 }
 
-/// A section title with a red ✗ on its right edge while what's inside doesn't add up.
+/// A section title with a green ✓ on its right edge when what's inside adds up, a red ✗ when it
+/// doesn't, and nothing when there's nothing to check.
 private struct CheckedHeader: View {
     let title: String
-    let isValid: Bool
+    let isValid: Bool?
 
     var body: some View {
         HStack {
             Text(title)
             Spacer()
-            if !isValid {
-                Image(systemName: "xmark")
-                    .fontWeight(.bold)
-                    .foregroundStyle(.red)
-                    .accessibilityLabel("Hay un error")
+            if let isValid {
+                Image(systemName: isValid ? "checkmark.circle.fill" : "xmark.circle.fill")
+                    .font(.title3)
+                    .foregroundStyle(.white, isValid ? .green : .red)
+                    .accessibilityLabel(isValid ? "Todo cuadra" : "Hay un error")
             }
         }
     }
 }
 
-/// The green "all correct" line under a section, or the red one saying what's off.
-private struct CheckMessage: View {
-    let isValid: Bool
-    let valid: String
-    let invalid: String
+/// Under a checked section: what's off when it doesn't add up, the placeholder otherwise.
+private struct CheckFooter: View {
+    let problem: String?
 
     var body: some View {
-        if isValid {
-            Label(valid, systemImage: "checkmark.circle.fill").foregroundStyle(.green)
+        if let problem {
+            Text(problem).foregroundStyle(.red)
         } else {
-            Label(invalid, systemImage: "xmark.circle.fill").foregroundStyle(.red)
+            Text("Insertar texto")
         }
     }
 }
@@ -275,14 +278,15 @@ private struct GroupSections: View {
 
     /// A weighted average should share out exactly 100 %, and the subject's own sum exactly its 10
     /// points. A sum inside another part can add up to anything: its parent scales it.
-    private var check: (isValid: Bool, valid: String, invalid: String)? {
+    /// `nil` when there's nothing to check, `.some(nil)` when it adds up, else what's off.
+    private var check: String?? {
         guard !group.children.isEmpty else { return nil }
         let isOff = abs(totalWeight - 1) > 0.001
         switch group.combination {
         case .weightedAverage:
-            return (!isOff, "Los porcentajes suman 100\u{00A0}%.", "Los porcentajes suman \(formatted(totalWeight * 100))\u{00A0}%; deberían sumar 100\u{00A0}%.")
+            return .some(isOff ? "Los porcentajes suman \(formatted(totalWeight * 100))\u{00A0}%; deberían sumar 100\u{00A0}%." : nil)
         case .sum where isRoot:
-            return (!isOff, "Los puntos suman 10.", "Los puntos suman \(formatted(totalWeight * 10)); deberían sumar 10.")
+            return .some(isOff ? "Los puntos suman \(formatted(totalWeight * 10)); deberían sumar 10." : nil)
         default:
             return nil
         }
@@ -313,13 +317,9 @@ private struct GroupSections: View {
                 Label("Añadir sección", systemImage: "plus.circle.fill")
             }
         } header: {
-            CheckedHeader(title: "Secciones", isValid: check?.isValid ?? true)
+            CheckedHeader(title: "Secciones", isValid: check.map { $0 == nil })
         } footer: {
-            if let check {
-                CheckMessage(isValid: check.isValid, valid: check.valid, invalid: check.invalid)
-            } else {
-                Text("Insertar texto")
-            }
+            CheckFooter(problem: check ?? nil)
         }
     }
 
@@ -375,11 +375,12 @@ private struct FormulaSections: View {
     }
 
     /// The formula reads, and no mix of grades takes the result below 0 or above 10.
-    private var check: (isValid: Bool, invalid: String) {
-        if parseError != nil { return (false, "La fórmula tiene un error.") }
+    /// What's off, or `nil` when it's fine.
+    private var problem: String? {
+        if parseError != nil { return "La fórmula tiene un error." }
         let range = formula.resultRange
-        let isValid = range.lowerBound >= -0.001 && range.upperBound <= 10.001
-        return (isValid, "La fórmula puede dar de \(formatted(range.lowerBound)) a \(formatted(range.upperBound)); debería quedarse entre 0 y 10.")
+        guard range.lowerBound < -0.001 || range.upperBound > 10.001 else { return nil }
+        return "La fórmula puede dar de \(formatted(range.lowerBound)) a \(formatted(range.upperBound)); debería quedarse entre 0 y 10."
     }
 
     var body: some View {
@@ -434,9 +435,9 @@ private struct FormulaSections: View {
             }
             Button("Añadir variable", systemImage: "plus.circle.fill", action: addVariable)
         } header: {
-            CheckedHeader(title: "Variables", isValid: check.isValid)
+            CheckedHeader(title: "Variables", isValid: problem == nil)
         } footer: {
-            CheckMessage(isValid: check.isValid, valid: "La fórmula da siempre entre 0 y 10.", invalid: check.invalid)
+            CheckFooter(problem: problem)
         }
     }
 
