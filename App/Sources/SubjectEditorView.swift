@@ -27,7 +27,8 @@ struct SubjectEditorView: View {
         return Array(Set(names.filter { name in names.count { $0 == name } > 1 })).sorted()
     }
 
-    /// Notes whose "Tipo" is still unpicked — it's required.
+    /// Notes whose "Tipo" is still unpicked — it's required. New sections can't be added without
+    /// one, so this only guards against a gap elsewhere (a new formula variable).
     private var untypedLeafNames: [String] {
         draft.subject.root.grades.filter { GradeType($0) == nil }.map(\.name)
     }
@@ -55,16 +56,6 @@ struct SubjectEditorView: View {
                     Section {
                         Label(
                             "Hay notas con el mismo nombre (\(duplicateLeafNames.formatted(.list(type: .and)))). Cambia uno para poder guardar.",
-                            systemImage: "exclamationmark.triangle.fill"
-                        )
-                        .foregroundStyle(.orange)
-                    }
-                }
-
-                if !untypedLeafNames.isEmpty {
-                    Section {
-                        Label(
-                            "Falta elegir el tipo de \(untypedLeafNames.formatted(.list(type: .and))). Entra en cada una para poder guardar.",
                             systemImage: "exclamationmark.triangle.fill"
                         )
                         .foregroundStyle(.orange)
@@ -346,22 +337,22 @@ private struct GroupSections: View {
         Section {
             ForEach($group.children) { $child in
                 NavigationLink {
-                    ComponentEditorView(child: $child, combination: group.combination, onRenameLeaf: onRenameLeaf) {
+                    ComponentEditorView(child: $child, combination: group.combination, onRenameLeaf: onRenameLeaf, onDelete: {
                         group.children.removeAll { $0.id == child.id }
-                    }
+                    })
                 } label: {
                     ComponentRow(title: child.node.title, subtitle: child.node.kindLabel, value: share(of: child))
                 }
             }
             .onDelete { group.children.remove(atOffsets: $0) }
 
-            // A new section is a single note; more notes come from its "Número de secciones".
-            Button {
-                add(.grade(Grade(name: uniqueName("Nueva sección"))))
+            // Opens the new section straight away; it only joins the list once its required
+            // fields are filled and it's confirmed. Going back discards it.
+            NavigationLink {
+                NewSectionView(child: newChild(), combination: group.combination) { group.children.append($0) }
             } label: {
                 Label("Añadir", systemImage: "plus.circle.fill")
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .contentShape(.rect)
+                    .foregroundStyle(.tint)
             }
         } header: {
             CheckedHeader(title: "Secciones", isValid: check.map { $0 == nil })
@@ -389,11 +380,14 @@ private struct GroupSections: View {
         value.formatted(.number.precision(.fractionLength(0...1)))
     }
 
-    /// A new part takes whatever weight (or points) is still unassigned, so adding one rarely
-    /// leaves the total off.
-    private func add(_ node: Node) {
+    /// A single note called "Nueva sección", taking whatever weight (or points) is still
+    /// unassigned so adding one rarely leaves the total off.
+    private func newChild() -> WeightedChild {
         let fills = group.combination == .weightedAverage || group.combination == .sum
-        group.children.append(WeightedChild(weight: fills ? max(0, 1 - totalWeight) : 0, node: asExamIfNeeded(node)))
+        return WeightedChild(
+            weight: fills ? max(0, 1 - totalWeight) : 0,
+            node: asExamIfNeeded(.grade(Grade(name: uniqueName("Nueva sección"))))
+        )
     }
 
     /// A note added to the final exam is part of the exam too, or the part would stop being one.
@@ -635,12 +629,21 @@ private struct ComponentEditorView: View {
     let onRenameLeaf: (String, String) -> Void
     /// Removes this section from its parent; called once the screen has gone, so nothing here
     /// reads the removed child.
-    let onDelete: () -> Void
+    var onDelete: () -> Void = {}
+    /// Set while the section is being created: a ✓ adds it (once its required fields are filled)
+    /// instead of the delete button.
+    var onAdd: (() -> Void)?
 
     @Environment(\.dismiss) private var dismiss
     @State private var isDeleting = false
 
     private var isPoints: Bool { combination == .sum }
+
+    /// Named, and every note inside has its type.
+    private var isComplete: Bool {
+        !child.node.title.trimmingCharacters(in: .whitespaces).isEmpty
+            && child.node.grades.allSatisfy { GradeType($0) != nil }
+    }
 
     var body: some View {
         Form {
@@ -682,20 +685,34 @@ private struct ComponentEditorView: View {
                 GradeDateSection(grade: grade)
             }
 
-            Section {
-                Button(role: .destructive) {
-                    isDeleting = true
-                    dismiss()
-                } label: {
-                    Label("Eliminar sección", systemImage: "trash")
-                        .foregroundStyle(.red)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .contentShape(.rect)
+            if onAdd == nil {
+                Section {
+                    Button(role: .destructive) {
+                        isDeleting = true
+                        dismiss()
+                    } label: {
+                        Label("Eliminar sección", systemImage: "trash")
+                            .foregroundStyle(.red)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .contentShape(.rect)
+                    }
                 }
             }
         }
         .navigationTitle(child.node.title)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            if let onAdd {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(role: .confirm) {
+                        onAdd()
+                        dismiss()
+                    }
+                    .tint(.blue)
+                    .disabled(!isComplete)
+                }
+            }
+        }
         .onDisappear { if isDeleting { onDelete() } }
     }
 }
@@ -714,6 +731,26 @@ private struct NoteCountSection: View {
                  ? "Una sola nota. Súbelo si en clase hay varias (por ejemplo, dos prácticas): la parte será su media. La nota ya puesta de esta parte se borra."
                  : "La parte se calcula con estas \(count) notas. Más abajo puedes cambiar el nombre y el peso de cada una.")
         }
+    }
+}
+
+/// A section being added: edited on its own copy and handed back only when confirmed.
+private struct NewSectionView: View {
+    @State private var child: WeightedChild
+    let combination: Engine.Group.Combination
+    let onAdd: (WeightedChild) -> Void
+
+    init(child: WeightedChild, combination: Engine.Group.Combination, onAdd: @escaping (WeightedChild) -> Void) {
+        _child = State(initialValue: child)
+        self.combination = combination
+        self.onAdd = onAdd
+    }
+
+    var body: some View {
+        // A brand-new note has no stored grade to move, so renames need no tracking here.
+        ComponentEditorView(child: $child, combination: combination, onRenameLeaf: { _, _ in }, onAdd: {
+            onAdd(child)
+        })
     }
 }
 
