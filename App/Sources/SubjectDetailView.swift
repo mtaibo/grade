@@ -706,13 +706,21 @@ private struct PartCard: View {
                 // A grid, so the dates and the values line up in columns whatever their width
                 // ("8,3" above "0,83 / 2").
                 let hasDates = group.children.contains { $0.node.asGrade?.date != nil }
+                let shares = absoluteShares(of: group)
                 Grid(alignment: .trailing, horizontalSpacing: 12, verticalSpacing: 6) {
                     ForEach(group.children) { child in
                         if let grade = child.node.asGrade {
                             GridRow {
-                                Text(grade.name)
-                                    .foregroundStyle(.secondary)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                                    Text(grade.name)
+                                        .foregroundStyle(.secondary)
+                                    if let share = shares[child.id] {
+                                        Text("\(share.formatted(.number.precision(.fractionLength(0...2))))\u{00A0}%")
+                                            .font(.caption.monospacedDigit())
+                                            .foregroundStyle(.tertiary)
+                                    }
+                                }
+                                .frame(maxWidth: .infinity, alignment: .leading)
                                     .gridColumnAlignment(.leading)
                                 if hasDates {
                                     if let date = grade.date {
@@ -732,6 +740,17 @@ private struct PartCard: View {
         }
         .card()
         .contentShape(.rect)
+    }
+
+    /// Each note's share of the whole subject — its share of the part times the part's weight, so
+    /// a practical worth a third of a 10 % part reads 3,33 %. Only when the subject is a weighted
+    /// average and the part splits by fixed weights (an average or a sum); empty otherwise.
+    private func absoluteShares(of group: Engine.Group) -> [WeightedChild.ID: Double] {
+        guard record.subject.root.asGroup?.combination == .weightedAverage, let partPercent = item.weightPercent,
+              group.combination == .weightedAverage || group.combination == .sum else { return [:] }
+        let total = group.children.reduce(0) { $0 + $1.weight }
+        guard total > 0 else { return [:] }
+        return Dictionary(uniqueKeysWithValues: group.children.map { ($0.id, $0.weight / total * partPercent) })
     }
 }
 
