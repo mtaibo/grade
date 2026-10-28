@@ -8,7 +8,7 @@ dentro de `P4`). Para verlo y editarlo en el navegador: `make todo`.
 
 ### P1 · Pantalla principal
 
-- [ ] Al soltar una tarjeta después de moverla en el modo de reordenar, la animación da un tirón extraño.
+- [x] Al soltar una tarjeta después de moverla en el modo de reordenar, la animación da un tirón extraño.
 - [ ] Indicador del cuatrimestre absoluto a la altura de «1.º Cuatrimestre»: `Q3` para el primer cuatrimestre de 2.º, etc. (Q mayúscula y el número pegado), con el mismo tamaño y color que el texto del cuatrimestre.
 
 ### P2 · Calendario

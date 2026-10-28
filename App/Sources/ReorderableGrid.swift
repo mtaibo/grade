@@ -75,6 +75,11 @@ struct ReorderableGrid<Normal: View, Trailing: View>: View {
         .onChange(of: isPressing) { _, pressing in
             if !pressing { finish() }
         }
+        // Once the committed order is back in `records`, the grid can follow them again. The
+        // order is the same, so nothing moves.
+        .onChange(of: records.map(\.id)) { _, ids in
+            if dragging == nil, ids == order { order = nil }
+        }
     }
 
     private func editableTile(_ record: SubjectRecord) -> some View {
@@ -159,10 +164,12 @@ struct ReorderableGrid<Normal: View, Trailing: View>: View {
         withAnimation(.snappy) { order = ids }
     }
 
+    /// Keeps showing `order` until `records` catch up: switching back to them in the same update
+    /// as the commit sent the tiles that had moved flying off and back.
     private func finish() {
         guard dragging != nil, let order else { return }
         commit(order)
-        reset()
+        withAnimation(.snappy) { dragging = nil }
     }
 
     private func reset() {
