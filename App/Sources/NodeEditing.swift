@@ -53,6 +53,18 @@ extension Node {
         }
     }
 
+    /// The name of the part that gets the exam card ("Prueba objetiva"), if any — used wherever its
+    /// sittings' dates are shown so they read the same everywhere.
+    var examTitle: String? {
+        switch self {
+        case .group(let group): group.children.first { $0.node.isFinalExamPart }?.node.title
+        case .formula(let formula):
+            formula.expression.variableOrder.compactMap { formula.variables[$0] }.first(where: \.isFinalExamPart)?.title
+                ?? formula.variables.keys.sorted().compactMap { formula.variables[$0] }.first(where: \.isFinalExamPart)?.title
+        default: isFinalExamPart ? title : nil
+        }
+    }
+
     /// A group made only of plain grades: what "several notes" in the editor turns a part into.
     var isGroupOfGrades: Bool {
         guard case .group(let group) = self else { return false }

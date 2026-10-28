@@ -88,6 +88,7 @@ struct SubjectEditorView: View {
         var record = draft
         record.subject.root.sanitize()
         record.subject.name = record.subject.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        record.moveExamGradeDates()
         let leaves = Set(record.subject.root.allLeafNames())
         func migrated(_ entries: [String: GradeEntry]) -> [String: GradeEntry] {
             var moved: [String: GradeEntry] = [:]
@@ -247,24 +248,33 @@ private struct CheckedHeader: View {
             Text(title)
             Spacer()
             if let isValid {
-                Image(systemName: isValid ? "checkmark.circle.fill" : "xmark.circle.fill")
-                    .font(.title3)
-                    .foregroundStyle(.white, isValid ? .green : .red)
-                    .accessibilityLabel(isValid ? "Todo cuadra" : "Hay un error")
+                SwiftUI.Group {
+                    if isValid {
+                        Image(systemName: "checkmark")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.green)
+                    } else {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.title3)
+                            .foregroundStyle(.white, .red)
+                    }
+                }
+                .accessibilityLabel(isValid ? "Todo cuadra" : "Hay un error")
             }
         }
     }
 }
 
-/// Under a checked section: what's off when it doesn't add up, the placeholder otherwise.
+/// Under a checked section: what's off when it doesn't add up, what the section is for otherwise.
 private struct CheckFooter: View {
     let problem: String?
+    let hint: String
 
     var body: some View {
         if let problem {
             Text(problem).foregroundStyle(.red)
         } else {
-            Text("Insertar texto")
+            Text(hint)
         }
     }
 }
@@ -319,7 +329,7 @@ private struct GroupSections: View {
         } header: {
             CheckedHeader(title: "Secciones", isValid: check.map { $0 == nil })
         } footer: {
-            CheckFooter(problem: check ?? nil)
+            CheckFooter(problem: check ?? nil, hint: "Personaliza las secciones en las que se divide la nota final.")
         }
     }
 
@@ -437,7 +447,7 @@ private struct FormulaSections: View {
         } header: {
             CheckedHeader(title: "Variables", isValid: problem == nil)
         } footer: {
-            CheckFooter(problem: problem)
+            CheckFooter(problem: problem, hint: "Personaliza las variables con las que se calcula la nota final.")
         }
     }
 
@@ -795,9 +805,16 @@ private struct GradeSettingsSections: View {
         }
 
         Section {
-            DateFields(date: $grade.date)
+            if grade.isFinalExam == true {
+                Label("Fecha en «Fechas»", systemImage: "calendar")
+                    .foregroundStyle(.secondary)
+            } else {
+                DateFields(date: $grade.date)
+            }
         } footer: {
-            Text("Si tiene fecha, aparece en el Calendario.")
+            Text(grade.isFinalExam == true
+                 ? "El examen final tiene una fecha por convocatoria; se pone desde «Fechas» en la asignatura."
+                 : "Si tiene fecha, aparece en el Calendario.")
         }
     }
 }

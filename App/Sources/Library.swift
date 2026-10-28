@@ -79,6 +79,16 @@ struct SubjectRecord: Identifiable, Codable, Equatable {
         }
     }
 
+    /// The exam's date lives here, one per sitting. A final-exam grade with a date of its own (set
+    /// before it was marked as the exam, or from an older version) hands it to the ordinary sitting
+    /// when that has none, so the exam never shows two different dates.
+    mutating func moveExamGradeDates() {
+        let dates = subject.root.grades.filter { $0.isFinalExam == true }.compactMap(\.date)
+        guard !dates.isEmpty else { return }
+        if ordinaryExamDate == nil { ordinaryExamDate = dates.min() }
+        subject.root.updateGrades { if $0.isFinalExam == true { $0.date = nil } }
+    }
+
     /// Whether this leaf's ordinary grade carries over to the extraordinary sitting.
     func keepsForExtraordinary(_ leaf: String) -> Bool {
         switch subject.root.leaf(named: leaf)?.asGrade?.recovery {
@@ -276,6 +286,9 @@ final class Library {
                 root.updateGrades { if names.contains($0.name) { $0.isFinalExam = true } }
                 courses[course].subjects[index].subject.root = root
             }
+        }
+        for course in courses.indices {
+            for index in courses[course].subjects.indices { courses[course].subjects[index].moveExamGradeDates() }
         }
     }
 

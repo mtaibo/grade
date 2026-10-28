@@ -59,7 +59,7 @@ extension Library {
         courses.flatMap(\.subjects).flatMap { record in
             let inputs = SubjectProgress.inputs(record, session: .ordinary)
             let style = SubjectStyle(record)
-            let parts = record.subject.root.datedGrades.map { item in
+            let parts = record.subject.root.datedGrades.filter { record.subject.root.leaf(named: $0.name)?.asGrade?.isFinalExam != true }.map { item in
                 let grade = record.subject.root.leaf(named: item.name)?.asGrade
                 return Deadline(
                     recordID: record.id,
@@ -75,7 +75,7 @@ extension Library {
             }
             let exams = Convocatoria.allCases.compactMap { session in
                 record.examDate(for: session).map { date in
-                    Deadline(recordID: record.id, subjectName: record.subject.name, leafName: "Examen · \(session.label)", date: date, kind: .exam, symbol: style.symbol, tint: style.tint, grade: nil, scaleMax: 10)
+                    Deadline(recordID: record.id, subjectName: record.subject.name, leafName: "\(record.subject.root.examTitle ?? "Examen") · \(session.label)", date: date, kind: .exam, symbol: style.symbol, tint: style.tint, grade: nil, scaleMax: 10)
                 }
             }
             return parts + exams

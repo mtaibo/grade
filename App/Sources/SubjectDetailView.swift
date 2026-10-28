@@ -104,7 +104,7 @@ struct SubjectDetailView: View {
             ToolbarItem(placement: .primaryAction) {
                 Menu {
                     Button("Editar", systemImage: "pencil") { isEditing = true }
-                    Button("Modificar fechas", systemImage: "calendar") { isEditingDates = true }
+                    Button("Fechas", systemImage: "calendar") { isEditingDates = true }
                     Button("Simulador", systemImage: "flask") {
                         simulation = Library(simulating: record, degree: library.degree)
                     }
@@ -478,7 +478,7 @@ private struct ExamSlot: View {
     }
 }
 
-/// Picks a first exam date. Once set it only changes from "Modificar fechas".
+/// Picks a first exam date. Once set it only changes from "Fechas".
 private struct ExamDateSheet: View {
     let session: Convocatoria
     let onSave: (Date) -> Void
@@ -521,7 +521,8 @@ private struct DatesSheet: View {
         NavigationStack {
             if let record = library.record(id: recordID) {
                 Form {
-                    Section("Examen") {
+                    let exam = record.subject.root.examTitle
+                    Section(exam ?? "Examen") {
                         ForEach(Convocatoria.allCases) { session in
                             DateToggleRow(title: session.label, defaultHour: 9, date: Binding(
                                 get: { record.examDate(for: session) },
@@ -529,7 +530,10 @@ private struct DatesSheet: View {
                             ))
                         }
                     }
-                    let leaves = record.subject.root.allLeafNames().filter { record.subject.root.leaf(named: $0)?.asGrade != nil }
+                    let leaves = record.subject.root.allLeafNames().filter { 
+                        guard let grade = record.subject.root.leaf(named: $0)?.asGrade else { return false }
+                        return grade.isFinalExam != true
+                    }
                     if !leaves.isEmpty {
                         Section("Pruebas y entregas") {
                             ForEach(leaves, id: \.self) { name in
