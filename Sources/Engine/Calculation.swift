@@ -70,7 +70,10 @@ extension Node {
             return 0
         case .formula(let formula):
             let values = formula.variables.mapValues { $0.evaluate(inputs, pendingFraction: pendingFraction) }
-            return Self.applyingCaps(formula.expression.evaluate(values), from: Array(formula.variables.values), inputs, pendingFraction)
+            // A hand-typed formula can divide by a grade that is still 0; a non-number would
+            // otherwise reach the screen (and the JSON file) as NaN or infinity.
+            let result = formula.expression.evaluate(values)
+            return Self.applyingCaps(result.isFinite ? result : 0, from: Array(formula.variables.values), inputs, pendingFraction)
         }
     }
 

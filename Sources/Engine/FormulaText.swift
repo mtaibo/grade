@@ -96,6 +96,9 @@ private struct FormulaParser {
     let characters: [Character]
     let variables: Set<String>
     var index = 0
+    /// How many parentheses and calls are open, capped so a pasted wall of «(» can't overflow the stack.
+    var depth = 0
+    static let maxDepth = 40
 
     init(characters: [Character], variables: Set<String>) {
         self.characters = characters
@@ -143,12 +146,18 @@ private struct FormulaParser {
         skipSpaces()
         if let c = peek, c == "-" || c == "−" {
             index += 1
+            depth += 1
+            defer { depth -= 1 }
+            guard depth <= Self.maxDepth else { throw FormulaParseError(message: "La fórmula tiene demasiados signos seguidos.") }
             return .subtract(.constant(0), try parseUnary())
         }
         return try parsePrimary()
     }
 
     mutating func parsePrimary() throws -> Expression {
+        depth += 1
+        defer { depth -= 1 }
+        guard depth <= Self.maxDepth else { throw FormulaParseError(message: "La fórmula tiene demasiados paréntesis anidados.") }
         skipSpaces()
         guard let c = peek else { throw FormulaParseError(message: "La fórmula termina antes de tiempo.") }
         if c == "(" {

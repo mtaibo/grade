@@ -22,10 +22,9 @@ public indirect enum Expression: Sendable, Equatable, Codable {
         case .constant(let value):
             return value
         case .variable(let name):
-            guard let value = variables[name] else {
-                preconditionFailure("missing value for variable \"\(name)\"")
-            }
-            return value
+            // A variable the formula no longer has (a hand-edited or old file) counts as 0 rather
+            // than taking the app down.
+            return variables[name] ?? 0
         case .add(let lhs, let rhs):
             return lhs.evaluate(variables) + rhs.evaluate(variables)
         case .subtract(let lhs, let rhs):
