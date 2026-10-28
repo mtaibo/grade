@@ -30,6 +30,9 @@ struct HomeView: View {
     @AppStorage("selectedYear") private var selectedYear = 0
     @AppStorage("selectedTerm") private var selectedTerm = 0
     @AppStorage("subjectLayout") private var layout = SubjectLayout.cards
+    /// The custom view on screen, by id; empty when showing one of the degree's periods.
+    @AppStorage("selectedCustomView") private var selectedCustomView = ""
+    @State private var isChoosingView = false
 
     @State private var placement: SubjectPlacement?
     @State private var editing: SubjectRecord?
@@ -74,6 +77,20 @@ struct HomeView: View {
         return periods.contains(stored) ? stored : periods.first ?? Period(year: 1, term: 1)
     }
 
+    /// The custom view on screen, if one is selected and still exists.
+    private var customSelection: CustomSelection? {
+        guard let id = UUID(uuidString: selectedCustomView) else { return nil }
+        return library.selections.first { $0.id == id }
+    }
+
+    private var currentSelection: HomeSelection {
+        customSelection.map { .custom($0.id) } ?? .period(period)
+    }
+
+    private var customSubjects: [SubjectRecord] {
+        customSelection?.subjectIDs.compactMap(library.record(id:)) ?? []
+    }
+
     private var yearSubjects: [SubjectRecord] {
         library.courses.first { $0.year == period.year }?.subjects ?? []
     }
@@ -99,8 +116,22 @@ struct HomeView: View {
                     VStack(spacing: 0) {
                     VStack(alignment: .leading, spacing: 28) {
                         header
-                        grid(termSubjects, canAdd: true)
-                        if !yearLongSubjects.isEmpty {
+                        if let customSelection {
+                            if customSubjects.isEmpty {
+                                ContentUnavailableView {
+                                    Label("Vista vacía", systemImage: "rectangle.dashed")
+                                } description: {
+                                    Text("Sus asignaturas se han borrado. Elige otras o cambia de vista.")
+                                } actions: {
+                                    Button("Cambiar de vista") { isChoosingView = true }
+                                }
+                            } else {
+                                grid(customSubjects, in: customSelection)
+                            }
+                        } else {
+                            grid(termSubjects, canAdd: true)
+                        }
+                        if customSelection == nil, !yearLongSubjects.isEmpty {
                             VStack(alignment: .leading, spacing: 10) {
                                 Text("Todo el año")
                                     .font(.footnote.weight(.semibold))
@@ -151,6 +182,16 @@ struct HomeView: View {
             .navigationDestination(for: SubjectRecord.ID.self) { id in
                 SubjectDetailView(recordID: id)
             }
+            .navigationDestination(isPresented: $isChoosingView) {
+                HomeViewsScreen(periods: periods, current: currentSelection) { selection in
+                    withAnimation(.snappy) {
+                        switch selection {
+                        case .period(let period): select(period)
+                        case .custom(let id): selectedCustomView = id.uuidString
+                        }
+                    }
+                }
+            }
             .sheet(item: $placement) { placement in
                 NewSubjectView(placement: placement, degree: library.degree, onSaved: show)
             }
@@ -177,10 +218,12 @@ struct HomeView: View {
 
     /// The year and term as the screen's title, big enough to read at a glance.
     private var header: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Text(period.title)
+        let heading: (title: String, subtitle: String?) = customSelection.map(library.heading(for:))
+            ?? (period.title, period.subtitle(in: library.degree))
+        return VStack(alignment: .leading, spacing: 0) {
+            Text(heading.title)
                 .font(.system(size: yearSize, weight: .bold, design: .rounded))
-            if let subtitle = period.subtitle(in: library.degree) {
+            if let subtitle = heading.subtitle {
                 Text(subtitle)
                     .font(.system(size: termSize, weight: .semibold, design: .rounded))
                     .foregroundStyle(.secondary)
@@ -191,14 +234,23 @@ struct HomeView: View {
         .accessibilityAddTraits(.isHeader)
     }
 
-    private func grid(_ records: [SubjectRecord], canAdd: Bool = false) -> some View {
+    /// `selection` set for a custom view: dragging reorders the view itself, not the subjects'
+    /// years, and there's no + (subjects are added to a view from "Vista").
+    private func grid(_ records: [SubjectRecord], canAdd: Bool = false, in selection: CustomSelection? = nil) -> some View {
         let ids = records.map(\.id)
         return ReorderableGrid(
             records: records,
             isEditing: isEditing,
             columns: columns,
             isCompact: layout == .list,
-            commit: { order in library.reorderSubjects(order, before: nil, among: ids) },
+            commit: { order in
+                if let selection {
+                    let rest = selection.subjectIDs.filter { !ids.contains($0) }
+                    library.reorderSelection(selection.id, to: order + rest)
+                } else {
+                    library.reorderSubjects(order, before: nil, among: ids)
+                }
+            },
             onDelete: { deleting = $0 },
             normal: { record in
                 NavigationLink(value: record.id) {
@@ -208,7 +260,7 @@ struct HomeView: View {
                 .contextMenu {
                     Button("Personalizar", systemImage: "paintpalette") { customizing = record }
                     Button("Mover", systemImage: "arrow.right.circle") {
-                        placement = .move(record.id, name: record.subject.name, from: Period(year: period.year, term: record.term))
+                        placement = .move(record.id, name: record.subject.name, from: library.period(of: record.id) ?? Period(year: period.year, term: record.term))
                     }
                     Button("Editar evaluación", systemImage: "slider.horizontal.3") { editing = record }
                     Divider()
@@ -231,40 +283,16 @@ struct HomeView: View {
                     .fontWeight(.semibold)
             }
         } else {
-            if periods.count > 1 {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Menu {
-                        ForEach(Dictionary(grouping: periods, by: \.year).sorted { $0.key < $1.key }, id: \.key) { year, options in
-                            Section(Period(year: year).title) {
-                                ForEach(options, id: \.self) { option in
-                                    Button {
-                                        withAnimation(.snappy) { select(option) }
-                                    } label: {
-                                        if option == period {
-                                            Label(option.term.map(library.degree.termLabel) ?? "Todo el año", systemImage: "checkmark")
-                                        } else {
-                                            Text(option.term.map(library.degree.termLabel) ?? "Todo el año")
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    } label: {
-                        Image(systemName: "calendar")
-                    }
-                    .accessibilityLabel("Cambiar de año o cuatrimestre")
-                }
-                // Keeps the two buttons as separate glass capsules instead of one joined pill.
-                ToolbarSpacer(.fixed, placement: .topBarTrailing)
-            }
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
-                    Picker("Vista", selection: $layout) {
+                    Picker("Diseño", selection: $layout) {
                         ForEach(SubjectLayout.allCases) { option in
                             Label(option.title, systemImage: option.icon).tag(option)
                         }
                     }
                     .pickerStyle(.inline)
+                    Divider()
+                    Button("Vista", systemImage: "calendar") { isChoosingView = true }
                 } label: {
                     Image(systemName: "ellipsis")
                 }
@@ -274,12 +302,15 @@ struct HomeView: View {
     }
 
     private func select(_ period: Period) {
+        selectedCustomView = ""
         selectedYear = period.year
         selectedTerm = period.term ?? 0
     }
 
     /// After adding or moving a subject, follow it — a year-long one shows in the year's first term.
+    /// Not while a custom view is on screen: the subject stays in it wherever it moved.
     private func show(_ saved: Period) {
+        guard customSelection == nil else { return }
         select(saved.term == nil ? periods.first { $0.year == saved.year } ?? saved : saved)
     }
 }

@@ -162,6 +162,8 @@ struct Course: Identifiable, Codable, Equatable {
 final class Library {
     private(set) var courses: [Course]
     private(set) var degree = DegreeSettings()
+    /// Home-screen views made by hand from any subjects (see `CustomSelection`).
+    private(set) var selections: [CustomSelection] = []
     /// `nil` for a simulation: it lives only in memory and never touches the real library.
     @ObservationIgnored private let fileURL: URL?
     /// Subjects that have a teaching guide (PDF) stored next to the library file.
@@ -170,6 +172,7 @@ final class Library {
     private struct Snapshot: Codable {
         var courses: [Course]
         var degree: DegreeSettings?
+        var selections: [CustomSelection]?
     }
 
     /// Both allow NaN and infinity, so a stray non-number can never make every later save fail.
@@ -191,6 +194,7 @@ final class Library {
         if let data, let snapshot = try? Self.fileDecoder.decode(Snapshot.self, from: data) {
             courses = snapshot.courses
             degree = snapshot.degree ?? DegreeSettings()
+            selections = snapshot.selections ?? []
         } else if let data, let courses = try? Self.fileDecoder.decode([Course].self, from: data) {
             // The first file format was a bare list of courses.
             self.courses = courses
@@ -387,8 +391,41 @@ final class Library {
 
     func deleteSubject(id: SubjectRecord.ID) {
         removeSubject(id)
+        for index in selections.indices { selections[index].subjectIDs.removeAll { $0 == id } }
         removeGuide(for: id)
         save()
+    }
+
+    // MARK: Custom views
+
+    /// Adds the view, or replaces the one with its id.
+    func saveSelection(_ selection: CustomSelection) {
+        if let index = selections.firstIndex(where: { $0.id == selection.id }) {
+            selections[index] = selection
+        } else {
+            selections.append(selection)
+        }
+        save()
+    }
+
+    func deleteSelection(id: CustomSelection.ID) {
+        selections.removeAll { $0.id == id }
+        save()
+    }
+
+    /// A custom view's subjects in a new order, as dragged on the home screen.
+    func reorderSelection(_ id: CustomSelection.ID, to order: [SubjectRecord.ID]) {
+        guard let index = selections.firstIndex(where: { $0.id == id }) else { return }
+        let current = selections[index].subjectIDs
+        guard Set(order) == Set(current), order.count == current.count else { return }
+        selections[index].subjectIDs = order
+        save()
+    }
+
+    /// The year and term a subject is taught in.
+    func period(of id: SubjectRecord.ID) -> Period? {
+        guard let year = year(of: id) else { return nil }
+        return Period(year: year, term: record(id: id)?.term)
     }
 
     /// The year each subject currently lives in.
@@ -421,13 +458,14 @@ final class Library {
     /// Everything stored — every subject with its evaluation, grades and dates, plus the degree
     /// settings — as the contents of a `.mark` file.
     func backupData() throws -> Data {
-        try MarkBackup.encoder.encode(MarkBackup(courses: courses, degree: degree, guides: allGuides()))
+        try MarkBackup.encoder.encode(MarkBackup(courses: courses, degree: degree, guides: allGuides(), selections: selections))
     }
 
     /// Replaces everything with a backup's contents.
     func restore(_ backup: MarkBackup) {
         courses = backup.courses
         degree = backup.degree
+        selections = backup.selections ?? []
         normalize()
         for id in guideIDs { removeGuide(for: id) }
         let ids = Set(courses.flatMap(\.subjects).map(\.id))
@@ -439,6 +477,7 @@ final class Library {
 
     func removeAllSubjects() {
         courses = []
+        selections = []
         for id in guideIDs { removeGuide(for: id) }
         save()
     }
@@ -477,7 +516,7 @@ final class Library {
         guard let fileURL else { return }
         do {
             try FileManager.default.createDirectory(at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
-            try Self.fileEncoder.encode(Snapshot(courses: courses, degree: degree))
+            try Self.fileEncoder.encode(Snapshot(courses: courses, degree: degree, selections: selections))
                 .write(to: fileURL, options: .atomic)
         } catch {
             assertionFailure("Couldn't save the library: \(error)")

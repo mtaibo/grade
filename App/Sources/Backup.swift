@@ -20,6 +20,8 @@ struct MarkBackup: Codable {
     var degree: DegreeSettings
     /// The teaching-guide PDFs, by subject id. Absent in copies made before guides existed.
     var guides: [String: Data]?
+    /// The custom home-screen views. Absent in copies made before they existed.
+    var selections: [CustomSelection]?
 
     var subjectCount: Int { courses.reduce(0) { $0 + $1.subjects.count } }
 }
