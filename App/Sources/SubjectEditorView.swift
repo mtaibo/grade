@@ -780,7 +780,8 @@ private struct NoteCountRow: View {
     }
 }
 
-private struct StepButton: View {
+/// A round glass − / + button, as in "Subsecciones".
+struct StepButton: View {
     let systemImage: String
     let label: String
     let isEnabled: Bool

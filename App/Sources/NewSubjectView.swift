@@ -55,15 +55,27 @@ struct NewSubjectView: View {
             Form {
                 if isCreating {
                     Section {
-                        TextField("Nombre de la asignatura", text: $name)
-                            .focused($nameFocused)
-                            .submitLabel(.done)
+                        LabeledContent("Nombre") {
+                            TextField("Nueva asignatura", text: $name)
+                                .focused($nameFocused)
+                                .submitLabel(.done)
+                                .multilineTextAlignment(.trailing)
+                                .foregroundStyle(.secondary)
+                        }
                     }
                 }
 
                 Section {
-                    Stepper(value: $year, in: 1...max(degree.years, year)) {
-                        LabeledContent("Año", value: Period(year: year).title)
+                    LabeledContent("Año") {
+                        HStack(spacing: 10) {
+                            Text(Period(year: year).title)
+                                .monospacedDigit()
+                                .foregroundStyle(.secondary)
+                                .contentTransition(.numericText())
+                            StepButton(systemImage: "minus", label: "Año anterior", isEnabled: year > 1) { year -= 1 }
+                            StepButton(systemImage: "plus", label: "Año siguiente", isEnabled: year < max(degree.years, year)) { year += 1 }
+                        }
+                        .animation(.snappy, value: year)
                     }
                     Picker(degree.termName.isEmpty ? "Cuatrimestre" : degree.termName, selection: $relativeTerm) {
                         Text("Todo el año").tag(Int?.none)
@@ -75,20 +87,28 @@ struct NewSubjectView: View {
                     Text("Si la asignatura dura todo el año, elige «Todo el año»: aparecerá en todos sus periodos.")
                 }
             }
+            // Everything fits at this height: with the keyboard down, a drag on the form moves the
+            // sheet itself (as from its title) instead of scrolling the rows up inside it.
+            .scrollDisabled(!nameFocused)
             .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancelar") { dismiss() }
+                    Button(role: .close) { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button(isCreating ? "Añadir" : "Mover", action: save)
+                    Button(role: .confirm, action: save)
+                        .tint(.blue)
                         .disabled(!canSave)
+                        .accessibilityLabel(isCreating ? "Añadir" : "Mover")
                 }
             }
             .onAppear { nameFocused = isCreating }
         }
         .presentationDetents([.medium])
+        // A half-height sheet is glass by default; this gives it the same solid grouped background
+        // as the full-height editor sheets.
+        .presentationBackground(Color(.systemGroupedBackground))
     }
 
     private var title: String {
