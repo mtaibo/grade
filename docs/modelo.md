@@ -16,7 +16,7 @@ Siguen los 5 nodos de `guide/proyect.md` §4, como un `indirect enum Node` con u
 - **`Bonus`**: puntos que se suman al padre, con un tope.
 - **`Requirement`**: condición sin nota que bloquea el aprobado (p. ej. asistencia mínima).
 
-`Minimum` (umbral + consecuencia: `doesNotAverage` / `capAt` / `fails`) y `Recovery` viven como
+`Minimum` (umbral + consecuencia: `doesNotAverage` / `capAt` / `fails` / `voids` / `sendsToExtraordinary`) y `Recovery` viven como
 reglas en cualquier nodo, no como tipos de nodo propios — así lo describe el brief.
 
 ## Decisión: nodo `Formula` con `Expression` (no estaba en el brief)
@@ -69,12 +69,32 @@ aprobado aunque la media llegue al 5. Entra en `status` y en `neededFraction`: l
 la que alcanza la media *y* todos esos mínimos. Es monótono igual que `evaluate`, así que comparte la
 misma búsqueda binaria. El modelo ya lo expresaba desde el principio; el motor no lo comprobaba hasta
 que la cuarta guía lo hizo necesario — con un 10 en prácticas y un 3,8 en el examen decía "Aprobada".
-**Mínimos con tope** (`capAt`): si una parte no llega a su mínimo y la consecuencia es un tope, el
-resultado de su padre se limita a ese valor — "si no llegas a un 4, la nota final no pasa de 4,5"
+**Mínimos con tope** (`capAt`): si una parte no llega a su mínimo y la consecuencia es un tope, la
+nota final se limita a ese valor — "si no llegas a un 4, la nota final no pasa de 4,5"
 (Diseño Software) o "de 4,9" (Informática Básica). Se aplica dentro de `evaluate`, porque cambia el
-número que se ve y no solo el aprobado. También es monótono: subir esa parte por encima de su
-mínimo solo puede levantar el tope. Lo pidió la segunda tanda de guías.
-`.doesNotAverage` sigue sin conectarse: ninguna guía lo necesita todavía.
+número que se ve y no solo el aprobado. Desde que el editor permite mínimos en cualquier sección, el
+tope sube desde cualquier nivel (no solo desde un hijo directo): `evaluate` calcula el valor sin topes
+(`rawValue`) y le aplica los topes de todo lo que cuelga del nodo. También es monótono: subir esa
+parte por encima de su mínimo solo puede levantar el tope. Lo pidió la segunda tanda de guías.
+
+**Dependencias entre secciones** (oct 2026): cada sección del editor tiene una "Nota mínima"
+opcional (sobre su propia escala) y, si la hay, una "Consecuencia" — las cinco de
+`Minimum.Consequence`:
+
+| Consecuencia | En el editor | Qué hace |
+|---|---|---|
+| `fails` | Suspendes la asignatura | No apruebas aunque la media llegue (`meetsMinimums`) |
+| `capAt(x)` | Limita la nota final (+ "Nota tope") | La nota final no pasa de `x` |
+| `voids` | Se anula la sección | La sección cuenta como un 0 en su padre |
+| `doesNotAverage` | No hace media | La sección sale de la media de su padre y las demás se reparten su peso |
+| `sendsToExtraordinary` | Vas a la extraordinaria | Suspendes la ordinaria; en la extraordinaria ese mínimo ya no cuenta (`Node.forExtraordinary`) y las notas de esa sección no se arrastran (`leavesSentToExtraordinary`), hay que repetirla |
+
+`fails`, `capAt` y `sendsToExtraordinary` actúan sobre la asignatura; `voids` y `doesNotAverage`
+solo sobre la sección dentro de su padre (en una fórmula, la variable vale 0). El umbral se compara
+siempre con el valor sin topes de la sección. Ojo: `doesNotAverage` no es monótono (pasar justo del
+mínimo puede bajar la media al volver a contar la sección), así que la nota necesaria de
+`neededFraction` es orientativa con él. Pendiente: que en la extraordinaria todo pondere distinto
+(hace falta un árbol propio por convocatoria) y notas que solo se guardan si superan un mínimo.
 
 No está wireado: `Requirement` (sin valor numérico, no bloquea nada todavía) ni ninguna condición
 real en `Alternatives` (usa la rama por defecto o la primera) — ninguna de las guías de

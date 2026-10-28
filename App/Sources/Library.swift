@@ -90,10 +90,18 @@ struct SubjectRecord: Identifiable, Codable, Equatable {
     }
 
     /// Whether this leaf's ordinary grade carries over to the extraordinary sitting: for now
-    /// everything but the final exam does (`Grade.recovery` isn't asked for in the editor yet).
+    /// everything but the final exam does (`Grade.recovery` isn't asked for in the editor yet),
+    /// except a section that missed a minimum sending it to the extraordinary — that one is
+    /// taken again.
     func keepsForExtraordinary(_ leaf: String) -> Bool {
-        guard let grade = subject.root.leaf(named: leaf)?.asGrade else { return false }
-        return grade.isFinalExam != true
+        guard let grade = subject.root.leaf(named: leaf)?.asGrade, grade.isFinalExam != true else { return false }
+        return !subject.root.leavesSentToExtraordinary(SubjectProgress.inputs(self, session: .ordinary)).contains(leaf)
+    }
+
+    /// The tree a sitting is worked out with: the extraordinary one drops the minimums that only
+    /// sent you there.
+    func root(for session: Convocatoria) -> Node {
+        session == .extraordinary ? subject.root.forExtraordinary : subject.root
     }
 
     func entry(for leaf: String, in session: Convocatoria) -> GradeEntry? {
@@ -543,7 +551,7 @@ struct SubjectProgress {
 
     init(_ record: SubjectRecord, session: Convocatoria? = nil) {
         let session = session ?? record.activeSession
-        let root = record.subject.root
+        let root = record.root(for: session)
         let inputs = Self.inputs(record, session: session)
         self.session = session
         let threshold = root.minimumThreshold ?? 5

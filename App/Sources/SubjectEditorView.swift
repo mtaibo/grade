@@ -342,7 +342,7 @@ private struct GroupSections: View {
                         group.children.removeAll { $0.id == child.id }
                     })
                 } label: {
-                    ComponentRow(title: child.node.title, subtitle: child.node.kindLabel, value: share(of: child))
+                    ComponentRow(title: child.node.title, subtitle: child.node.rowSubtitle, value: share(of: child))
                 }
             }
             .onDelete { group.children.remove(atOffsets: $0) }
@@ -466,7 +466,7 @@ private struct FormulaSections: View {
                 } label: {
                     ComponentRow(
                         title: "\(key) · \(formula.variables[key]?.title ?? key)",
-                        subtitle: formula.variables[key]?.kindLabel ?? "",
+                        subtitle: formula.variables[key]?.rowSubtitle ?? "",
                         value: share(of: key)
                     )
                 }
@@ -592,9 +592,11 @@ private struct FormulaVariableEditor: View {
                 NoteCountSection(node: node)
             }
             if node.wrappedValue.asGroup != nil || node.wrappedValue.asFormula != nil {
+                MinimumSection(node: node)
                 NodeContentsSections(node: node, onRenameLeaf: onRenameLeaf)
             } else if let grade = Binding(unwrapping: node.asGrade) {
                 GradeInputSections(grade: grade)
+                MinimumSection(node: node)
                 GradeDateSection(grade: grade)
             }
         }
@@ -680,9 +682,11 @@ private struct ComponentEditorView: View {
             }
 
             if child.node.asGroup != nil || child.node.asFormula != nil {
+                MinimumSection(node: $child.node)
                 NodeContentsSections(node: $child.node, onRenameLeaf: onRenameLeaf)
             } else if let grade = Binding(unwrapping: $child.node.asGrade) {
                 GradeInputSections(grade: grade)
+                MinimumSection(node: $child.node)
                 GradeDateSection(grade: grade)
             }
 
@@ -1023,6 +1027,142 @@ private enum InputStyleKind: String, CaseIterable, Identifiable {
         switch self {
         case .points: "Puntos"
         case .letters: "Letras"
+        }
+    }
+}
+
+/// "Nota mínima" (optional, on the section's own scale) and, once there is one, "Consecuencia":
+/// what missing it does — the dependencies between parts that a syllabus spells out.
+private struct MinimumSection: View {
+    @Binding var node: Node
+
+    private var threshold: Binding<Double?> {
+        Binding(
+            get: { node.minimum?.threshold },
+            set: { value in
+                if let value {
+                    node.minimum = Minimum(threshold: value, consequence: node.minimum?.consequence ?? .fails)
+                } else {
+                    node.minimum = nil
+                }
+            }
+        )
+    }
+
+    private var consequence: Binding<ConsequenceKind> {
+        Binding(
+            get: { node.minimum.map { ConsequenceKind($0.consequence) } ?? .fails },
+            set: { kind in
+                guard let minimum = node.minimum else { return }
+                node.minimum = Minimum(threshold: minimum.threshold, consequence: kind.consequence(keeping: minimum.consequence))
+            }
+        )
+    }
+
+    private var cap: Binding<Double> {
+        Binding(
+            get: { if case .capAt(let cap)? = node.minimum?.consequence { cap } else { ConsequenceKind.defaultCap } },
+            set: { cap in
+                guard let minimum = node.minimum else { return }
+                node.minimum = Minimum(threshold: minimum.threshold, consequence: .capAt(cap))
+            }
+        )
+    }
+
+    var body: some View {
+        let max = node.scaleMax.formatted(.number.precision(.fractionLength(0...2)))
+        let kind = node.minimum.map { ConsequenceKind($0.consequence) }
+        Section {
+            LabeledContent("Nota mínima") {
+                HStack(spacing: 4) {
+                    TextField("Ninguna", value: threshold, format: .number)
+                        .keyboardType(.decimalPad)
+                        .multilineTextAlignment(.trailing)
+                    Text("/ \(max)").foregroundStyle(.secondary)
+                }
+            }
+            if let kind {
+                LabeledContent("Consecuencia") {
+                    Menu {
+                        Picker("Consecuencia", selection: consequence) {
+                            ForEach(ConsequenceKind.allCases) { kind in
+                                Text(kind.label).tag(kind)
+                            }
+                        }
+                    } label: {
+                        HStack(spacing: 4) {
+                            Text(kind.label)
+                            Image(systemName: "chevron.up.chevron.down")
+                                .font(.caption.weight(.semibold))
+                        }
+                        .foregroundStyle(.secondary)
+                    }
+                }
+                if kind == .capAt {
+                    LabeledContent("Nota tope") {
+                        HStack(spacing: 4) {
+                            TextField("4,5", value: cap, format: .number)
+                                .keyboardType(.decimalPad)
+                                .multilineTextAlignment(.trailing)
+                            Text("/ 10").foregroundStyle(.secondary)
+                        }
+                    }
+                }
+            }
+        } footer: {
+            Text(kind?.explanation ?? "Opcional. Lo que hay que sacar como mínimo en esta sección, si la guía lo pide.")
+        }
+    }
+}
+
+/// `Minimum.Consequence` without the cap, for a `Picker`.
+private enum ConsequenceKind: CaseIterable, Identifiable {
+    case fails, capAt, voids, doesNotAverage, sendsToExtraordinary
+
+    static let defaultCap = 4.5
+
+    var id: Self { self }
+
+    init(_ consequence: Minimum.Consequence) {
+        switch consequence {
+        case .fails: self = .fails
+        case .capAt: self = .capAt
+        case .voids: self = .voids
+        case .doesNotAverage: self = .doesNotAverage
+        case .sendsToExtraordinary: self = .sendsToExtraordinary
+        }
+    }
+
+    /// The consequence this picks, keeping the cap if it already was one.
+    func consequence(keeping current: Minimum.Consequence) -> Minimum.Consequence {
+        switch self {
+        case .fails: return .fails
+        case .capAt:
+            if case .capAt = current { return current }
+            return .capAt(Self.defaultCap)
+        case .voids: return .voids
+        case .doesNotAverage: return .doesNotAverage
+        case .sendsToExtraordinary: return .sendsToExtraordinary
+        }
+    }
+
+    var label: String {
+        switch self {
+        case .fails: "Suspendes la asignatura"
+        case .capAt: "Limita la nota final"
+        case .voids: "Se anula la sección"
+        case .doesNotAverage: "No hace media"
+        case .sendsToExtraordinary: "Vas a la extraordinaria"
+        }
+    }
+
+    var explanation: String {
+        switch self {
+        case .fails: "Si no llegas, suspendes aunque la media dé para aprobar."
+        case .capAt: "Si no llegas, la nota final no pasa de la nota tope aunque la media dé más."
+        case .voids: "Si no llegas, esta sección cuenta como un 0."
+        case .doesNotAverage: "Si no llegas, esta sección no cuenta y las demás se reparten su peso."
+        case .sendsToExtraordinary: "Si no llegas, suspendes la ordinaria y esta sección se vuelve a hacer en la extraordinaria."
         }
     }
 }

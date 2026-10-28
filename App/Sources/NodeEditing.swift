@@ -130,6 +130,11 @@ extension Node {
     /// Brings back into range what a form can leave out of it — an empty, negative or non-numeric
     /// weight, a scale of 0 — so the engine never divides by it or averages a negative share.
     mutating func sanitize() {
+        if let minimum, !minimum.threshold.isFinite {
+            self.minimum = nil
+        } else if case .capAt(let cap)? = minimum?.consequence, !cap.isFinite {
+            minimum?.consequence = .capAt(4.5)
+        }
         switch self {
         case .grade(var grade):
             if !(grade.scaleMax.isFinite && grade.scaleMax > 0) { grade.scaleMax = 10 }
@@ -202,6 +207,25 @@ extension Node {
         case .bonus: "Bonificación"
         case .requirement: "Requisito"
         case .formula: "Fórmula"
+        }
+    }
+
+    /// What a row in the sections list says under the name: what it's made of and its minimum.
+    var rowSubtitle: String {
+        guard let minimum else { return kindLabel }
+        return "\(kindLabel) · Mínimo \(minimum.threshold.formatted(.number.precision(.fractionLength(0...2))))"
+    }
+
+    /// The minimum on this node itself — a section's "Nota mínima" and what missing it does.
+    var minimum: Minimum? {
+        get { ownMinimum }
+        set {
+            switch self {
+            case .group(var group): group.minimum = newValue; self = .group(group)
+            case .formula(var formula): formula.minimum = newValue; self = .formula(formula)
+            case .grade(var grade): grade.minimum = newValue; self = .grade(grade)
+            default: break
+            }
         }
     }
 

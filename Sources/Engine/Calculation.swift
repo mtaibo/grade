@@ -32,36 +32,49 @@ extension Node {
 
     /// This node's value given `inputs` for any leaf that has one, and `pendingFraction` — a
     /// fraction (0 = worst, 1 = best) of *that leaf's own scale* — for any leaf that doesn't.
+    /// Any unmet `.capAt` minimum below this node caps the result (see `rawValue` for the rest).
     public func evaluate(_ inputs: [String: Double], pendingFraction: Double) -> Double {
+        let value = rawValue(inputs, pendingFraction: pendingFraction)
+        return caps(inputs, pendingFraction).reduce(value, Swift.min)
+    }
+
+    /// The value before caps: each child weighed as it is, a child under a `.voids` minimum as a 0
+    /// and one under a `.doesNotAverage` minimum left out (its weight goes to the rest).
+    func rawValue(_ inputs: [String: Double], pendingFraction: Double) -> Double {
         switch self {
         case .grade(let grade):
             return inputs[grade.name] ?? pendingFraction * grade.scaleMax
         case .group(let group):
-            func fraction(_ child: WeightedChild) -> Double {
+            // (weight, fraction of its own max) for every child that still counts.
+            let parts: [(weight: Double, fraction: Double)] = group.children.compactMap { child in
                 let max = child.node.scaleMax
-                guard max > 0 else { return 0 }
-                return child.node.evaluate(inputs, pendingFraction: pendingFraction) / max
+                guard max > 0 else { return (child.weight, 0) }
+                let value = child.node.rawValue(inputs, pendingFraction: pendingFraction)
+                switch child.node.standing(value) {
+                case .counts: return (child.weight, value / max)
+                case .voided: return (child.weight, 0)
+                case .left: return nil
+                }
             }
-            let combined: Double
+            let fractions = parts.map(\.fraction)
             switch group.combination {
             case .weightedAverage:
-                let totalWeight = group.children.reduce(0) { $0 + $1.weight }
-                let weighted = group.children.reduce(0) { $0 + $1.weight * fraction($1) }
-                combined = totalWeight > 0 ? (weighted / totalWeight) * 10 : 0
+                let totalWeight = parts.reduce(0) { $0 + $1.weight }
+                let weighted = parts.reduce(0) { $0 + $1.weight * $1.fraction }
+                return totalWeight > 0 ? (weighted / totalWeight) * 10 : 0
             case .sum:
-                combined = group.children.reduce(0) { $0 + $1.weight * fraction($1) } * 10
+                return parts.reduce(0) { $0 + $1.weight * $1.fraction } * 10
             case .max:
-                combined = (group.children.map(fraction).max() ?? 0) * 10
+                return (fractions.max() ?? 0) * 10
             case .min:
-                combined = (group.children.map(fraction).min() ?? 0) * 10
+                return (fractions.min() ?? 0) * 10
             case .bestOf(let n):
                 let count = Swift.max(n, 1)
-                let best = group.children.map(fraction).sorted(by: >).prefix(count)
-                combined = best.isEmpty ? 0 : (best.reduce(0, +) / Double(best.count)) * 10
+                let best = fractions.sorted(by: >).prefix(count)
+                return best.isEmpty ? 0 : (best.reduce(0, +) / Double(best.count)) * 10
             }
-            return Self.applyingCaps(combined, from: group.children.map(\.node), inputs, pendingFraction)
         case .alternatives(let alternatives):
-            return Self.defaultBranch(alternatives)?.node.evaluate(inputs, pendingFraction: pendingFraction) ?? 0
+            return Self.defaultBranch(alternatives)?.node.rawValue(inputs, pendingFraction: pendingFraction) ?? 0
         case .bonus(let bonus):
             let value = inputs[bonus.name] ?? pendingFraction * bonus.scaleMax
             return Swift.min(value, bonus.parentCap)
@@ -69,11 +82,51 @@ extension Node {
             // Gradeless — not wired into the numeric result yet, see docs/modelo.md.
             return 0
         case .formula(let formula):
-            let values = formula.variables.mapValues { $0.evaluate(inputs, pendingFraction: pendingFraction) }
+            // A variable that doesn't count (voided or left out) is a 0 in the formula.
+            let values = formula.variables.mapValues { node in
+                let value = node.rawValue(inputs, pendingFraction: pendingFraction)
+                return node.standing(value) == .counts ? value : 0
+            }
             // A hand-typed formula can divide by a grade that is still 0; a non-number would
             // otherwise reach the screen (and the JSON file) as NaN or infinity.
             let result = formula.expression.evaluate(values)
-            return Self.applyingCaps(result.isFinite ? result : 0, from: Array(formula.variables.values), inputs, pendingFraction)
+            return result.isFinite ? result : 0
+        }
+    }
+
+    private enum Standing { case counts, voided, left }
+
+    /// How this node counts in its parent given its own `value`: as it is, as a 0, or not at all.
+    private func standing(_ value: Double) -> Standing {
+        guard let minimum = ownMinimum, value < minimum.threshold else { return .counts }
+        switch minimum.consequence {
+        case .voids: return .voided
+        case .doesNotAverage: return .left
+        case .capAt, .fails, .sendsToExtraordinary: return .counts
+        }
+    }
+
+    /// The nodes directly below this one.
+    var children: [Node] {
+        switch self {
+        case .group(let group): group.children.map(\.node)
+        case .formula(let formula): Array(formula.variables.values)
+        case .alternatives(let alternatives): Self.defaultBranch(alternatives).map { [$0.node] } ?? []
+        case .grade, .bonus, .requirement: []
+        }
+    }
+
+    /// The cap of every unmet `.capAt` minimum below this node (not its own: that one caps
+    /// whatever contains it) — "si no llegas a un 4 en el examen, la nota final no pasa de 4,5".
+    /// Monotonic: raising a part past its threshold only ever lifts its cap.
+    private func caps(_ inputs: [String: Double], _ pendingFraction: Double) -> [Double] {
+        children.flatMap { child -> [Double] in
+            var caps = child.caps(inputs, pendingFraction)
+            if let minimum = child.ownMinimum, case .capAt(let cap) = minimum.consequence,
+               child.rawValue(inputs, pendingFraction: pendingFraction) < minimum.threshold {
+                caps.append(cap)
+            }
+            return caps
         }
     }
 
@@ -123,7 +176,8 @@ extension Node {
         ownMinimum?.threshold
     }
 
-    private var ownMinimum: Minimum? {
+    /// The minimum set on this node itself (the subject root's is its pass threshold).
+    public var ownMinimum: Minimum? {
         switch self {
         case .group(let group): group.minimum
         case .formula(let formula): formula.minimum
@@ -132,14 +186,14 @@ extension Node {
         }
     }
 
-    /// Whether every `Minimum` with a `.fails` consequence in this subtree is met — e.g. "at least
-    /// 40% on the exam or the subject is failed", which no average can make up for. Monotonic in
-    /// `pendingFraction` like `evaluate`, so it can share the same binary search.
-    /// `.capAt` is handled by `evaluate` instead (it changes the number, not just pass/fail), and
-    /// `.doesNotAverage` isn't wired in: no reference guide needs it yet.
+    /// Whether every `Minimum` with a `.fails` (or `.sendsToExtraordinary`) consequence in this
+    /// subtree is met — e.g. "at least 40% on the exam or the subject is failed", which no average
+    /// can make up for. Monotonic in `pendingFraction` like `evaluate`, so it can share the same
+    /// binary search. `.capAt`, `.voids` and `.doesNotAverage` change the number instead, in
+    /// `evaluate`.
     public func meetsMinimums(_ inputs: [String: Double], pendingFraction: Double) -> Bool {
-        if let minimum = ownMinimum, minimum.consequence == .fails,
-           evaluate(inputs, pendingFraction: pendingFraction) < minimum.threshold {
+        if let minimum = ownMinimum, minimum.consequence == .fails || minimum.consequence == .sendsToExtraordinary,
+           rawValue(inputs, pendingFraction: pendingFraction) < minimum.threshold {
             return false
         }
         switch self {
@@ -177,18 +231,6 @@ extension Node {
         return high
     }
 
-    /// A child whose `Minimum` has a `.capAt` consequence and isn't met caps its parent's result —
-    /// "si no llegas a un 4 en el examen, la nota final no pasa de 4,5". Monotonic: raising the
-    /// child past its threshold only ever lifts the cap.
-    private static func applyingCaps(_ value: Double, from children: [Node], _ inputs: [String: Double], _ pendingFraction: Double) -> Double {
-        children.reduce(value) { result, child in
-            guard let minimum = child.ownMinimum, case .capAt(let cap) = minimum.consequence,
-                  child.evaluate(inputs, pendingFraction: pendingFraction) < minimum.threshold
-            else { return result }
-            return Swift.min(result, cap)
-        }
-    }
-
     /// `Alternatives` picks a branch "by condition or the best" per the brief — but a branch's
     /// `condition` is still a free, unevaluated string (see docs/modelo.md), so until that's
     /// resolved this can only pick the explicit default branch (no condition) or fall back to
@@ -220,5 +262,46 @@ extension Node {
         if passes(0) { return .guaranteed }
         if !passes(1) { return .impossible }
         return .possible
+    }
+}
+
+extension Node {
+    /// The tree as the extraordinary sitting reads it: a `.sendsToExtraordinary` minimum has done
+    /// its job by then, so it's dropped.
+    public var forExtraordinary: Node {
+        var node = self
+        node.removeMinimums { $0.consequence == .sendsToExtraordinary }
+        return node
+    }
+
+    /// Leaves under a `.sendsToExtraordinary` minimum that `inputs` already leaves unmet, even with
+    /// full marks on anything pending — what has to be taken again in the extraordinary sitting.
+    public func leavesSentToExtraordinary(_ inputs: [String: Double]) -> Set<String> {
+        if let minimum = ownMinimum, minimum.consequence == .sendsToExtraordinary,
+           rawValue(inputs, pendingFraction: 1) < minimum.threshold {
+            return Set(allLeafNames())
+        }
+        return children.reduce(into: []) { $0.formUnion($1.leavesSentToExtraordinary(inputs)) }
+    }
+
+    private mutating func removeMinimums(where shouldRemove: (Minimum) -> Bool) {
+        switch self {
+        case .grade(var grade):
+            if let minimum = grade.minimum, shouldRemove(minimum) { grade.minimum = nil }
+            self = .grade(grade)
+        case .group(var group):
+            if let minimum = group.minimum, shouldRemove(minimum) { group.minimum = nil }
+            for index in group.children.indices { group.children[index].node.removeMinimums(where: shouldRemove) }
+            self = .group(group)
+        case .formula(var formula):
+            if let minimum = formula.minimum, shouldRemove(minimum) { formula.minimum = nil }
+            for key in formula.variables.keys { formula.variables[key]?.removeMinimums(where: shouldRemove) }
+            self = .formula(formula)
+        case .alternatives(var alternatives):
+            for index in alternatives.branches.indices { alternatives.branches[index].node.removeMinimums(where: shouldRemove) }
+            self = .alternatives(alternatives)
+        case .bonus, .requirement:
+            break
+        }
     }
 }
