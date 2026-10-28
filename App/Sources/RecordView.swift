@@ -6,32 +6,31 @@ import SwiftUI
 struct RecordView: View {
     @Environment(Library.self) private var library
 
-    private var completed: [(record: SubjectRecord, progress: SubjectProgress)] {
-        library.courses.flatMap(\.subjects)
-            .map { ($0, SubjectProgress($0)) }
-            .filter { $0.1.isComplete }
-    }
-
-    private var average: Double? {
+    private func average(_ completed: [(record: SubjectRecord, progress: SubjectProgress)]) -> Double? {
         let credits = completed.reduce(0) { $0 + $1.record.subject.ectsCredits }
         guard credits > 0 else { return nil }
         return completed.reduce(0) { $0 + $1.progress.worst * $1.record.subject.ectsCredits } / credits
     }
 
-    private var passedCredits: Double {
+    private func passedCredits(_ completed: [(record: SubjectRecord, progress: SubjectProgress)]) -> Double {
         completed.filter { $0.progress.status == .guaranteed }.reduce(0) { $0 + $1.record.subject.ectsCredits }
     }
 
     var body: some View {
-        List {
+        // Each subject's numbers, worked out once per redraw.
+        let progress = Dictionary(library.courses.flatMap(\.subjects).map { ($0.id, SubjectProgress($0)) }) { first, _ in first }
+        let completed = library.courses.flatMap(\.subjects).compactMap { record in
+            progress[record.id].flatMap { $0.isComplete ? (record: record, progress: $0) : nil }
+        }
+        return List {
             Section {
                 HStack(spacing: 0) {
                     RecordStat(
-                        value: average?.formatted(.number.precision(.fractionLength(2))) ?? "—",
+                        value: average(completed)?.formatted(.number.precision(.fractionLength(2))) ?? "—",
                         label: "Media ponderada"
                     )
                     Divider()
-                    RecordStat(value: passedCredits.formatted(), label: "Créditos superados")
+                    RecordStat(value: passedCredits(completed).formatted(), label: "Créditos superados")
                 }
                 .padding(.vertical, 4)
             } footer: {
@@ -41,7 +40,7 @@ struct RecordView: View {
             ForEach(library.courses) { course in
                 Section(course.name) {
                     ForEach(course.subjects) { record in
-                        RecordRow(record: record, progress: SubjectProgress(record))
+                        RecordRow(record: record, progress: progress[record.id] ?? SubjectProgress(record))
                     }
                 }
             }

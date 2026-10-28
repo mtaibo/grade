@@ -57,7 +57,7 @@ extension GradeCategory {
 extension Library {
     var deadlines: [Deadline] {
         courses.flatMap(\.subjects).flatMap { record in
-            let progress = SubjectProgress(record, session: .ordinary)
+            let inputs = SubjectProgress.inputs(record, session: .ordinary)
             let style = SubjectStyle(record)
             let parts = record.subject.root.datedGrades.map { item in
                 let grade = record.subject.root.leaf(named: item.name)?.asGrade
@@ -69,7 +69,7 @@ extension Library {
                     kind: grade?.kind ?? .work,
                     symbol: style.symbol,
                     tint: style.tint,
-                    grade: progress.inputs[item.name],
+                    grade: inputs[item.name],
                     scaleMax: grade?.scaleMax ?? 10
                 )
             }
@@ -102,11 +102,8 @@ struct CalendarView: View {
 
     private var isFiltered: Bool { shownKinds.count < GradeCategory.allCases.count }
 
-    private var allDeadlines: [Deadline] { library.deadlines }
-    private var deadlines: [Deadline] { allDeadlines.filter { shownKinds.contains($0.kind) } }
-
     /// The kind whose colour each marked day's dot takes.
-    private var dayKinds: [CalendarDay: GradeCategory] {
+    private func dayKinds(_ deadlines: [Deadline]) -> [CalendarDay: GradeCategory] {
         deadlines.reduce(into: [:]) { result, deadline in
             let day = CalendarDay(deadline.date, calendar: calendar)
             if let current = result[day], current.priority >= deadline.kind.priority { return }
@@ -114,7 +111,7 @@ struct CalendarView: View {
         }
     }
 
-    private var visible: [Deadline] {
+    private func visible(_ deadlines: [Deadline]) -> [Deadline] {
         if let selectedDay {
             return deadlines.filter { CalendarDay($0.date, calendar: calendar) == selectedDay }
         }
@@ -136,7 +133,12 @@ struct CalendarView: View {
     }
 
     var body: some View {
-        NavigationStack {
+        // Worked out once per redraw: every subject's grades go into it.
+        let allDeadlines = library.deadlines
+        let shownKinds = shownKinds
+        let deadlines = allDeadlines.filter { shownKinds.contains($0.kind) }
+        let visible = visible(deadlines)
+        return NavigationStack {
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 20) {
                     Text("Calendario")
@@ -144,7 +146,7 @@ struct CalendarView: View {
                         .padding(.leading, 4)
                         .accessibilityAddTraits(.isHeader)
 
-                    MonthCalendar(dayKinds: dayKinds, selection: $selectedDay)
+                    MonthCalendar(dayKinds: dayKinds(deadlines), selection: $selectedDay)
                         .frame(maxWidth: 320)
                         .frame(maxWidth: .infinity)
                         .card(padding: 4)
