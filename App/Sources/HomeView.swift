@@ -392,14 +392,12 @@ struct HomeView: View {
                 sort = option
             }
         })) {
-            Label {
-                Text(option.title)
-                if isCurrent && option != .custom {
-                    Text(isAscending ? "Ascendente" : "Descendente")
-                }
-            } icon: {
-                Image(systemName: option.icon)
+            // Loose texts and image, not a Label: in a menu a Label drops its second text.
+            Text(option.title)
+            if isCurrent && option != .custom {
+                Text(isAscending ? "Ascendente" : "Descendente")
             }
+            Image(systemName: option.icon)
         }
     }
 
