@@ -20,6 +20,8 @@ struct GradeApp: App {
                     AccountView()
                 }
             }
+            // No scroll bars anywhere: every list, form and scroll view below (sheets included) inherits it.
+            .scrollIndicators(.hidden)
             .modifier(BackupImportHost(center: backupCenter))
             .environment(library)
             .environment(backupCenter)

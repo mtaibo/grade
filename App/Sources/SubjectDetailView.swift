@@ -213,6 +213,11 @@ private struct PDFKitView: UIViewRepresentable {
         let view = PDFView()
         view.autoScales = true
         view.document = PDFDocument(url: url)
+        // PDFView scrolls with a UIKit scroll view inside, which SwiftUI's scrollIndicators doesn't reach.
+        for case let scrollView as UIScrollView in view.subviews {
+            scrollView.showsVerticalScrollIndicator = false
+            scrollView.showsHorizontalScrollIndicator = false
+        }
         return view
     }
 
