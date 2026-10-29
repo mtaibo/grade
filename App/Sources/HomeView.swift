@@ -22,7 +22,7 @@ enum SubjectLayout: String, CaseIterable, Identifiable {
     }
 }
 
-/// The order the subjects are shown in: by name, by grade (highest first), or the one dragged by hand.
+/// The order the subjects are shown in: by name or by grade, either way round, or the one dragged by hand.
 enum SubjectSort: String, CaseIterable, Identifiable {
     case name, grade, custom
 
@@ -44,18 +44,21 @@ enum SubjectSort: String, CaseIterable, Identifiable {
         }
     }
 
-    func sorted(_ records: [SubjectRecord]) -> [SubjectRecord] {
+    func sorted(_ records: [SubjectRecord], ascending: Bool) -> [SubjectRecord] {
+        let byName: (SubjectRecord, SubjectRecord) -> Bool = {
+            $0.subject.name.localizedStandardCompare($1.subject.name) == (ascending ? .orderedAscending : .orderedDescending)
+        }
         switch self {
         case .custom:
             return records
         case .name:
-            return records.sorted { $0.subject.name.localizedStandardCompare($1.subject.name) == .orderedAscending }
+            return records.sorted(by: byName)
         case .grade:
             // The grade guaranteed so far — the final one once everything's in.
             let grades = Dictionary(records.map { ($0.id, SubjectProgress($0).worst) }) { first, _ in first }
             return records.sorted {
                 let (a, b) = (grades[$0.id] ?? 0, grades[$1.id] ?? 0)
-                return a != b ? a > b : $0.subject.name.localizedStandardCompare($1.subject.name) == .orderedAscending
+                return a != b ? (ascending ? a < b : a > b) : byName($0, $1)
             }
         }
     }
@@ -70,6 +73,7 @@ struct HomeView: View {
     @AppStorage("selectedTerm") private var selectedTerm = 0
     @AppStorage("subjectLayout") private var layout = SubjectLayout.cards
     @AppStorage("subjectSort") private var sort = SubjectSort.custom
+    @AppStorage("subjectSortAscending") private var isAscending = true
     /// The custom view on screen, by id; empty when showing one of the degree's periods.
     @AppStorage("selectedCustomView") private var selectedCustomView = ""
     @State private var isChoosingView = false
@@ -294,7 +298,7 @@ struct HomeView: View {
     /// years, and there's no + (subjects are added to a view from "Vista").
     /// Dragging always works: it keeps the order on screen as the new custom one and switches to it.
     private func grid(_ records: [SubjectRecord], canAdd: Bool = false, in selection: CustomSelection? = nil) -> some View {
-        let records = sort.sorted(records)
+        let records = sort.sorted(records, ascending: isAscending)
         let ids = records.map(\.id)
         return ReorderableGrid(
             records: records,
@@ -367,18 +371,31 @@ struct HomeView: View {
                     }
                     .pickerStyle(.inline)
                     Divider()
-                    Picker("Ordenar", selection: $sort.animation(.snappy)) {
-                        ForEach(SubjectSort.allCases) { option in
-                            Label(option.title, systemImage: option.icon).tag(option)
-                        }
+                    ForEach(SubjectSort.allCases) { option in
+                        sortToggle(option)
                     }
-                    .pickerStyle(.inline)
                 } label: {
                     Image(systemName: "ellipsis")
                 }
                 .accessibilityLabel("Más opciones")
             }
         }
+    }
+
+    /// One sort option, ✓ when chosen. Name and grade start ascending; choosing the one already
+    /// chosen flips it, and a dimmed arrow on the row's trailing edge shows which way it runs.
+    private func sortToggle(_ option: SubjectSort) -> some View {
+        let isCurrent = sort == option
+        let arrow: Text? = isCurrent && option != .custom ? Text(isAscending ? "↑" : "↓") : nil
+        return Toggle(isOn: Binding(get: { isCurrent }, set: { _ in
+            withAnimation(.snappy) {
+                isAscending = isCurrent ? !isAscending : true
+                sort = option
+            }
+        })) {
+            Label(option.title, systemImage: option.icon)
+        }
+        .badge(arrow)
     }
 
     /// The calendar button's menu: a quick jump to any period or custom view, ✓ on the current one.
