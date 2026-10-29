@@ -11,6 +11,7 @@ struct SubjectDetailView: View {
     @Environment(Library.self) private var library
     @Environment(\.isSimulating) private var isSimulating
     @Environment(\.dismiss) private var dismiss
+    @Environment(Tour.self) private var tour: Tour?
     @State private var isEditing = false
     @State private var isEditingDates = false
     @State private var addingDateFor: Convocatoria?
@@ -54,6 +55,7 @@ struct SubjectDetailView: View {
                     .fixedSize(horizontal: false, vertical: true)
 
                 GradeCard(progress: progress, session: session, formula: record.subject.root.asFormula)
+                    .tourTarget("subject.summary")
 
                 ExamCard(
                     record: record,
@@ -61,6 +63,7 @@ struct SubjectDetailView: View {
                     onAddDate: { addingDateFor = $0 },
                     onOpen: { session, point in gradeTarget = GradeTarget(partID: exam?.id ?? "", session: session, origin: point) }
                 )
+                .tourTarget("subject.exam")
 
                 if !others.isEmpty {
                     Text("Notas")
@@ -77,6 +80,7 @@ struct SubjectDetailView: View {
                                 .accessibilityAddTraits(.isButton)
                         }
                     }
+                    .tourTarget("subject.parts")
                 }
             }
             .padding(.horizontal)
@@ -97,6 +101,7 @@ struct SubjectDetailView: View {
 
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(isSimulating)
+        .onAppear { if !isSimulating { tour?.perform(.subjectOpened) } }
         .toolbar {
             if isSimulating {
                 ToolbarItem(placement: .cancellationAction) {

@@ -234,6 +234,26 @@ final class Library {
         courses = [Course(year: 1, subjects: [record])]
     }
 
+    /// An empty study that lives only in memory, for the guided tour: nothing done in it is saved.
+    init(inMemory degree: DegreeSettings) {
+        fileURL = nil
+        self.degree = degree
+        courses = []
+    }
+
+    /// Exam dates spread over the coming weeks on the first few subjects, so a tour's calendar has
+    /// something to show.
+    func addSampleDates() {
+        var day = 3
+        for course in courses.indices {
+            for index in courses[course].subjects.indices where day < 30 {
+                courses[course].subjects[index].ordinaryExamDate = Calendar.current.date(byAdding: .day, value: day, to: .now)
+                day += 5
+            }
+        }
+        save()
+    }
+
     /// Makes whatever was loaded safe to show: one course per year (from the 1st), no subject id used twice, and
     /// the final exam flagged on old subjects. Runs after loading the file and after a restore.
     private func normalize() {

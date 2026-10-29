@@ -247,6 +247,7 @@ struct HomeView: View {
         .padding(.leading, 4)
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(.isHeader)
+        .tourTarget("home.header")
     }
 
     /// `selection` set for a custom view: dragging reorders the view itself, not the subjects'
@@ -272,6 +273,7 @@ struct HomeView: View {
                     SubjectTile(record: record, isCompact: layout == .list)
                 }
                 .buttonStyle(TilePressStyle())
+                .tourTarget(record.id == records.first?.id && selection == nil ? "home.firstTile" : nil)
                 .contextMenu {
                     Button("Personalizar", systemImage: "paintpalette") { customizing = record }
                     Button("Mover", systemImage: "arrow.right.circle") {
@@ -548,10 +550,11 @@ private struct EmptyHome: View {
         ContentUnavailableView {
             Label("Sin asignaturas", systemImage: "books.vertical")
         } description: {
-            Text("Añade las de este cuatrimestre o carga una plantilla desde la pestaña Cuenta.")
+            Text("Añade las de este cuatrimestre o carga una plantilla en Cuenta → Estudio actual.")
         } actions: {
             Button("Añadir asignatura", action: add)
                 .buttonStyle(.borderedProminent)
+                .tourTarget("home.add")
         }
     }
 }

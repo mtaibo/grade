@@ -46,6 +46,7 @@ struct SubjectEditorView: View {
                             .multilineTextAlignment(.trailing)
                             .foregroundStyle(.secondary)
                     }
+                    .tourTarget("editor.name")
                 } footer: {
                     Text("Nombre de la asignatura. Toca para cambiarlo.")
                 }
@@ -83,9 +84,12 @@ struct SubjectEditorView: View {
                     Button(role: .confirm, action: save)
                         .tint(.blue)
                         .disabled(!canSave)
+                        .accessibilityLabel("Guardar")
                 }
             }
         }
+        .tourPerforms(.editorOpened)
+        .tourPerforms(.editorClosed, onAppear: false)
     }
 
     private func recordRename(from old: String, to new: String) {
@@ -153,11 +157,14 @@ private struct NodeContentsSections: View {
     var body: some View {
         if node.asGroup != nil || node.asFormula != nil {
             CalculationSection(node: $node, isRoot: isRoot)
+                .tourTarget(isRoot ? "editor.evaluation" : nil)
         }
         if let group = Binding(unwrapping: $node.asGroup) {
             GroupSections(group: group, isRoot: isRoot, onRenameLeaf: onRenameLeaf)
+                .tourTarget(isRoot ? "editor.sections" : nil)
         } else if let formula = Binding(unwrapping: $node.asFormula) {
             FormulaSections(formula: formula, onRenameLeaf: onRenameLeaf)
+                .tourTarget(isRoot ? "editor.sections" : nil)
         } else if let grade = Binding(unwrapping: $node.asGrade) {
             GradeTypeSection(grade: grade)
             GradeInputSections(grade: grade)

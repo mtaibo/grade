@@ -150,6 +150,7 @@ struct CalendarView: View {
                         .frame(maxWidth: 320)
                         .frame(maxWidth: .infinity)
                         .card(padding: 4)
+                        .tourTarget("calendar.month")
                         .padding(.top, 8)
 
                     VStack(alignment: .leading, spacing: 10) {
@@ -183,6 +184,7 @@ struct CalendarView: View {
                             }
                         }
                     }
+                    .tourTarget("calendar.list")
                 }
                 .padding(.horizontal)
                 .padding(.bottom, 24)

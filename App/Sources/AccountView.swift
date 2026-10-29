@@ -5,6 +5,7 @@ import SwiftUI
 /// your record, your data (backups and deletes) and about the app.
 struct AccountView: View {
     @Environment(Library.self) private var library
+    @Environment(Tour.self) private var tour: Tour?
     /// Same size as the other tabs' titles.
     @ScaledMetric(relativeTo: .largeTitle) private var titleSize = 40
 
@@ -19,6 +20,7 @@ struct AccountView: View {
 
     var body: some View {
         NavigationStack {
+            ScrollViewReader { proxy in
             List {
                 // The title is part of the content, like in the other tabs, so it scrolls away
                 // instead of collapsing into the navigation bar.
@@ -34,6 +36,8 @@ struct AccountView: View {
                     } label: {
                         AccountRow(title: "Estudio actual", detail: library.degree.displayName, symbol: library.degree.studyType.symbol)
                     }
+                    .tourTarget("account.study")
+                    .id("account.study")
                     ForEach(library.archives.reversed()) { study in
                         NavigationLink {
                             ArchivedStudyView(id: study.id)
@@ -49,11 +53,14 @@ struct AccountView: View {
 
                 Section {
                     RecordStats(summary: RecordSummary(library.courses))
+                        .tourTarget("account.record")
+                        .id("account.record")
                     NavigationLink {
                         RecordView()
                     } label: {
                         Label("Ver expediente", systemImage: "chart.bar.doc.horizontal")
                     }
+                    .tourTarget("account.record")
                 } header: {
                     Text("Expediente")
                 } footer: {
@@ -66,11 +73,35 @@ struct AccountView: View {
                     } label: {
                         AccountRow(title: "Copia de seguridad", detail: "Exportar o importar tus datos", symbol: "externaldrive")
                     }
+                    .tourTarget("account.data")
+                    .id("account.data")
                     NavigationLink {
                         EraseDataView()
                     } label: {
                         AccountRow(title: "Borrar datos", detail: "Notas o asignaturas", symbol: "trash")
                     }
+                    .tourTarget("account.data")
+                }
+
+                Section {
+                    Button {
+                        tour?.startGeneral(returningTo: .account)
+                    } label: {
+                        AccountRow(title: "Tutorial general", detail: "Un recorrido guiado por toda la app", symbol: "figure.walk")
+                    }
+                    .foregroundStyle(.primary)
+                    .tourTarget("account.tutorials")
+                    .id("account.tutorials")
+                    NavigationLink {
+                        TourSectionsView()
+                    } label: {
+                        AccountRow(title: "Por sección", detail: "Cómo funciona cada pantalla", symbol: "rectangle.stack")
+                    }
+                    .tourTarget("account.tutorials")
+                } header: {
+                    Text("Tutoriales")
+                } footer: {
+                    Text("Se hacen con un estudio de prueba: tus asignaturas y notas no se tocan.")
                 }
 
                 Section("Acerca de") {
@@ -89,6 +120,12 @@ struct AccountView: View {
                         Text("Próximas implementaciones")
                     }
                 }
+            }
+            .onChange(of: tour?.current?.target) { _, target in
+                // Brings the highlighted row on screen during a tour.
+                guard let target, target.hasPrefix("account.") else { return }
+                withAnimation { proxy.scrollTo(target, anchor: .center) }
+            }
             }
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
