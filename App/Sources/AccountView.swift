@@ -5,6 +5,8 @@ import SwiftUI
 /// your record, your data (backups and deletes) and about the app.
 struct AccountView: View {
     @Environment(Library.self) private var library
+    /// Same size as the other tabs' titles.
+    @ScaledMetric(relativeTo: .largeTitle) private var titleSize = 40
 
     static let website = URL(string: "https://www.migueltaibo.com")!
 
@@ -18,6 +20,14 @@ struct AccountView: View {
     var body: some View {
         NavigationStack {
             List {
+                // The title is part of the content, like in the other tabs, so it scrolls away
+                // instead of collapsing into the navigation bar.
+                Text("Cuenta")
+                    .font(.system(size: titleSize, weight: .bold, design: .rounded))
+                    .accessibilityAddTraits(.isHeader)
+                    .listRowBackground(Color.clear)
+                    .listRowInsets(EdgeInsets(top: 8, leading: 4, bottom: 0, trailing: 4))
+
                 Section("Estudios") {
                     NavigationLink {
                         CurrentStudyView()
@@ -80,7 +90,8 @@ struct AccountView: View {
                     }
                 }
             }
-            .navigationTitle("Cuenta")
+            .navigationTitle("")
+            .navigationBarTitleDisplayMode(.inline)
         }
     }
 }
