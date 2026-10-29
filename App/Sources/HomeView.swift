@@ -22,6 +22,45 @@ enum SubjectLayout: String, CaseIterable, Identifiable {
     }
 }
 
+/// The order the subjects are shown in: by name, by grade (highest first), or the one dragged by hand.
+enum SubjectSort: String, CaseIterable, Identifiable {
+    case name, grade, custom
+
+    var id: Self { self }
+
+    var title: LocalizedStringKey {
+        switch self {
+        case .name: "Nombre"
+        case .grade: "Nota"
+        case .custom: "Personalizado"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .name: "textformat"
+        case .grade: "number"
+        case .custom: "hand.draw"
+        }
+    }
+
+    func sorted(_ records: [SubjectRecord]) -> [SubjectRecord] {
+        switch self {
+        case .custom:
+            return records
+        case .name:
+            return records.sorted { $0.subject.name.localizedStandardCompare($1.subject.name) == .orderedAscending }
+        case .grade:
+            // The grade guaranteed so far — the final one once everything's in.
+            let grades = Dictionary(records.map { ($0.id, SubjectProgress($0).worst) }) { first, _ in first }
+            return records.sorted {
+                let (a, b) = (grades[$0.id] ?? 0, grades[$1.id] ?? 0)
+                return a != b ? a > b : $0.subject.name.localizedStandardCompare($1.subject.name) == .orderedAscending
+            }
+        }
+    }
+}
+
 /// The home screen: the year and term as a big title, then one large card per subject — just the
 /// name. Everything else lives inside the subject.
 struct HomeView: View {
@@ -30,6 +69,7 @@ struct HomeView: View {
     @AppStorage("selectedYear") private var selectedYear = 0
     @AppStorage("selectedTerm") private var selectedTerm = 0
     @AppStorage("subjectLayout") private var layout = SubjectLayout.cards
+    @AppStorage("subjectSort") private var sort = SubjectSort.custom
     /// The custom view on screen, by id; empty when showing one of the degree's periods.
     @AppStorage("selectedCustomView") private var selectedCustomView = ""
     @State private var isChoosingView = false
@@ -252,7 +292,9 @@ struct HomeView: View {
 
     /// `selection` set for a custom view: dragging reorders the view itself, not the subjects'
     /// years, and there's no + (subjects are added to a view from "Vista").
+    /// Dragging always works: it keeps the order on screen as the new custom one and switches to it.
     private func grid(_ records: [SubjectRecord], canAdd: Bool = false, in selection: CustomSelection? = nil) -> some View {
+        let records = sort.sorted(records)
         let ids = records.map(\.id)
         return ReorderableGrid(
             records: records,
@@ -266,6 +308,7 @@ struct HomeView: View {
                 } else {
                     library.reorderSubjects(order, before: nil, among: ids)
                 }
+                sort = .custom
             },
             onDelete: { deleting = $0 },
             normal: { record in
@@ -314,6 +357,9 @@ struct HomeView: View {
             }
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
+                    Button("Añadir asignatura", systemImage: "plus") { placement = .create(newSubjectPeriod) }
+                    Button("Editar vistas", systemImage: "rectangle.stack") { isChoosingView = true }
+                    Divider()
                     Picker("Diseño", selection: $layout) {
                         ForEach(SubjectLayout.allCases) { option in
                             Label(option.title, systemImage: option.icon).tag(option)
@@ -321,8 +367,12 @@ struct HomeView: View {
                     }
                     .pickerStyle(.inline)
                     Divider()
-                    Button("Añadir asignatura", systemImage: "plus") { placement = .create(newSubjectPeriod) }
-                    Button("Editar vistas", systemImage: "rectangle.stack") { isChoosingView = true }
+                    Picker("Ordenar", selection: $sort.animation(.snappy)) {
+                        ForEach(SubjectSort.allCases) { option in
+                            Label(option.title, systemImage: option.icon).tag(option)
+                        }
+                    }
+                    .pickerStyle(.inline)
                 } label: {
                     Image(systemName: "ellipsis")
                 }
