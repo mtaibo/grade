@@ -156,6 +156,7 @@ make test                                              # engine tests
 cp App/Config/Local.xcconfig.example App/Config/Local.xcconfig
 # set DEVELOPMENT_TEAM in Local.xcconfig to your Apple team ID
 make open                                              # generates and opens the Xcode project
+make device                                            # builds, installs and opens it on a paired iPhone
 ```
 
 The full brief and roadmap are in [`guide/proyect.md`](guide/proyect.md) (in Spanish). The first milestone is a TestFlight build tried with ~20 students before the January exams.
