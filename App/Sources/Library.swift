@@ -464,13 +464,13 @@ final class Library {
     }
 
     /// Everything stored — every subject with its evaluation, grades and dates, plus the degree
-    /// settings — as the contents of a `.mark` file.
+    /// settings — as the contents of a `.grade` file.
     func backupData() throws -> Data {
-        try MarkBackup.encoder.encode(MarkBackup(courses: courses, degree: degree, guides: allGuides(), selections: selections))
+        try GradeBackup.encoder.encode(GradeBackup(courses: courses, degree: degree, guides: allGuides(), selections: selections))
     }
 
     /// Replaces everything with a backup's contents.
-    func restore(_ backup: MarkBackup) {
+    func restore(_ backup: GradeBackup) {
         courses = backup.courses
         degree = backup.degree
         selections = backup.selections ?? []

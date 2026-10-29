@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🧮 Mark
+# 🧮 Grade
 
 **A tracker for your subjects, grades and assignments.**
 
@@ -14,7 +14,7 @@
 
 ---
 
-Mark is a tracker for your subjects, grades, assignments and deadlines in one place, built to model **any** grading scheme instead of a generic one. It's my first project aimed at the App Store: a minimal version first, tested with real students, then grown into something I'd pay for myself.
+Grade is a tracker for your subjects, grades, assignments and deadlines in one place, built to model **any** grading scheme instead of a generic one. It's my first project aimed at the App Store: a minimal version first, tested with real students, then grown into something I'd pay for myself.
 
 ## Why I'm building it
 
@@ -150,8 +150,8 @@ Each subject keeps both sittings' grades. In the extraordinary one, parts the sy
 Requires Xcode and [XcodeGen](https://github.com/yonaskolb/XcodeGen).
 
 ```bash
-git clone https://github.com/mtaibo/mark.git
-cd mark
+git clone https://github.com/mtaibo/grade.git
+cd grade
 make test                                              # engine tests
 cp App/Config/Local.xcconfig.example App/Config/Local.xcconfig
 # set DEVELOPMENT_TEAM in Local.xcconfig to your Apple team ID

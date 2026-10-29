@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Mark · TODO</title>
+<title>Grade · TODO</title>
 <style>
   :root {
     --bg: #fafafa; --fg: #1c1c1e; --muted: #8e8e93; --line: #e5e5ea; --accent: #0a84ff; --danger: #ff3b30;
@@ -187,7 +187,7 @@ const served = location.protocol.startsWith('http');
 
 async function save() {
   const text = lines.join('\n');
-  try { localStorage.setItem('mark-todo', text); } catch {}
+  try { localStorage.setItem('grade-todo', text); } catch {}
   try {
     if (served) {
       const response = await fetch('TODO.md', { method: 'PUT', body: text });
@@ -214,7 +214,7 @@ function load(text) {
 // The picked file's handle, kept between visits (Chrome lets handles live in IndexedDB).
 function store(mode, value) {
   return new Promise((resolve) => {
-    const request = indexedDB.open('mark-todo', 1);
+    const request = indexedDB.open('grade-todo', 1);
     request.onupgradeneeded = () => request.result.createObjectStore('handles');
     request.onerror = () => resolve(null);
     request.onsuccess = () => {
@@ -287,7 +287,7 @@ $('download').onclick = () => {
     return;
   }
   try {
-    const saved = localStorage.getItem('mark-todo');
+    const saved = localStorage.getItem('grade-todo');
     if (saved) { load(saved); $('download').hidden = false; }
   } catch {}
 })();

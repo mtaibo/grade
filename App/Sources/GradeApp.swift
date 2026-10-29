@@ -1,7 +1,7 @@
 import SwiftUI
 
 @main
-struct MarkApp: App {
+struct GradeApp: App {
     @State private var library = Library()
     /// Calendar sits leftmost, but the app still opens on the subjects.
     @State private var selectedTab = AppTab.subjects

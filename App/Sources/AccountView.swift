@@ -73,14 +73,14 @@ struct AccountView: View {
                 }
 
                 Section {
-                    ShareLink(item: BackupFile(library: library), preview: SharePreview("Copia de Mark")) {
+                    ShareLink(item: BackupFile(library: library), preview: SharePreview("Copia de Grade")) {
                         Label("Exportar datos", systemImage: "square.and.arrow.up")
                     }
                     Button("Importar datos", systemImage: "square.and.arrow.down") { backupCenter.isPicking = true }
                 } header: {
                     Text("Copia de seguridad")
                 } footer: {
-                    Text("Exporta todas tus asignaturas, notas, fechas y ajustes a un archivo .mark. Para recuperarlos, impórtalo aquí o ábrelo con Mark.")
+                    Text("Exporta todas tus asignaturas, notas, fechas y ajustes a un archivo .grade. Para recuperarlos, impórtalo aquí o ábrelo con Grade.")
                 }
 
                 Section {

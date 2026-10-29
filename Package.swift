@@ -2,7 +2,7 @@
 import PackageDescription
 
 let package = Package(
-    name: "mark",
+    name: "grade",
     platforms: [
         .iOS(.v27),
     ],

@@ -17,9 +17,9 @@
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>Mark</string>
+	<string>Grade</string>
 	<key>CFBundleDisplayName</key>
-	<string>Mark</string>
+	<string>Grade</string>
 	<key>CFBundleShortVersionString</key>
 	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleVersion</key>
@@ -30,9 +30,9 @@
 	<array>
 		<dict>
 			<key>UTTypeIdentifier</key>
-			<string>com.migueltaibo.mark.backup</string>
+			<string>com.migueltaibo.grade.backup</string>
 			<key>UTTypeDescription</key>
-			<string>Copia de Mark</string>
+			<string>Copia de Grade</string>
 			<key>UTTypeConformsTo</key>
 			<array>
 				<string>public.json</string>
@@ -41,10 +41,10 @@
 			<dict>
 				<key>public.filename-extension</key>
 				<array>
-					<string>mark</string>
+					<string>grade</string>
 				</array>
 				<key>public.mime-type</key>
-				<string>application/x-mark-backup</string>
+				<string>application/x-grade-backup</string>
 			</dict>
 		</dict>
 	</array>
@@ -52,14 +52,14 @@
 	<array>
 		<dict>
 			<key>CFBundleTypeName</key>
-			<string>Copia de Mark</string>
+			<string>Copia de Grade</string>
 			<key>CFBundleTypeRole</key>
 			<string>Editor</string>
 			<key>LSHandlerRank</key>
 			<string>Owner</string>
 			<key>LSItemContentTypes</key>
 			<array>
-				<string>com.migueltaibo.mark.backup</string>
+				<string>com.migueltaibo.grade.backup</string>
 			</array>
 		</dict>
 	</array>

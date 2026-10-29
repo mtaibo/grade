@@ -3,14 +3,14 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 extension UTType {
-    /// The `.mark` file: a full copy of the library (every subject with its evaluation, grades and
+    /// The `.grade` file: a full copy of the library (every subject with its evaluation, grades and
     /// dates) and the degree settings, as JSON.
-    static let markBackup = UTType(exportedAs: "com.migueltaibo.mark.backup", conformingTo: .json)
+    static let gradeBackup = UTType(exportedAs: "com.migueltaibo.grade.backup", conformingTo: .json)
 }
 
-/// What a `.mark` file holds: the library, the degree settings and any uploaded guides.
-struct MarkBackup: Codable {
-    static let format = "mark-backup"
+/// What a `.grade` file holds: the library, the degree settings and any uploaded guides.
+struct GradeBackup: Codable {
+    static let format = "grade-backup"
     static let currentVersion = 1
 
     var format = Self.format
@@ -33,14 +33,14 @@ enum BackupError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .notABackup: "Este archivo no es una copia de Mark."
-        case .newerVersion: "Esta copia es de una versión más nueva de Mark. Actualiza la app para abrirla."
+        case .notABackup: "Este archivo no es una copia de Grade."
+        case .newerVersion: "Esta copia es de una versión más nueva de Grade. Actualiza la app para abrirla."
         case .unreadable: "No se ha podido leer el archivo."
         }
     }
 }
 
-extension MarkBackup {
+extension GradeBackup {
     static var encoder: JSONEncoder {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
@@ -49,11 +49,11 @@ extension MarkBackup {
         return encoder
     }
 
-    static func decode(_ data: Data) throws -> MarkBackup {
+    static func decode(_ data: Data) throws -> GradeBackup {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         decoder.nonConformingFloatDecodingStrategy = Library.fileDecoder.nonConformingFloatDecodingStrategy
-        guard let backup = try? decoder.decode(MarkBackup.self, from: data), backup.format == Self.format else {
+        guard let backup = try? decoder.decode(GradeBackup.self, from: data), [Self.format, "mark-backup"].contains(backup.format) else {
             throw BackupError.notABackup
         }
         guard backup.version <= Self.currentVersion else { throw BackupError.newerVersion }
@@ -62,27 +62,27 @@ extension MarkBackup {
 }
 
 /// The file handed to the share sheet. The library (with every guide PDF) is only encoded and
-/// written to a temporary `.mark` when it's actually shared — never while the screen just redraws.
+/// written to a temporary `.grade` when it's actually shared — never while the screen just redraws.
 struct BackupFile: Transferable {
     let library: Library
 
     static var transferRepresentation: some TransferRepresentation {
-        FileRepresentation(exportedContentType: .markBackup) { file in
+        FileRepresentation(exportedContentType: .gradeBackup) { file in
             let data = try await file.library.backupData()
-            let url = URL.temporaryDirectory.appending(path: "Mark \(Date.now.formatted(.iso8601.year().month().day())).mark")
+            let url = URL.temporaryDirectory.appending(path: "Grade \(Date.now.formatted(.iso8601.year().month().day())).grade")
             try data.write(to: url, options: .atomic)
             return SentTransferredFile(url)
         }
     }
 }
 
-/// Picking or opening a `.mark` file: read it, ask before replacing anything, then restore.
+/// Picking or opening a `.grade` file: read it, ask before replacing anything, then restore.
 @MainActor
 @Observable
 final class BackupImportCenter {
     struct Pending: Identifiable {
         let id = UUID()
-        let backup: MarkBackup
+        let backup: GradeBackup
     }
 
     var isPicking = false
@@ -94,7 +94,7 @@ final class BackupImportCenter {
         defer { if scoped { url.stopAccessingSecurityScopedResource() } }
         do {
             guard let data = try? Data(contentsOf: url) else { throw BackupError.unreadable }
-            pending = Pending(backup: try MarkBackup.decode(data))
+            pending = Pending(backup: try GradeBackup.decode(data))
         } catch {
             message = error.localizedDescription
         }
@@ -107,7 +107,7 @@ final class BackupImportCenter {
     }
 }
 
-/// Attached once at the root so a file chosen in Cuenta and a `.mark` opened from Files or AirDrop
+/// Attached once at the root so a file chosen in Cuenta and a `.grade` opened from Files or AirDrop
 /// go through the same confirmation.
 struct BackupImportHost: ViewModifier {
     @Environment(Library.self) private var library
@@ -115,7 +115,7 @@ struct BackupImportHost: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            .fileImporter(isPresented: $center.isPicking, allowedContentTypes: [.markBackup, .json]) { result in
+            .fileImporter(isPresented: $center.isPicking, allowedContentTypes: [.gradeBackup, .json]) { result in
                 if case .success(let url) = result { center.prepare(url: url) }
             }
             .onOpenURL { center.prepare(url: $0) }

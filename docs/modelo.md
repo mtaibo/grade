@@ -320,7 +320,7 @@ simulador, se lee bien incluso en miniatura.
   original) con destino `Sources/Engine` + `Tests/EngineTests`, y `App/` con un proyecto generado
   por XcodeGen (`project.yml`, gitignored el `.xcodeproj`). Es el mismo patrón que tpapp, visto
   como referencia a petición de Miguel.
-- **App de un solo target** (`Mark-iOS`, sin macOS) — el README solo anuncia iOS.
+- **App de un solo target** (`Grade-iOS`, sin macOS) — el README solo anuncia iOS.
 - **`Alternatives.Branch.condition`** es un `String?` libre (p. ej. `"Controles >= 4"`), no una
   expresión estructurada. El brief tampoco lo especifica todavía; no hacía falta más para que las
   guías de referencia encajaran.
@@ -378,11 +378,11 @@ Límites conocidos: sigue sin haber árbol propio para la extraordinaria. Progra
 - `Grade.isFinalExam` marca el examen final (todas las plantillas lo llevan; las asignaturas guardadas antes lo reciben una vez por nombre en `Library.flagFinalExams`). Una parte cuyas notas son todas examen final sale en su propia tarjeta (`ExamCard`) con un hueco Ordinaria y otro Extraordinaria, cada uno con su nota, su barra y su fecha; tocar un hueco abre solo esa nota en esa convocatoria. Ya no hay selector de convocatoria: el resto de partes usa `activeSession`.
 - Barras: azules mientras falte alguna nota de la sección; completa, color por nota: <5 rojo, <7 amarillo, <9 verde, ≥9 morado (`GradeBand`). La longitud es la nota de la parte sobre su máximo.
 - Editor: en cada parte, «Cuántas notas» (`Node.resizeNotes`) la convierte en place entre una nota y N notas iguales; el mínimo de la nota pasa al grupo. «Es el examen final» en los ajustes de cada nota.
-- Copia de seguridad: `.mark` (`com.migueltaibo.mark.backup`, JSON) con todos los cursos, asignaturas, notas, fechas y ajustes de carrera (`Backup.swift`, `MarkBackup`, versión 1). Cuenta → Copia de seguridad: exportar (hoja de compartir) e importar; abrir un `.mark` desde Archivos/AirDrop pasa por la misma confirmación. Importar sustituye todo.
+- Copia de seguridad: `.grade` (`com.migueltaibo.grade.backup`, JSON) con todos los cursos, asignaturas, notas, fechas y ajustes de carrera (`Backup.swift`, `GradeBackup`, versión 1). Cuenta → Copia de seguridad: exportar (hoja de compartir) e importar; abrir un `.grade` desde Archivos/AirDrop pasa por la misma confirmación. Importar sustituye todo.
 
 ## Guía docente en el móvil (oct 2026)
 
-Menú `…` de cada asignatura: sin guía solo «Subir guía» (selector de PDF, se valida con `PDFDocument`); con guía, «Abrir guía» (visor `PDFView` en una hoja, con compartir) y «Borrar guía». Los PDF viven en `Application Support/Guides/<id de la asignatura>.pdf` (`Library.setGuide/removeGuide/guideURL`, `guideIDs` observable) y se borran con la asignatura. Van dentro del `.mark` (`MarkBackup.guides`, id → datos en base64, opcional: las copias antiguas siguen abriéndose); importar sustituye también las guías.
+Menú `…` de cada asignatura: sin guía solo «Subir guía» (selector de PDF, se valida con `PDFDocument`); con guía, «Abrir guía» (visor `PDFView` en una hoja, con compartir) y «Borrar guía». Los PDF viven en `Application Support/Guides/<id de la asignatura>.pdf` (`Library.setGuide/removeGuide/guideURL`, `guideIDs` observable) y se borran con la asignatura. Van dentro del `.grade` (`GradeBackup.guides`, id → datos en base64, opcional: las copias antiguas siguen abriéndose); importar sustituye también las guías.
 
 ## Simulador (oct 2026)
 
