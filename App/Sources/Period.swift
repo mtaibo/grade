@@ -1,16 +1,86 @@
 import Foundation
 
-/// How the user's degree is divided, set in the account tab: how many years it has and what its
-/// terms are (cuatrimestres, semestres, trimestres…). Stored term numbers are degree-wide, so
-/// this is also what turns them into "1º Cuatrimestre" on screen.
+/// What the user is studying. Only a university degree shapes the app today (credits, templates);
+/// the rest are there so the choice exists, and pick sensible years and terms.
+enum StudyType: String, Codable, CaseIterable, Identifiable {
+    case university, master, vocational, highSchool, secondary, other
+
+    var id: Self { self }
+
+    var label: String {
+        switch self {
+        case .university: "Grado universitario"
+        case .master: "Máster"
+        case .vocational: "Formación Profesional"
+        case .highSchool: "Bachillerato"
+        case .secondary: "ESO"
+        case .other: "Otros estudios"
+        }
+    }
+
+    var symbol: String {
+        switch self {
+        case .university: "graduationcap"
+        case .master: "building.columns"
+        case .vocational: "wrench.and.screwdriver"
+        case .highSchool: "books.vertical"
+        case .secondary: "backpack"
+        case .other: "square.grid.2x2"
+        }
+    }
+
+    /// The usual years, terms per year and term name, applied when the type is picked. `nil` for
+    /// `.other`, which keeps whatever was set.
+    var defaults: (years: Int, termsPerYear: Int, termName: String)? {
+        switch self {
+        case .university: (4, 2, "Cuatrimestre")
+        case .master: (1, 2, "Cuatrimestre")
+        case .vocational: (2, 3, "Trimestre")
+        case .highSchool: (2, 3, "Trimestre")
+        case .secondary: (4, 3, "Trimestre")
+        case .other: nil
+        }
+    }
+}
+
+/// How the user's degree is divided, set in the account tab: what they study, how many years it
+/// has and what its terms are (cuatrimestres, semestres, trimestres…). Stored term numbers are
+/// degree-wide, so this is also what turns them into "1º Cuatrimestre" on screen.
 struct DegreeSettings: Codable, Equatable {
     static let maxYears = 10
     static let maxTermsPerYear = 4
     static let defaultTermName = "Cuatrimestre"
 
+    var studyType = StudyType.university
     var years = 4
     var termsPerYear = 2
     var termName = defaultTermName
+
+    /// The study type with its usual years and terms.
+    func switching(to type: StudyType) -> DegreeSettings {
+        var new = self
+        new.studyType = type
+        if let defaults = type.defaults {
+            new.years = defaults.years
+            new.termsPerYear = defaults.termsPerYear
+            new.termName = defaults.termName
+        }
+        return new
+    }
+
+    /// "4 años · 2 cuatrimestres por año", for the collapsed studies row.
+    var summary: String {
+        let years = years == 1 ? "1 año" : "\(years) años"
+        let name = displayTermName.lowercased()
+        let terms = termsPerYear == 1 ? "1 \(name)" : "\(termsPerYear) \(Self.plural(name))"
+        return "\(years) · \(terms) por año"
+    }
+
+    private static func plural(_ word: String) -> String {
+        if word.hasSuffix("ón") { return word.dropLast(2) + "ones" }
+        if let last = word.last, "aeiou".contains(last) { return word + "s" }
+        return word + "es"
+    }
 
     private var displayTermName: String {
         let trimmed = termName.trimmingCharacters(in: .whitespaces)
@@ -38,7 +108,7 @@ struct DegreeSettings: Codable, Equatable {
 }
 
 extension DegreeSettings {
-    private enum CodingKeys: String, CodingKey { case years, termsPerYear, termName }
+    private enum CodingKeys: String, CodingKey { case studyType, years, termsPerYear, termName }
 
     /// Clamped to what the settings screen allows, so a hand-edited backup can't hand the app zero
     /// terms a year (which it divides by) or a hundred years.
@@ -47,6 +117,7 @@ extension DegreeSettings {
         let years = try container.decodeIfPresent(Int.self, forKey: .years) ?? 4
         let terms = try container.decodeIfPresent(Int.self, forKey: .termsPerYear) ?? 2
         self.init(
+            studyType: (try? container.decodeIfPresent(StudyType.self, forKey: .studyType)) ?? .university,
             years: min(max(years, 1), Self.maxYears),
             termsPerYear: min(max(terms, 1), Self.maxTermsPerYear),
             termName: try container.decodeIfPresent(String.self, forKey: .termName) ?? Self.defaultTermName

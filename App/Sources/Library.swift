@@ -453,9 +453,14 @@ final class Library {
         return courses.firstIndex { $0.year == year }!
     }
 
-    func clearAllGrades() {
+    /// The subjects a scope covers, with their year.
+    func records(in scope: DataScope) -> [SubjectRecord] {
+        courses.flatMap { course in course.subjects.filter { scope.contains($0, year: course.year) } }
+    }
+
+    func clearGrades(in scope: DataScope) {
         for course in courses.indices {
-            for subject in courses[course].subjects.indices {
+            for subject in courses[course].subjects.indices where scope.contains(courses[course].subjects[subject], year: courses[course].year) {
                 courses[course].subjects[subject].entries = [:]
                 courses[course].subjects[subject].extraordinaryEntries = [:]
             }
@@ -463,10 +468,40 @@ final class Library {
         save()
     }
 
-    /// Everything stored — every subject with its evaluation, grades and dates, plus the degree
-    /// settings — as the contents of a `.grade` file.
-    func backupData() throws -> Data {
-        try GradeBackup.encoder.encode(GradeBackup(courses: courses, degree: degree, guides: allGuides(), selections: selections))
+    func removeSubjects(in scope: DataScope) {
+        let ids = Set(records(in: scope).map(\.id))
+        for course in courses.indices { courses[course].subjects.removeAll { ids.contains($0.id) } }
+        for index in selections.indices { selections[index].subjectIDs.removeAll { ids.contains($0) } }
+        selections.removeAll { $0.subjectIDs.isEmpty }
+        for id in guideIDs.intersection(ids) { removeGuide(for: id) }
+        save()
+    }
+
+    /// What `options` picks out — every subject in its scope with its evaluation and dates, plus
+    /// the degree settings, and the grades, guides and views when asked — as a `.grade` file.
+    func backupData(_ options: BackupOptions = BackupOptions()) throws -> Data {
+        let ids = Set(records(in: options.scope).map(\.id))
+        let courses = self.courses.compactMap { course -> Course? in
+            var course = course
+            course.subjects = course.subjects.filter { ids.contains($0.id) }.map { record in
+                guard !options.includesGrades else { return record }
+                var record = record
+                record.entries = [:]
+                record.extraordinaryEntries = [:]
+                return record
+            }
+            return course.subjects.isEmpty ? nil : course
+        }
+        let guides = options.includesGuides ? allGuides().filter { UUID(uuidString: $0.key).map(ids.contains) ?? false } : nil
+        let selections = options.includesViews ? self.selections.compactMap { selection -> CustomSelection? in
+            var selection = selection
+            selection.subjectIDs.removeAll { !ids.contains($0) }
+            return selection.subjectIDs.isEmpty ? nil : selection
+        } : nil
+        var backup = GradeBackup(courses: courses, degree: degree, guides: guides, selections: selections)
+        backup.includesGrades = options.includesGrades
+        backup.scope = options.scope == .all ? nil : options.scope.title(in: degree)
+        return try GradeBackup.encoder.encode(backup)
     }
 
     /// Replaces everything with a backup's contents.
@@ -476,18 +511,49 @@ final class Library {
         selections = backup.selections ?? []
         normalize()
         for id in guideIDs { removeGuide(for: id) }
+        restoreGuides(of: backup)
+        save()
+    }
+
+    /// Adds a backup's subjects to what's already here: one with the same id is replaced (keeping
+    /// its grades when the copy was made without them), the rest are added to their year. The
+    /// degree settings stay as they are.
+    func merge(_ backup: GradeBackup) {
+        let keepsGrades = backup.includesGrades == false
+        for course in backup.courses {
+            for var record in course.subjects {
+                if let existing = self.record(id: record.id) {
+                    if keepsGrades {
+                        record.entries = existing.entries
+                        record.extraordinaryEntries = existing.extraordinaryEntries
+                    }
+                    removeSubject(record.id)
+                }
+                courses[courseIndex(forYear: course.year)].subjects.append(record)
+            }
+        }
+        for selection in backup.selections ?? [] {
+            if let index = selections.firstIndex(where: { $0.id == selection.id }) {
+                selections[index] = selection
+            } else {
+                selections.append(selection)
+            }
+        }
+        normalize()
+        restoreGuides(of: backup)
+        save()
+    }
+
+    /// "1º Año 1º Cuatrimestre", for an exported file's name.
+    func scopeFileName(_ scope: DataScope) -> String {
+        scope.title(in: degree).replacingOccurrences(of: " · ", with: " ")
+    }
+
+    private func restoreGuides(of backup: GradeBackup) {
         let ids = Set(courses.flatMap(\.subjects).map(\.id))
         for (key, data) in backup.guides ?? [:] {
             if let id = UUID(uuidString: key), ids.contains(id) { try? setGuide(data, for: id) }
         }
-        save()
-    }
-
-    func removeAllSubjects() {
-        courses = []
-        selections = []
-        for id in guideIDs { removeGuide(for: id) }
-        save()
     }
 
     /// Adds the template's subjects, each in its year and term. A subject the course already has

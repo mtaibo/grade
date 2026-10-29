@@ -1,52 +1,108 @@
 import Engine
 import SwiftUI
 
-/// "Expediente", pushed from the account tab: the credit-weighted average the brief asks for (§2), over subjects whose grades
-/// are all in — a subject still in progress has no final grade yet to average.
+/// The record's numbers, worked out once per redraw: each subject's progress, and credit-weighted
+/// averages over the subjects whose grades are all in — one still in progress has no final grade
+/// yet to average (§2).
+struct RecordSummary {
+    let progress: [SubjectRecord.ID: SubjectProgress]
+    let subjects: [SubjectRecord]
+
+    @MainActor
+    init(_ library: Library) {
+        subjects = library.courses.flatMap(\.subjects)
+        progress = Dictionary(subjects.map { ($0.id, SubjectProgress($0)) }) { first, _ in first }
+    }
+
+    func progress(of record: SubjectRecord) -> SubjectProgress {
+        progress[record.id] ?? SubjectProgress(record)
+    }
+
+    private func completed(_ records: [SubjectRecord]) -> [SubjectRecord] {
+        records.filter { progress(of: $0).isComplete }
+    }
+
+    func average(of records: [SubjectRecord]) -> Double? {
+        let done = completed(records)
+        let credits = done.reduce(0) { $0 + $1.subject.ectsCredits }
+        guard credits > 0 else { return nil }
+        return done.reduce(0) { $0 + progress(of: $1).worst * $1.subject.ectsCredits } / credits
+    }
+
+    var average: Double? { average(of: subjects) }
+
+    var passed: [SubjectRecord] {
+        completed(subjects).filter { progress(of: $0).status == .guaranteed }
+    }
+
+    var passedCredits: Double { passed.reduce(0) { $0 + $1.subject.ectsCredits } }
+    var totalCredits: Double { subjects.reduce(0) { $0 + $1.subject.ectsCredits } }
+
+    static func format(_ average: Double?) -> String {
+        average?.formatted(.number.precision(.fractionLength(2))) ?? "—"
+    }
+}
+
+/// The three headline numbers: overall average, passed subjects and passed credits.
+struct RecordStats: View {
+    let summary: RecordSummary
+
+    var body: some View {
+        HStack(spacing: 0) {
+            RecordStat(value: RecordSummary.format(summary.average), label: "Media")
+            Divider()
+            RecordStat(value: "\(summary.passed.count)/\(summary.subjects.count)", label: "Aprobadas")
+            Divider()
+            RecordStat(value: summary.passedCredits.formatted(), label: "Créditos")
+        }
+        .padding(.vertical, 4)
+    }
+}
+
+/// "Expediente", pushed from the account tab: the overall numbers, then every year with its
+/// average and, inside it, each term with its own.
 struct RecordView: View {
     @Environment(Library.self) private var library
 
-    private func average(_ completed: [(record: SubjectRecord, progress: SubjectProgress)]) -> Double? {
-        let credits = completed.reduce(0) { $0 + $1.record.subject.ectsCredits }
-        guard credits > 0 else { return nil }
-        return completed.reduce(0) { $0 + $1.progress.worst * $1.record.subject.ectsCredits } / credits
-    }
-
-    private func passedCredits(_ completed: [(record: SubjectRecord, progress: SubjectProgress)]) -> Double {
-        completed.filter { $0.progress.status == .guaranteed }.reduce(0) { $0 + $1.record.subject.ectsCredits }
-    }
-
     var body: some View {
-        // Each subject's numbers, worked out once per redraw.
-        let progress = Dictionary(library.courses.flatMap(\.subjects).map { ($0.id, SubjectProgress($0)) }) { first, _ in first }
-        let completed = library.courses.flatMap(\.subjects).compactMap { record in
-            progress[record.id].flatMap { $0.isComplete ? (record: record, progress: $0) : nil }
-        }
+        let summary = RecordSummary(library)
         return List {
             Section {
-                HStack(spacing: 0) {
-                    RecordStat(
-                        value: average(completed)?.formatted(.number.precision(.fractionLength(2))) ?? "—",
-                        label: "Media ponderada"
-                    )
-                    Divider()
-                    RecordStat(value: passedCredits(completed).formatted(), label: "Créditos superados")
-                }
-                .padding(.vertical, 4)
+                RecordStats(summary: summary)
             } footer: {
-                Text("La media cuenta las asignaturas con todas las notas puestas, ponderadas por sus créditos.")
+                Text("Las medias cuentan las asignaturas con todas las notas puestas, ponderadas por sus créditos. Llevas \(summary.passedCredits.formatted()) de \(summary.totalCredits.formatted()) créditos.")
             }
 
             ForEach(library.courses) { course in
-                Section(course.name) {
-                    ForEach(course.subjects) { record in
-                        RecordRow(record: record, progress: progress[record.id] ?? SubjectProgress(record))
+                Section {
+                    ForEach(terms(of: course), id: \.self) { term in
+                        let subjects = course.subjects.filter { $0.term == term }
+                        TermRow(
+                            title: term.map(library.degree.termLabel) ?? "Todo el año",
+                            average: summary.average(of: subjects)
+                        )
+                        ForEach(subjects) { record in
+                            RecordRow(record: record, progress: summary.progress(of: record))
+                        }
+                    }
+                } header: {
+                    HStack {
+                        Text(course.name)
+                        Spacer()
+                        Text("Media \(RecordSummary.format(summary.average(of: course.subjects)))")
+                            .monospacedDigit()
                     }
                 }
             }
         }
         .navigationTitle("Expediente")
         .navigationBarTitleDisplayMode(.inline)
+    }
+
+    /// The course's terms in order, year-long subjects last.
+    private func terms(of course: Course) -> [Int?] {
+        let terms: [Int?] = Set(course.subjects.compactMap(\.term)).sorted()
+        return course.subjects.contains { $0.term == nil } ? terms + [nil] : terms
     }
 }
 
@@ -57,7 +113,7 @@ private struct RecordStat: View {
     var body: some View {
         VStack(spacing: 2) {
             Text(value)
-                .font(.system(.title, design: .rounded, weight: .semibold))
+                .font(.system(.title2, design: .rounded, weight: .semibold))
                 .monospacedDigit()
             Text(label)
                 .font(.caption)
@@ -65,6 +121,24 @@ private struct RecordStat: View {
         }
         .frame(maxWidth: .infinity)
         .accessibilityElement(children: .combine)
+    }
+}
+
+/// A term's heading inside its year, with the term's average.
+private struct TermRow: View {
+    let title: String
+    let average: Double?
+
+    var body: some View {
+        LabeledContent {
+            Text(RecordSummary.format(average))
+                .monospacedDigit()
+        } label: {
+            Text(title)
+        }
+        .font(.subheadline.weight(.semibold))
+        .foregroundStyle(.secondary)
+        .listRowBackground(Color.secondary.opacity(0.08))
     }
 }
 

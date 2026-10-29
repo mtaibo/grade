@@ -1,13 +1,13 @@
 import Engine
 import SwiftUI
 
-/// The account tab: the things you look at occasionally rather than while the term runs — the
-/// record (expediente) and the app's settings.
+/// The account tab, four modules top to bottom: what you study (a fold-out with its years and
+/// terms), your record, your data (backups and deletes) and about the app.
 struct AccountView: View {
     @Environment(Library.self) private var library
-    @Environment(BackupImportCenter.self) private var backupCenter
-    @State private var isConfirmingClear = false
-    @State private var isConfirmingRemoveAll = false
+    @State private var isStudiesExpanded = false
+
+    static let website = URL(string: "https://www.migueltaibo.com")!
 
     private var version: String {
         let info = Bundle.main.infoDictionary
@@ -16,96 +16,149 @@ struct AccountView: View {
         return "\(short) (\(build))"
     }
 
-    private var degreeBinding: Binding<DegreeSettings> {
-        Binding(get: { library.degree }, set: { library.updateDegree($0) })
-    }
-
     var body: some View {
         NavigationStack {
             List {
+                StudiesSection(isExpanded: $isStudiesExpanded)
+
                 Section {
+                    RecordStats(summary: RecordSummary(library))
                     NavigationLink {
                         RecordView()
                     } label: {
-                        Label("Expediente", systemImage: "chart.bar.doc.horizontal")
-                    }
-                }
-
-                Section {
-                    ForEach(DegreeTemplate.all) { template in
-                        NavigationLink {
-                            TemplateView(template: template)
-                        } label: {
-                            Label {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(template.name)
-                                    Text("\(template.university) · \(template.entries.count) asignaturas")
-                                        .font(.footnote)
-                                        .foregroundStyle(.secondary)
-                                }
-                            } icon: {
-                                Image(systemName: "graduationcap")
-                            }
-                        }
+                        Label("Ver expediente", systemImage: "chart.bar.doc.horizontal")
                     }
                 } header: {
-                    Text("Plantillas")
+                    Text("Expediente")
                 } footer: {
-                    Text("Asignaturas ya preparadas con la evaluación de su guía docente. Después puedes editarlas.")
+                    Text("Tu media por año, por \(library.degree.termName.isEmpty ? "periodo" : library.degree.termName.lowercased()) y de toda la carrera.")
                 }
 
-                Section {
-                    Stepper(value: degreeBinding.years, in: 1...DegreeSettings.maxYears) {
-                        LabeledContent("Años de carrera", value: library.degree.years.formatted())
+                Section("Datos") {
+                    NavigationLink {
+                        BackupView()
+                    } label: {
+                        AccountRow(title: "Copia de seguridad", detail: "Exportar o importar tus datos", symbol: "externaldrive")
                     }
-                    Stepper(value: degreeBinding.termsPerYear, in: 1...DegreeSettings.maxTermsPerYear) {
-                        LabeledContent("Periodos por año", value: library.degree.termsPerYear.formatted())
+                    NavigationLink {
+                        EraseDataView()
+                    } label: {
+                        AccountRow(title: "Borrar datos", detail: "Notas o asignaturas", symbol: "trash")
                     }
-                    LabeledContent("Nombre del periodo") {
-                        TextField("Cuatrimestre", text: degreeBinding.termName)
-                            .multilineTextAlignment(.trailing)
-                            .textInputAutocapitalization(.words)
-                    }
-                } header: {
-                    Text("Tu carrera")
-                } footer: {
-                    Text("Se usa en los títulos, p. ej. «2º Año · 1º \(library.degree.termName.isEmpty ? "Cuatrimestre" : library.degree.termName)». Si cambias los periodos por año, cada asignatura conserva su año y su posición dentro de él.")
-                }
-
-                Section {
-                    ShareLink(item: BackupFile(library: library), preview: SharePreview("Copia de Grade")) {
-                        Label("Exportar datos", systemImage: "square.and.arrow.up")
-                    }
-                    Button("Importar datos", systemImage: "square.and.arrow.down") { backupCenter.isPicking = true }
-                } header: {
-                    Text("Copia de seguridad")
-                } footer: {
-                    Text("Exporta todas tus asignaturas, notas, fechas y ajustes a un archivo .grade. Para recuperarlos, impórtalo aquí o ábrelo con Grade.")
-                }
-
-                Section {
-                    Button("Borrar todas las notas", role: .destructive) { isConfirmingClear = true }
-                    Button("Borrar todas las asignaturas", role: .destructive) { isConfirmingRemoveAll = true }
-                } header: {
-                    Text("Datos")
                 }
 
                 Section("Acerca de") {
                     LabeledContent("Versión", value: version)
+                    LabeledContent("Autor", value: "Miguel Taibo")
+                    Link(destination: Self.website) {
+                        LabeledContent("Web") {
+                            Text("www.migueltaibo.com")
+                                .foregroundStyle(.tint)
+                        }
+                    }
+                    .foregroundStyle(.primary)
+                    NavigationLink {
+                        RoadmapView()
+                    } label: {
+                        Text("Próximas implementaciones")
+                    }
                 }
             }
             .navigationTitle("Cuenta")
-            .confirmationDialog("¿Borrar todas las notas?", isPresented: $isConfirmingClear, titleVisibility: .visible) {
-                Button("Borrar notas", role: .destructive) { library.clearAllGrades() }
-            } message: {
-                Text("Se borran las notas de todas las asignaturas. No se puede deshacer.")
+        }
+    }
+}
+
+/// A navigation row with an icon, a title and a line saying what's inside.
+struct AccountRow: View {
+    let title: String
+    let detail: String
+    let symbol: String
+
+    var body: some View {
+        Label {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                Text(detail)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
             }
-            .confirmationDialog("¿Borrar todas las asignaturas?", isPresented: $isConfirmingRemoveAll, titleVisibility: .visible) {
-                Button("Borrar todo", role: .destructive) { library.removeAllSubjects() }
-            } message: {
-                Text("Se borran todas tus asignaturas y sus notas. No se puede deshacer.")
+        } icon: {
+            Image(systemName: symbol)
+        }
+    }
+}
+
+/// What you study, folded into one row ("Grado universitario · 4 años · 2 cuatrimestres por
+/// año") that opens to edit the type, years and terms, plus the subject templates.
+private struct StudiesSection: View {
+    @Binding var isExpanded: Bool
+    @Environment(Library.self) private var library
+
+    private var degree: Binding<DegreeSettings> {
+        Binding(get: { library.degree }, set: { library.updateDegree($0) })
+    }
+
+    private var studyType: Binding<StudyType> {
+        Binding(get: { library.degree.studyType }, set: { library.updateDegree(library.degree.switching(to: $0)) })
+    }
+
+    var body: some View {
+        Section {
+            DisclosureGroup(isExpanded: $isExpanded) {
+                Picker("Estudios", selection: studyType) {
+                    ForEach(StudyType.allCases) { type in
+                        Label(type.label, systemImage: type.symbol).tag(type)
+                    }
+                }
+                Stepper(value: degree.years, in: 1...DegreeSettings.maxYears) {
+                    LabeledContent("Años", value: library.degree.years.formatted())
+                }
+                Stepper(value: degree.termsPerYear, in: 1...DegreeSettings.maxTermsPerYear) {
+                    LabeledContent("Periodos por año", value: library.degree.termsPerYear.formatted())
+                }
+                LabeledContent("Nombre del periodo") {
+                    TextField("Cuatrimestre", text: degree.termName)
+                        .multilineTextAlignment(.trailing)
+                        .textInputAutocapitalization(.words)
+                }
+            } label: {
+                AccountRow(title: library.degree.studyType.label, detail: library.degree.summary, symbol: library.degree.studyType.symbol)
+            }
+
+            NavigationLink {
+                TemplatesView()
+            } label: {
+                AccountRow(title: "Plantillas", detail: "Asignaturas ya preparadas de tu carrera", symbol: "square.stack")
+            }
+        } header: {
+            Text("Tus estudios")
+        } footer: {
+            if isExpanded {
+                Text("Por ahora Grade está pensada para la universidad. Los periodos se usan en los títulos, p. ej. «2º Año · 1º \(library.degree.termName.isEmpty ? "Cuatrimestre" : library.degree.termName)»; si cambias cuántos hay por año, cada asignatura conserva su año y su posición dentro de él.")
             }
         }
+    }
+}
+
+/// The bundled templates, each opening what it contains.
+private struct TemplatesView: View {
+    var body: some View {
+        List {
+            Section {
+                ForEach(DegreeTemplate.all) { template in
+                    NavigationLink {
+                        TemplateView(template: template)
+                    } label: {
+                        AccountRow(title: template.name, detail: "\(template.university) · \(template.entries.count) asignaturas", symbol: "graduationcap")
+                    }
+                }
+            } footer: {
+                Text("Asignaturas ya preparadas con la evaluación de su guía docente. Después puedes editarlas.")
+            }
+        }
+        .navigationTitle("Plantillas")
+        .navigationBarTitleDisplayMode(.inline)
     }
 }
 

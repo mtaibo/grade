@@ -22,8 +22,45 @@ struct GradeBackup: Codable {
     var guides: [String: Data]?
     /// The custom home-screen views. Absent in copies made before they existed.
     var selections: [CustomSelection]?
+    /// `false` when the copy was made without grades. Absent (with grades) in older copies.
+    var includesGrades: Bool?
+    /// What part of the degree the copy holds ("1º Año"), `nil` when it holds everything.
+    var scope: String?
 
     var subjectCount: Int { courses.reduce(0) { $0 + $1.subjects.count } }
+}
+
+/// The part of the degree an export or a delete works on.
+enum DataScope: Hashable, Sendable {
+    case all
+    case year(Int)
+    /// A degree-wide term number.
+    case term(Int)
+
+    func contains(_ record: SubjectRecord, year: Int) -> Bool {
+        switch self {
+        case .all: true
+        case .year(let wanted): year == wanted
+        case .term(let wanted): record.term == wanted
+        }
+    }
+
+    func title(in degree: DegreeSettings) -> String {
+        switch self {
+        case .all: "Todo"
+        case .year(let year): Period(year: year).title
+        case .term(let term):
+            "\(Period(year: (term - 1) / max(degree.termsPerYear, 1) + 1).title) · \(degree.termLabel(term))"
+        }
+    }
+}
+
+/// What goes into an exported `.grade` file.
+struct BackupOptions: Equatable, Sendable {
+    var scope = DataScope.all
+    var includesGrades = true
+    var includesGuides = true
+    var includesViews = true
 }
 
 enum BackupError: LocalizedError {
@@ -65,11 +102,13 @@ extension GradeBackup {
 /// written to a temporary `.grade` when it's actually shared — never while the screen just redraws.
 struct BackupFile: Transferable {
     let library: Library
+    var options = BackupOptions()
 
     static var transferRepresentation: some TransferRepresentation {
         FileRepresentation(exportedContentType: .gradeBackup) { file in
-            let data = try await file.library.backupData()
-            let url = URL.temporaryDirectory.appending(path: "Grade \(Date.now.formatted(.iso8601.year().month().day())).grade")
+            let data = try await file.library.backupData(file.options)
+            let scope = file.options.scope == .all ? "" : " \(await file.library.scopeFileName(file.options.scope))"
+            let url = URL.temporaryDirectory.appending(path: "Grade\(scope) \(Date.now.formatted(.iso8601.year().month().day())).grade")
             try data.write(to: url, options: .atomic)
             return SentTransferredFile(url)
         }
@@ -100,8 +139,12 @@ final class BackupImportCenter {
         }
     }
 
-    func confirm(_ pending: Pending, into library: Library) {
-        library.restore(pending.backup)
+    func confirm(_ pending: Pending, into library: Library, replacing: Bool) {
+        if replacing {
+            library.restore(pending.backup)
+        } else {
+            library.merge(pending.backup)
+        }
         message = "Se han importado \(pending.backup.subjectCount) asignaturas."
         self.pending = nil
     }
@@ -125,14 +168,22 @@ struct BackupImportHost: ViewModifier {
                 titleVisibility: .visible,
                 presenting: center.pending
             ) { pending in
-                Button("Sustituir lo que tengo", role: .destructive) { center.confirm(pending, into: library) }
+                Button("Añadir a lo que tengo") { center.confirm(pending, into: library, replacing: false) }
+                Button("Sustituir todo", role: .destructive) { center.confirm(pending, into: library, replacing: true) }
             } message: { pending in
-                Text("La copia tiene \(pending.backup.subjectCount) asignaturas. Todo lo que hay ahora en la app se sustituye por ello. No se puede deshacer.")
+                Text(Self.summary(of: pending.backup))
             }
             .alert("Copia de seguridad", isPresented: Binding(get: { center.message != nil }, set: { if !$0 { center.message = nil } })) {
                 Button("Vale") {}
             } message: {
                 Text(center.message ?? "")
             }
+    }
+
+    private static func summary(of backup: GradeBackup) -> String {
+        var text = "La copia tiene \(backup.subjectCount) asignaturas"
+        if let scope = backup.scope { text += " (\(scope))" }
+        if backup.includesGrades == false { text += ", sin notas" }
+        return text + ". «Añadir» las suma a las tuyas y sustituye las que ya estaban en la copia; «Sustituir todo» borra lo que hay ahora en la app. No se puede deshacer."
     }
 }
