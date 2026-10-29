@@ -635,11 +635,12 @@ final class Library {
 
     /// Adds the template's subjects, each in its year and term. A subject the course already has
     /// (same name) is left alone, so applying a template twice never duplicates or loses grades.
+    /// `only` limits it to those entries (by index); `nil` adds them all.
     @discardableResult
-    func apply(_ template: DegreeTemplate) -> (added: Int, skipped: Int) {
+    func apply(_ template: DegreeTemplate, only: Set<Int>? = nil) -> (added: Int, skipped: Int) {
         var added = 0
         var skipped = 0
-        for entry in template.entries {
+        for (index, entry) in template.entries.enumerated() where only?.contains(index) ?? true {
             let course = courseIndex(forYear: entry.year)
             if courses[course].subjects.contains(where: { $0.subject.name == entry.subject.name }) {
                 skipped += 1

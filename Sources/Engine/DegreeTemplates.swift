@@ -21,7 +21,18 @@ public struct DegreeTemplate: Sendable, Identifiable {
 }
 
 extension DegreeTemplate {
-    public static let all: [DegreeTemplate] = [.informatica]
+    public static let all: [DegreeTemplate] = [.informatica, .cienciaDatos]
+
+    /// Grado en Ciencia e Ingeniería de Datos (UDC), 2025/26: only Matemática Discreta so far. Its
+    /// guide says "Primer cuatrimestre" but not the year; first year is assumed.
+    public static let cienciaDatos = DegreeTemplate(
+        id: "udc-ciencia-datos",
+        name: "Ciencia e Ingeniería de Datos",
+        university: "UDC · guías 2025/26",
+        entries: [
+            .init(year: 1, term: 1, subject: .matematicaDiscreta),
+        ]
+    )
 
     /// Grado en Ingeniería Informática (UDC), 2025/26 guides: first year and the first term of the
     /// second. The second term of the second year isn't included yet.
