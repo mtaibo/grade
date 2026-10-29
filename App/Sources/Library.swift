@@ -174,6 +174,8 @@ final class Library {
     private(set) var selections: [CustomSelection] = []
     /// `nil` for a simulation: it lives only in memory and never touches the real library.
     @ObservationIgnored private let fileURL: URL?
+    /// Studies put away to start another, newest last.
+    private(set) var archives: [ArchivedStudy] = []
     /// Subjects that have a teaching guide (PDF) stored next to the library file.
     private(set) var guideIDs: Set<SubjectRecord.ID> = []
 
@@ -181,6 +183,7 @@ final class Library {
         var courses: [Course]
         var degree: DegreeSettings?
         var selections: [CustomSelection]?
+        var archives: [ArchivedStudy]?
     }
 
     /// Both allow NaN and infinity, so a stray non-number can never make every later save fail.
@@ -203,6 +206,7 @@ final class Library {
             courses = snapshot.courses
             degree = snapshot.degree ?? DegreeSettings()
             selections = snapshot.selections ?? []
+            archives = snapshot.archives ?? []
         } else if let data, let courses = try? Self.fileDecoder.decode([Course].self, from: data) {
             // The first file format was a bare list of courses.
             self.courses = courses
@@ -277,10 +281,10 @@ final class Library {
         guideIDs.remove(id)
     }
 
-    /// Every stored guide, by subject, for the backup file.
-    private func allGuides() -> [String: Data] {
+    /// The stored guides of these subjects, by subject, for the backup file.
+    private func guides(for ids: Set<SubjectRecord.ID>) -> [String: Data] {
         var result: [String: Data] = [:]
-        for id in guideIDs {
+        for id in guideIDs.intersection(ids) {
             if let url = guideURL(for: id), let data = try? Data(contentsOf: url) { result[id.uuidString] = data }
         }
         return result
@@ -492,7 +496,9 @@ final class Library {
             }
             return course.subjects.isEmpty ? nil : course
         }
-        let guides = options.includesGuides ? allGuides().filter { UUID(uuidString: $0.key).map(ids.contains) ?? false } : nil
+        let archives = options.includesArchives && options.scope == .all && !self.archives.isEmpty ? self.archives : nil
+        let guideIDs = ids.union(archives?.flatMap(\.subjectIDs) ?? [])
+        let guides = options.includesGuides ? guides(for: guideIDs) : nil
         let selections = options.includesViews ? self.selections.compactMap { selection -> CustomSelection? in
             var selection = selection
             selection.subjectIDs.removeAll { !ids.contains($0) }
@@ -501,16 +507,19 @@ final class Library {
         var backup = GradeBackup(courses: courses, degree: degree, guides: guides, selections: selections)
         backup.includesGrades = options.includesGrades
         backup.scope = options.scope == .all ? nil : options.scope.title(in: degree)
+        backup.archives = archives
         return try GradeBackup.encoder.encode(backup)
     }
 
-    /// Replaces everything with a backup's contents.
+    /// Replaces the current study with a backup's. Archived studies are never dropped: the
+    /// copy's are added next to them.
     func restore(_ backup: GradeBackup) {
+        for id in guideIDs.intersection(courses.flatMap(\.subjects).map(\.id)) { removeGuide(for: id) }
         courses = backup.courses
         degree = backup.degree
         selections = backup.selections ?? []
         normalize()
-        for id in guideIDs { removeGuide(for: id) }
+        addArchives(of: backup)
         restoreGuides(of: backup)
         save()
     }
@@ -540,8 +549,14 @@ final class Library {
             }
         }
         normalize()
+        addArchives(of: backup)
         restoreGuides(of: backup)
         save()
+    }
+
+    private func addArchives(of backup: GradeBackup) {
+        let known = Set(archives.map(\.id))
+        archives += (backup.archives ?? []).filter { !known.contains($0.id) }
     }
 
     /// "1º Año 1º Cuatrimestre", for an exported file's name.
@@ -550,10 +565,43 @@ final class Library {
     }
 
     private func restoreGuides(of backup: GradeBackup) {
-        let ids = Set(courses.flatMap(\.subjects).map(\.id))
+        let ids = Set(courses.flatMap(\.subjects).map(\.id) + archives.flatMap(\.subjectIDs))
         for (key, data) in backup.guides ?? [:] {
             if let id = UUID(uuidString: key), ids.contains(id) { try? setGuide(data, for: id) }
         }
+    }
+
+    // MARK: Studies
+
+    /// Puts the current study away, subjects, grades, views and guides included, and starts an
+    /// empty one of `type`.
+    func archiveCurrentStudy(startingAs type: StudyType) {
+        archives.append(ArchivedStudy(degree: degree, courses: courses, selections: selections))
+        courses = []
+        selections = []
+        degree = DegreeSettings().switching(to: type)
+        save()
+    }
+
+    /// Makes an archived study the current one again; the current one takes its place in the
+    /// archive unless it's empty.
+    func resumeArchivedStudy(id: ArchivedStudy.ID) {
+        guard let index = archives.firstIndex(where: { $0.id == id }) else { return }
+        let resumed = archives.remove(at: index)
+        if courses.contains(where: { !$0.subjects.isEmpty }) {
+            archives.append(ArchivedStudy(degree: degree, courses: courses, selections: selections))
+        }
+        courses = resumed.courses
+        degree = resumed.degree
+        selections = resumed.selections
+        normalize()
+        save()
+    }
+
+    func deleteArchivedStudy(id: ArchivedStudy.ID) {
+        guard let index = archives.firstIndex(where: { $0.id == id }) else { return }
+        for subject in archives.remove(at: index).subjectIDs { removeGuide(for: subject) }
+        save()
     }
 
     /// Adds the template's subjects, each in its year and term. A subject the course already has
@@ -590,7 +638,7 @@ final class Library {
         guard let fileURL else { return }
         do {
             try FileManager.default.createDirectory(at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
-            try Self.fileEncoder.encode(Snapshot(courses: courses, degree: degree, selections: selections))
+            try Self.fileEncoder.encode(Snapshot(courses: courses, degree: degree, selections: selections, archives: archives))
                 .write(to: fileURL, options: .atomic)
         } catch {
             assertionFailure("Couldn't save the library: \(error)")

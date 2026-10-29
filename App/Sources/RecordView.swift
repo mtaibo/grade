@@ -8,9 +8,8 @@ struct RecordSummary {
     let progress: [SubjectRecord.ID: SubjectProgress]
     let subjects: [SubjectRecord]
 
-    @MainActor
-    init(_ library: Library) {
-        subjects = library.courses.flatMap(\.subjects)
+    init(_ courses: [Course]) {
+        subjects = courses.flatMap(\.subjects)
         progress = Dictionary(subjects.map { ($0.id, SubjectProgress($0)) }) { first, _ in first }
     }
 
@@ -60,12 +59,16 @@ struct RecordStats: View {
 }
 
 /// "Expediente", pushed from the account tab: the overall numbers, then every year with its
-/// average and, inside it, each term with its own.
+/// average and, inside it, each term with its own. Shows the current study, or an archived one.
 struct RecordView: View {
+    var archived: ArchivedStudy?
     @Environment(Library.self) private var library
 
+    private var courses: [Course] { archived?.courses ?? library.courses }
+    private var degree: DegreeSettings { archived?.degree ?? library.degree }
+
     var body: some View {
-        let summary = RecordSummary(library)
+        let summary = RecordSummary(courses)
         return List {
             Section {
                 RecordStats(summary: summary)
@@ -73,12 +76,12 @@ struct RecordView: View {
                 Text("Las medias cuentan las asignaturas con todas las notas puestas, ponderadas por sus créditos. Llevas \(summary.passedCredits.formatted()) de \(summary.totalCredits.formatted()) créditos.")
             }
 
-            ForEach(library.courses) { course in
+            ForEach(courses) { course in
                 Section {
                     ForEach(terms(of: course), id: \.self) { term in
                         let subjects = course.subjects.filter { $0.term == term }
                         TermRow(
-                            title: term.map(library.degree.termLabel) ?? "Todo el año",
+                            title: term.map(degree.termLabel) ?? "Todo el año",
                             average: summary.average(of: subjects)
                         )
                         ForEach(subjects) { record in

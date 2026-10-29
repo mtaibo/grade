@@ -8,7 +8,7 @@ private struct ScopePicker: View {
 
     var body: some View {
         Picker("Alcance", selection: $scope) {
-            Text("Toda la carrera").tag(DataScope.all)
+            Text("Todo el estudio").tag(DataScope.all)
             ForEach(library.courses.filter { !$0.subjects.isEmpty }) { course in
                 Section(course.name) {
                     Text("\(course.name) completo").tag(DataScope.year(course.year))
@@ -49,6 +49,9 @@ struct BackupView: View {
                 if !library.selections.isEmpty {
                     Toggle("Vistas personalizadas", isOn: $options.includesViews)
                 }
+                if !library.archives.isEmpty, options.scope == .all {
+                    Toggle("Estudios archivados", isOn: $options.includesArchives)
+                }
             } header: {
                 Text("Qué guardar")
             } footer: {
@@ -67,7 +70,7 @@ struct BackupView: View {
             } header: {
                 Text("Recuperar")
             } footer: {
-                Text("Elige un archivo .grade (también puedes abrirlo con Grade desde Archivos o AirDrop). Puedes añadir sus asignaturas a las tuyas o sustituirlo todo.")
+                Text("Elige un archivo .grade (también puedes abrirlo con Grade desde Archivos o AirDrop). Puedes añadir sus asignaturas a las tuyas o sustituir tu estudio actual por el de la copia.")
             }
         }
         .navigationTitle("Copia de seguridad")
@@ -92,7 +95,7 @@ struct EraseDataView: View {
 
     var body: some View {
         let count = library.records(in: scope).count
-        let scopeName = scope == .all ? "toda la carrera" : scope.title(in: library.degree)
+        let scopeName = scope == .all ? "todo el estudio" : scope.title(in: library.degree)
         List {
             Section {
                 ScopePicker(scope: $scope)

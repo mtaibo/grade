@@ -1,11 +1,10 @@
 import Engine
 import SwiftUI
 
-/// The account tab, four modules top to bottom: what you study (a fold-out with its years and
-/// terms), your record, your data (backups and deletes) and about the app.
+/// The account tab, four modules top to bottom: your studies (the current one and any archived),
+/// your record, your data (backups and deletes) and about the app.
 struct AccountView: View {
     @Environment(Library.self) private var library
-    @State private var isStudiesExpanded = false
 
     static let website = URL(string: "https://www.migueltaibo.com")!
 
@@ -19,10 +18,27 @@ struct AccountView: View {
     var body: some View {
         NavigationStack {
             List {
-                StudiesSection(isExpanded: $isStudiesExpanded)
+                Section("Estudios") {
+                    NavigationLink {
+                        CurrentStudyView()
+                    } label: {
+                        AccountRow(title: "Estudio actual", detail: library.degree.displayName, symbol: library.degree.studyType.symbol)
+                    }
+                    ForEach(library.archives.reversed()) { study in
+                        NavigationLink {
+                            ArchivedStudyView(id: study.id)
+                        } label: {
+                            AccountRow(
+                                title: study.degree.displayName,
+                                detail: "Archivado el \(study.archivedAt.formatted(date: .abbreviated, time: .omitted))",
+                                symbol: "archivebox"
+                            )
+                        }
+                    }
+                }
 
                 Section {
-                    RecordStats(summary: RecordSummary(library))
+                    RecordStats(summary: RecordSummary(library.courses))
                     NavigationLink {
                         RecordView()
                     } label: {
@@ -31,7 +47,7 @@ struct AccountView: View {
                 } header: {
                     Text("Expediente")
                 } footer: {
-                    Text("Tu media por año, por \(library.degree.termName.isEmpty ? "periodo" : library.degree.termName.lowercased()) y de toda la carrera.")
+                    Text("Tu media por año, por \(library.degree.termName.isEmpty ? "periodo" : library.degree.termName.lowercased()) y la de todo el estudio.")
                 }
 
                 Section("Datos") {
@@ -89,81 +105,8 @@ struct AccountRow: View {
     }
 }
 
-/// What you study, folded into one row ("Grado universitario · 4 años · 2 cuatrimestres por
-/// año") that opens to edit the type, years and terms, plus the subject templates.
-private struct StudiesSection: View {
-    @Binding var isExpanded: Bool
-    @Environment(Library.self) private var library
-
-    private var degree: Binding<DegreeSettings> {
-        Binding(get: { library.degree }, set: { library.updateDegree($0) })
-    }
-
-    private var studyType: Binding<StudyType> {
-        Binding(get: { library.degree.studyType }, set: { library.updateDegree(library.degree.switching(to: $0)) })
-    }
-
-    var body: some View {
-        Section {
-            DisclosureGroup(isExpanded: $isExpanded) {
-                Picker("Estudios", selection: studyType) {
-                    ForEach(StudyType.allCases) { type in
-                        Label(type.label, systemImage: type.symbol).tag(type)
-                    }
-                }
-                Stepper(value: degree.years, in: 1...DegreeSettings.maxYears) {
-                    LabeledContent("Años", value: library.degree.years.formatted())
-                }
-                Stepper(value: degree.termsPerYear, in: 1...DegreeSettings.maxTermsPerYear) {
-                    LabeledContent("Periodos por año", value: library.degree.termsPerYear.formatted())
-                }
-                LabeledContent("Nombre del periodo") {
-                    TextField("Cuatrimestre", text: degree.termName)
-                        .multilineTextAlignment(.trailing)
-                        .textInputAutocapitalization(.words)
-                }
-            } label: {
-                AccountRow(title: library.degree.studyType.label, detail: library.degree.summary, symbol: library.degree.studyType.symbol)
-            }
-
-            NavigationLink {
-                TemplatesView()
-            } label: {
-                AccountRow(title: "Plantillas", detail: "Asignaturas ya preparadas de tu carrera", symbol: "square.stack")
-            }
-        } header: {
-            Text("Tus estudios")
-        } footer: {
-            if isExpanded {
-                Text("Por ahora Grade está pensada para la universidad. Los periodos se usan en los títulos, p. ej. «2º Año · 1º \(library.degree.termName.isEmpty ? "Cuatrimestre" : library.degree.termName)»; si cambias cuántos hay por año, cada asignatura conserva su año y su posición dentro de él.")
-            }
-        }
-    }
-}
-
-/// The bundled templates, each opening what it contains.
-private struct TemplatesView: View {
-    var body: some View {
-        List {
-            Section {
-                ForEach(DegreeTemplate.all) { template in
-                    NavigationLink {
-                        TemplateView(template: template)
-                    } label: {
-                        AccountRow(title: template.name, detail: "\(template.university) · \(template.entries.count) asignaturas", symbol: "graduationcap")
-                    }
-                }
-            } footer: {
-                Text("Asignaturas ya preparadas con la evaluación de su guía docente. Después puedes editarlas.")
-            }
-        }
-        .navigationTitle("Plantillas")
-        .navigationBarTitleDisplayMode(.inline)
-    }
-}
-
 /// What a template contains, by year and term, and the button that adds it to your degree.
-private struct TemplateView: View {
+struct TemplateView: View {
     let template: DegreeTemplate
 
     @Environment(Library.self) private var library

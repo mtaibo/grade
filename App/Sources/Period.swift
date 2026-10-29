@@ -52,9 +52,19 @@ struct DegreeSettings: Codable, Equatable {
     static let defaultTermName = "Cuatrimestre"
 
     var studyType = StudyType.university
+    /// What the user calls it ("Ingeniería Informática"); empty shows the study type.
+    var name = ""
+    /// Where ("UDC"); optional.
+    var institution = ""
     var years = 4
     var termsPerYear = 2
     var termName = defaultTermName
+
+    /// The name given to the study, or its type when it has none.
+    var displayName: String {
+        let trimmed = name.trimmingCharacters(in: .whitespaces)
+        return trimmed.isEmpty ? studyType.label : trimmed
+    }
 
     /// The study type with its usual years and terms.
     func switching(to type: StudyType) -> DegreeSettings {
@@ -108,7 +118,7 @@ struct DegreeSettings: Codable, Equatable {
 }
 
 extension DegreeSettings {
-    private enum CodingKeys: String, CodingKey { case studyType, years, termsPerYear, termName }
+    private enum CodingKeys: String, CodingKey { case studyType, name, institution, years, termsPerYear, termName }
 
     /// Clamped to what the settings screen allows, so a hand-edited backup can't hand the app zero
     /// terms a year (which it divides by) or a hundred years.
@@ -118,6 +128,8 @@ extension DegreeSettings {
         let terms = try container.decodeIfPresent(Int.self, forKey: .termsPerYear) ?? 2
         self.init(
             studyType: (try? container.decodeIfPresent(StudyType.self, forKey: .studyType)) ?? .university,
+            name: try container.decodeIfPresent(String.self, forKey: .name) ?? "",
+            institution: try container.decodeIfPresent(String.self, forKey: .institution) ?? "",
             years: min(max(years, 1), Self.maxYears),
             termsPerYear: min(max(terms, 1), Self.maxTermsPerYear),
             termName: try container.decodeIfPresent(String.self, forKey: .termName) ?? Self.defaultTermName
@@ -141,4 +153,16 @@ struct Period: Hashable {
     func subtitle(in degree: DegreeSettings) -> String? {
         term.map(degree.termLabel)
     }
+}
+
+/// A study put away to start another (high school before university, a finished degree…): its
+/// settings, subjects with their grades, and custom views, kept to look back at or pick up again.
+struct ArchivedStudy: Identifiable, Codable, Equatable {
+    var id = UUID()
+    var degree: DegreeSettings
+    var courses: [Course]
+    var selections: [CustomSelection] = []
+    var archivedAt = Date.now
+
+    var subjectIDs: [SubjectRecord.ID] { courses.flatMap(\.subjects).map(\.id) }
 }

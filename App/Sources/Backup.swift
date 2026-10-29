@@ -28,6 +28,8 @@ struct GradeBackup: Codable {
     var includesGrades: Bool?
     /// What part of the degree the copy holds ("1º Año"), `nil` when it holds everything.
     var scope: String?
+    /// Archived studies, only in a full copy that asked for them.
+    var archives: [ArchivedStudy]?
 
     var subjectCount: Int { courses.reduce(0) { $0 + $1.subjects.count } }
 }
@@ -49,7 +51,7 @@ enum DataScope: Hashable, Sendable {
 
     func title(in degree: DegreeSettings) -> String {
         switch self {
-        case .all: "Todo"
+        case .all: "Todo el estudio"
         case .year(let year): Period(year: year).title
         case .term(let term):
             "\(Period(year: (term - 1) / max(degree.termsPerYear, 1) + 1).title) · \(degree.termLabel(term))"
@@ -63,6 +65,8 @@ struct BackupOptions: Equatable, Sendable {
     var includesGrades = true
     var includesGuides = true
     var includesViews = true
+    /// Only with the whole study in scope.
+    var includesArchives = true
 }
 
 enum BackupError: LocalizedError {
@@ -171,7 +175,7 @@ struct BackupImportHost: ViewModifier {
                 presenting: center.pending
             ) { pending in
                 Button("Añadir a lo que tengo") { center.confirm(pending, into: library, replacing: false) }
-                Button("Sustituir todo", role: .destructive) { center.confirm(pending, into: library, replacing: true) }
+                Button("Sustituir mi estudio actual", role: .destructive) { center.confirm(pending, into: library, replacing: true) }
             } message: { pending in
                 Text(Self.summary(of: pending.backup))
             }
@@ -186,6 +190,9 @@ struct BackupImportHost: ViewModifier {
         var text = "La copia tiene \(backup.subjectCount) asignaturas"
         if let scope = backup.scope { text += " (\(scope))" }
         if backup.includesGrades == false { text += ", sin notas" }
-        return text + ". «Añadir» las suma a las tuyas y sustituye las que ya estaban en la copia; «Sustituir todo» borra lo que hay ahora en la app. No se puede deshacer."
+        if let archives = backup.archives, !archives.isEmpty {
+            text += archives.count == 1 ? " y 1 estudio archivado" : " y \(archives.count) estudios archivados"
+        }
+        return text + ". «Añadir» las suma a las tuyas y sustituye las que ya estaban en la copia; «Sustituir» cambia tu estudio actual por el de la copia. Los estudios archivados se conservan. No se puede deshacer."
     }
 }
