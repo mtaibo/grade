@@ -30,5 +30,7 @@ device: generate
 	@test -n "$(DEVICE)" || (echo "No hay ningún iPhone conectado." && exit 1)
 	xcodebuild -project App/Grade.xcodeproj -scheme Grade-iOS -configuration Debug \
 		-destination 'generic/platform=iOS' -derivedDataPath $(DEVICE_BUILD) -allowProvisioningUpdates -quiet build
-	xcrun devicectl device install app --device $(DEVICE) $(DEVICE_BUILD)/Build/Products/Debug-iphoneos/Grade-iOS.app
+	@# Over Wi-Fi the first connection is often reset; a second try goes through.
+	xcrun devicectl device install app --device $(DEVICE) $(DEVICE_BUILD)/Build/Products/Debug-iphoneos/Grade-iOS.app \
+		|| (sleep 2 && xcrun devicectl device install app --device $(DEVICE) $(DEVICE_BUILD)/Build/Products/Debug-iphoneos/Grade-iOS.app)
 	xcrun devicectl device process launch --device $(DEVICE) com.migueltaibo.grade
