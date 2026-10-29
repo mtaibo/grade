@@ -292,7 +292,7 @@ struct CustomSelectionEditor: View {
                             Text("Todo el año").tag(Int?.none)
                         }
                     case .name:
-                        LabeledContent("Nombre") {
+                        InlineField("Nombre") {
                             TextField("Mi vista", text: name)
                                 .multilineTextAlignment(.trailing)
                                 .foregroundStyle(.secondary)

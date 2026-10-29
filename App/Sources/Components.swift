@@ -114,3 +114,24 @@ extension Binding {
         )
     }
 }
+
+/// A labelled text field kept on one line: the label at its natural width, the field filling the
+/// rest and scrolling within it. `LabeledContent` alone drops a long value under the label.
+struct InlineField<Content: View>: View {
+    let title: String
+    @ViewBuilder let content: Content
+
+    init(_ title: String, @ViewBuilder content: () -> Content) {
+        self.title = title
+        self.content = content()
+    }
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Text(title)
+                .fixedSize()
+            content
+                .frame(maxWidth: .infinity, alignment: .trailing)
+        }
+    }
+}

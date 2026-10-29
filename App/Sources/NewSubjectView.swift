@@ -56,7 +56,7 @@ struct NewSubjectView: View {
             Form {
                 if isCreating {
                     Section {
-                        LabeledContent("Nombre") {
+                        InlineField("Nombre") {
                             TextField("Nueva asignatura", text: $name)
                                 .focused($nameFocused)
                                 .submitLabel(.done)

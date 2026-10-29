@@ -28,12 +28,12 @@ struct CurrentStudyView: View {
                         Label(type.label, systemImage: type.symbol).tag(type)
                     }
                 }
-                LabeledContent("Nombre") {
+                InlineField("Nombre") {
                     TextField(library.degree.studyType.label, text: degree.name)
                         .multilineTextAlignment(.trailing)
                         .textInputAutocapitalization(.words)
                 }
-                LabeledContent("Centro") {
+                InlineField("Centro") {
                     TextField("Opcional", text: degree.institution)
                         .multilineTextAlignment(.trailing)
                         .textInputAutocapitalization(.words)
@@ -49,7 +49,7 @@ struct CurrentStudyView: View {
                 Stepper(value: degree.termsPerYear, in: 1...DegreeSettings.maxTermsPerYear) {
                     LabeledContent("Periodos por año", value: library.degree.termsPerYear.formatted())
                 }
-                LabeledContent("Nombre del periodo") {
+                InlineField("Nombre del periodo") {
                     TextField("Cuatrimestre", text: degree.termName)
                         .multilineTextAlignment(.trailing)
                         .textInputAutocapitalization(.words)

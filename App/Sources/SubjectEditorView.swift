@@ -41,7 +41,7 @@ struct SubjectEditorView: View {
         NavigationStack {
             Form {
                 Section {
-                    LabeledContent("Nombre") {
+                    InlineField("Nombre") {
                         TextField("Nombre", text: $draft.subject.name)
                             .multilineTextAlignment(.trailing)
                             .foregroundStyle(.secondary)
@@ -155,7 +155,7 @@ private struct NodeContentsSections: View {
     let onRenameLeaf: (String, String) -> Void
 
     var body: some View {
-        if node.asGroup != nil || node.asFormula != nil {
+        if isRoot || node.asGroup != nil || node.asFormula != nil {
             CalculationSection(node: $node, isRoot: isRoot)
                 .tourTarget(isRoot ? "editor.evaluation" : nil)
         }
@@ -166,9 +166,14 @@ private struct NodeContentsSections: View {
             FormulaSections(formula: formula, onRenameLeaf: onRenameLeaf)
                 .tourTarget(isRoot ? "editor.sections" : nil)
         } else if let grade = Binding(unwrapping: $node.asGrade) {
-            GradeTypeSection(grade: grade)
-            GradeInputSections(grade: grade)
-            GradeDateSection(grade: grade)
+            if isRoot {
+                // "Nota única": just the final grade, typed in the exam card of each sitting.
+                GradeInputSections(grade: grade)
+            } else {
+                GradeTypeSection(grade: grade)
+                GradeInputSections(grade: grade)
+                GradeDateSection(grade: grade)
+            }
         } else {
             Section {
                 Text("Este tipo de componente todavía no se puede editar desde la app.")
@@ -191,17 +196,27 @@ private struct CalculationSection: View {
         case group(CombinationKind)
         case formula
         case finalExam
+        /// The subject is just its final grade, with no parts (e.g. only to keep the record).
+        case single
 
         var label: String {
             switch self {
             case .group(let kind): kind.label
             case .formula: "Fórmula"
             case .finalExam: "Examen final"
+            case .single: "Nota única"
             }
         }
     }
 
+    /// The one grade a "Nota única" subject is made of: the final grade, shown in the exam card so
+    /// it has an ordinary and an extraordinary sitting.
+    static func singleGrade() -> Node {
+        .grade(Grade(name: "Nota final", isFinalExam: true, category: .exam))
+    }
+
     private var current: Method {
+        if isRoot, node.asGrade != nil { return .single }
         if !isRoot, node.isFinalExamPart { return .finalExam }
         if node.asFormula != nil { return .formula }
         return .group(node.asGroup?.combination.kind ?? .weightedAverage)
@@ -211,7 +226,7 @@ private struct CalculationSection: View {
     /// worst…) so editing it doesn't silently change it.
     private var methods: [Method] {
         var methods: [Method] = isRoot
-            ? [.group(.weightedAverage), .formula, .group(.sum)]
+            ? [.group(.weightedAverage), .formula, .group(.sum), .single]
             : [.group(.weightedAverage), .group(.sum), .formula, .finalExam]
         if !methods.contains(current) { methods.append(current) }
         return methods
@@ -237,7 +252,9 @@ private struct CalculationSection: View {
                 }
             }
         } footer: {
-            Text(isRoot
+            Text(current == .single
+                 ? "Solo la nota final, sin partes ni pesos: para llevar el expediente sin guardar todo lo que hiciste. Se pone en la tarjeta del examen de la asignatura, en la ordinaria o la extraordinaria."
+                 : isRoot
                  ? "Tipo de evaluación de la asignatura: cómo se juntan sus notas en la final."
                  : current == .finalExam
                  ? "Es el examen final: va en su propia tarjeta, con la ordinaria y la extraordinaria. Sus notas se juntan con los pesos de abajo."
@@ -255,6 +272,14 @@ private struct CalculationSection: View {
         }
         if current == .finalExam {
             node.updateGrades { $0.isFinalExam = nil }
+        }
+        if method == .single {
+            node = Self.singleGrade()
+            return
+        }
+        if case .grade(let grade) = node {
+            // From "Nota única": the grade becomes the only part, then reshapes as asked.
+            node = .group(Engine.Group(name: grade.name, combination: .weightedAverage, children: [WeightedChild(weight: 1, node: node)]))
         }
         switch (node, method) {
         case (.formula(let formula), .group(let kind)):
@@ -812,7 +837,7 @@ private struct NameField: View {
     let onRenameLeaf: (String, String) -> Void
 
     var body: some View {
-        LabeledContent("Nombre") {
+        InlineField("Nombre") {
             TextField("Nombre", text: Binding(
                 get: { node.title },
                 set: { newName in
