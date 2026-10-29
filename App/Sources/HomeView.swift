@@ -382,13 +382,13 @@ struct HomeView: View {
         }
     }
 
-    /// One sort option, ✓ when chosen. Name and grade start ascending; choosing the one already
+    /// One sort option, ✓ when chosen. Name starts A to Z and grade highest first; choosing the one already
     /// chosen flips it, and its subtitle says which way it runs.
     private func sortToggle(_ option: SubjectSort) -> some View {
         let isCurrent = sort == option
         return Toggle(isOn: Binding(get: { isCurrent }, set: { _ in
             withAnimation(.snappy) {
-                isAscending = isCurrent ? !isAscending : true
+                isAscending = isCurrent ? !isAscending : option != .grade
                 sort = option
             }
         })) {
