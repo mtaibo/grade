@@ -383,19 +383,24 @@ struct HomeView: View {
     }
 
     /// One sort option, ✓ when chosen. Name and grade start ascending; choosing the one already
-    /// chosen flips it, and a dimmed arrow on the row's trailing edge shows which way it runs.
+    /// chosen flips it, and its subtitle says which way it runs.
     private func sortToggle(_ option: SubjectSort) -> some View {
         let isCurrent = sort == option
-        let arrow: Text? = isCurrent && option != .custom ? Text(isAscending ? "↑" : "↓") : nil
         return Toggle(isOn: Binding(get: { isCurrent }, set: { _ in
             withAnimation(.snappy) {
                 isAscending = isCurrent ? !isAscending : true
                 sort = option
             }
         })) {
-            Label(option.title, systemImage: option.icon)
+            Label {
+                Text(option.title)
+                if isCurrent && option != .custom {
+                    Text(isAscending ? "Ascendente" : "Descendente")
+                }
+            } icon: {
+                Image(systemName: option.icon)
+            }
         }
-        .badge(arrow)
     }
 
     /// The calendar button's menu: a quick jump to any period or custom view, ✓ on the current one.
