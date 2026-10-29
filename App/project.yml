@@ -29,6 +29,11 @@ targets:
         TARGETED_DEVICE_FAMILY: "1,2"
         PRODUCT_NAME: "$(TARGET_NAME)"
         CODE_SIGN_STYLE: Automatic
+      configs:
+        # Debug builds only the run destination's architecture, like the Engine package does;
+        # building x86_64 as well leaves the app without an Engine module for that slice.
+        Debug:
+          ONLY_ACTIVE_ARCH: YES
     dependencies:
       - package: grade
         product: Engine
