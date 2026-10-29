@@ -220,7 +220,7 @@ struct CustomSelectionEditor: View {
         Binding(
             get: { if case .period(let year, _) = draft.title { year } else { 1 } },
             set: { newYear in
-                guard case .period(let year, let term) = draft.title else { return }
+                guard case .period(_, let term) = draft.title else { return }
                 // Keeps the term's position within the year: 1st of year 2 → 1st of year 3.
                 let relative = term.map(library.degree.relativeTerm)
                 draft.title = .period(year: newYear, term: relative.map { library.degree.absoluteTerm(year: newYear, relative: $0) })
