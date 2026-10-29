@@ -48,6 +48,26 @@
 			</dict>
 		</dict>
 	</array>
+	<key>UTImportedTypeDeclarations</key>
+	<array>
+		<dict>
+			<key>UTTypeIdentifier</key>
+			<string>com.migueltaibo.mark.backup</string>
+			<key>UTTypeDescription</key>
+			<string>Copia antigua de Grade</string>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.json</string>
+			</array>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>mark</string>
+				</array>
+			</dict>
+		</dict>
+	</array>
 	<key>CFBundleDocumentTypes</key>
 	<array>
 		<dict>
@@ -60,6 +80,7 @@
 			<key>LSItemContentTypes</key>
 			<array>
 				<string>com.migueltaibo.grade.backup</string>
+				<string>com.migueltaibo.mark.backup</string>
 			</array>
 		</dict>
 	</array>

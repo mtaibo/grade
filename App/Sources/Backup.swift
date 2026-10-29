@@ -6,6 +6,8 @@ extension UTType {
     /// The `.grade` file: a full copy of the library (every subject with its evaluation, grades and
     /// dates) and the degree settings, as JSON.
     static let gradeBackup = UTType(exportedAs: "com.migueltaibo.grade.backup", conformingTo: .json)
+    /// The `.mark` file exported before the app was renamed: same contents, still importable.
+    static let markBackup = UTType(importedAs: "com.migueltaibo.mark.backup", conformingTo: .json)
 }
 
 /// What a `.grade` file holds: the library, the degree settings and any uploaded guides.
@@ -158,7 +160,7 @@ struct BackupImportHost: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            .fileImporter(isPresented: $center.isPicking, allowedContentTypes: [.gradeBackup, .json]) { result in
+            .fileImporter(isPresented: $center.isPicking, allowedContentTypes: [.gradeBackup, .markBackup, .json]) { result in
                 if case .success(let url) = result { center.prepare(url: url) }
             }
             .onOpenURL { center.prepare(url: $0) }
