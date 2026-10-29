@@ -550,7 +550,7 @@ private struct EmptyHome: View {
         ContentUnavailableView {
             Label("Sin asignaturas", systemImage: "books.vertical")
         } description: {
-            Text("Añade las de este cuatrimestre o carga una plantilla en Cuenta → Estudio actual.")
+            Text("Añade las de este cuatrimestre o carga una plantilla en Cuenta → Plantillas.")
         } actions: {
             Button("Añadir asignatura", action: add)
                 .buttonStyle(.borderedProminent)

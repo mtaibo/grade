@@ -220,7 +220,7 @@ extension Tour {
         TourStep(target: "editor.save", title: "Guarda", text: "Cuando acabes, toca ✓ para guardar los cambios.", action: .editorClosed),
         TourStep(target: "calendar.month", title: "Calendario", text: "Aquí aparecen tus exámenes y entregas con fecha. Toca un día para ver lo que tienes.", tab: .calendar),
         TourStep(target: "calendar.list", title: "Lo próximo", text: "Debajo, lo que viene. Toca una fecha para ir a su asignatura.", tab: .calendar),
-        TourStep(target: "account.study", title: "Tu estudio", text: "En «Estudio actual» dices qué estudias: años, cuatrimestres, plantillas con asignaturas ya preparadas, o archivarlo para empezar otro.", tab: .account),
+        TourStep(target: "account.study", title: "Tu estudio", text: "En «Estudio actual» dices qué estudias (años y cuatrimestres) o lo archivas para empezar otro. En «Plantillas» tienes cursos completos y asignaturas sueltas ya preparadas.", tab: .account),
         TourStep(target: "account.record", title: "Expediente", text: "Tus medias por año, por cuatrimestre y de todo el estudio.", tab: .account),
         TourStep(target: "account.data", title: "Tus datos", text: "Haz copias de seguridad y recupéralas cuando quieras.", tab: .account),
         TourStep(target: "account.tutorials", title: "Cuando quieras", text: "Este tour y la explicación de cada sección están siempre aquí. ¡Listo!", tab: .account),
@@ -256,7 +256,7 @@ extension Tour {
             TourStep(target: "calendar.filter", title: "Filtrar", text: "Elige qué tipos de fechas ver: exámenes, entregas, controles…"),
         ]
         case .account: [
-            TourStep(target: "account.study", title: "Estudio actual", text: "Qué estudias y cómo se divide, plantillas con asignaturas ya preparadas, y archivarlo para empezar otro sin perder nada.", tab: .account),
+            TourStep(target: "account.study", title: "Estudios", text: "«Estudio actual»: qué estudias, cómo se divide y archivarlo para empezar otro sin perder nada. «Plantillas»: un curso entero o una asignatura suelta con la evaluación de su guía ya puesta.", tab: .account),
             TourStep(target: "account.record", title: "Expediente", text: "Tus medias por año, por cuatrimestre y de todo el estudio, contando solo las asignaturas terminadas."),
             TourStep(target: "account.data", title: "Datos", text: "Copias de seguridad (de todo o de una parte, con o sin notas) y borrar notas o asignaturas."),
             TourStep(target: "account.tutorials", title: "Tutoriales", text: "El tour completo y esta explicación de cada sección."),

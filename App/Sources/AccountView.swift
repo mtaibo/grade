@@ -38,6 +38,12 @@ struct AccountView: View {
                     }
                     .tourTarget("account.study")
                     .id("account.study")
+                    NavigationLink {
+                        TemplatesView()
+                    } label: {
+                        AccountRow(title: "Plantillas", detail: "Cursos completos o asignaturas sueltas", symbol: "square.stack")
+                    }
+                    .tourTarget("account.study")
                     ForEach(library.archives.reversed()) { study in
                         NavigationLink {
                             ArchivedStudyView(id: study.id)
@@ -149,55 +155,6 @@ struct AccountRow: View {
             }
         } icon: {
             Image(systemName: symbol)
-        }
-    }
-}
-
-/// What a template contains, by year and term, and the button that adds it to your degree.
-struct TemplateView: View {
-    let template: DegreeTemplate
-
-    @Environment(Library.self) private var library
-    @State private var result: (added: Int, skipped: Int)?
-
-    var body: some View {
-        List {
-            ForEach(template.years, id: \.self) { year in
-                ForEach(1...max(library.degree.termsPerYear, 1), id: \.self) { term in
-                    let entries = template.entries(year: year, term: term)
-                    if !entries.isEmpty {
-                        Section("\(year)º Año · \(library.degree.termLabel(library.degree.absoluteTerm(year: year, relative: term)))") {
-                            ForEach(entries.indices, id: \.self) { index in
-                                LabeledContent(entries[index].subject.name, value: "\(entries[index].subject.ectsCredits.formatted()) ECTS")
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        .navigationTitle(template.name)
-        .navigationBarTitleDisplayMode(.inline)
-        .safeAreaInset(edge: .bottom) {
-            Button {
-                result = library.apply(template)
-            } label: {
-                Text("Añadir a mi carrera")
-                    .font(.headline)
-                    .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.large)
-            .padding()
-            .background(.bar)
-        }
-        .alert("Plantilla añadida", isPresented: Binding(get: { result != nil }, set: { if !$0 { result = nil } })) {
-            Button("Vale") {}
-        } message: {
-            if let result {
-                Text(result.skipped == 0
-                     ? "Se han añadido \(result.added) asignaturas."
-                     : "Se han añadido \(result.added) asignaturas. Las otras \(result.skipped) ya las tenías.")
-            }
         }
     }
 }

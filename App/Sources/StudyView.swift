@@ -61,14 +61,6 @@ struct CurrentStudyView: View {
             }
 
             Section {
-                NavigationLink {
-                    TemplatesView()
-                } label: {
-                    AccountRow(title: "Plantillas", detail: "Asignaturas ya preparadas", symbol: "square.stack")
-                }
-            }
-
-            Section {
                 Button("Archivar y empezar otro", systemImage: "archivebox") { isArchiving = true }
                     .disabled(subjectCount == 0)
             } footer: {
@@ -199,26 +191,5 @@ struct ArchivedStudyView: View {
             case .delete: Text("Se borran sus \(subjectCount) asignaturas con sus notas. No se puede deshacer.")
             }
         }
-    }
-}
-
-/// The bundled templates, each opening what it contains.
-private struct TemplatesView: View {
-    var body: some View {
-        List {
-            Section {
-                ForEach(DegreeTemplate.all) { template in
-                    NavigationLink {
-                        TemplateView(template: template)
-                    } label: {
-                        AccountRow(title: template.name, detail: "\(template.university) · \(template.entries.count) asignaturas", symbol: "graduationcap")
-                    }
-                }
-            } footer: {
-                Text("Asignaturas ya preparadas con la evaluación de su guía docente. Después puedes editarlas.")
-            }
-        }
-        .navigationTitle("Plantillas")
-        .navigationBarTitleDisplayMode(.inline)
     }
 }

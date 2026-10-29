@@ -402,6 +402,15 @@ final class Library {
         save()
     }
 
+    /// Adds a ready-made subject (from a template) to a year and term.
+    @discardableResult
+    func addSubject(_ subject: Subject, year: Int, term: Int?) -> SubjectRecord.ID {
+        let record = SubjectRecord(subject: subject, term: term)
+        courses[courseIndex(forYear: year)].subjects.append(record)
+        save()
+        return record.id
+    }
+
     /// Moves `sources` before `target` (or to the end) among `group` — the subjects one grid shows,
     /// in the order it shows them — leaving every other subject of the year where it was.
     func reorderSubjects(_ sources: [SubjectRecord.ID], before target: SubjectRecord.ID?, among group: [SubjectRecord.ID]) {
