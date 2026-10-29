@@ -209,10 +209,9 @@ private struct CalculationSection: View {
         }
     }
 
-    /// The one grade a "Nota única" subject is made of: the final grade, shown in the exam card so
-    /// it has an ordinary and an extraordinary sitting.
+    /// The one grade a "Nota única" subject is made of: the final grade on its own, no sittings or dates.
     static func singleGrade() -> Node {
-        .grade(Grade(name: "Nota final", isFinalExam: true, category: .exam))
+        .grade(Grade(name: "Nota final", category: .exam))
     }
 
     private var current: Method {
@@ -253,7 +252,7 @@ private struct CalculationSection: View {
             }
         } footer: {
             Text(current == .single
-                 ? "Solo la nota final, sin partes ni pesos: para llevar el expediente sin guardar todo lo que hiciste. Se pone en la tarjeta del examen de la asignatura, en la ordinaria o la extraordinaria."
+                 ? "Solo la nota final, sin partes, pesos ni fechas: para llevar el expediente sin guardar todo lo que hiciste."
                  : isRoot
                  ? "Tipo de evaluación de la asignatura: cómo se juntan sus notas en la final."
                  : current == .finalExam

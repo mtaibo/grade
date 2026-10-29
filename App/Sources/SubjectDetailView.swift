@@ -36,7 +36,8 @@ struct SubjectDetailView: View {
         let session = record.activeSession
         let progress = SubjectProgress(record, session: session)
         let items = PartItem.items(of: record)
-        let exam = items.first(where: \.isExam)
+        // "Nota única": one card for the final grade, no exam sittings.
+        let exam = record.isSingleGrade ? nil : items.first(where: \.isExam)
         let others = items.filter { $0.id != exam?.id }
         return ScrollView {
             VStack(alignment: .leading, spacing: 16) {
@@ -57,19 +58,24 @@ struct SubjectDetailView: View {
                 GradeCard(progress: progress, session: session, formula: record.subject.root.asFormula)
                     .tourTarget("subject.summary")
 
-                ExamCard(
-                    record: record,
-                    exam: exam,
-                    onAddDate: { addingDateFor = $0 },
-                    onOpen: { session, point in gradeTarget = GradeTarget(partID: exam?.id ?? "", session: session, origin: point) }
-                )
-                .tourTarget("subject.exam")
+                if !record.isSingleGrade {
+                    ExamCard(
+                        record: record,
+                        exam: exam,
+                        onAddDate: { addingDateFor = $0 },
+                        onOpen: { session, point in gradeTarget = GradeTarget(partID: exam?.id ?? "", session: session, origin: point) }
+                    )
+                    .tourTarget("subject.exam")
+                }
 
                 if !others.isEmpty {
-                    Text("Notas")
-                        .font(.title3.bold())
-                        .padding(.top, 8)
-                        .padding(.horizontal, 4)
+                    // A single-grade subject's one card needs no heading.
+                    if !record.isSingleGrade {
+                        Text("Notas")
+                            .font(.title3.bold())
+                            .padding(.top, 8)
+                            .padding(.horizontal, 4)
+                    }
 
                     VStack(spacing: 12) {
                         ForEach(others) { item in
@@ -111,7 +117,9 @@ struct SubjectDetailView: View {
             ToolbarItem(placement: .primaryAction) {
                 Menu {
                     Button("Editar", systemImage: "pencil") { isEditing = true }
-                    Button("Fechas", systemImage: "calendar") { isEditingDates = true }
+                    if !(library.record(id: recordID)?.isSingleGrade ?? false) {
+                        Button("Fechas", systemImage: "calendar") { isEditingDates = true }
+                    }
                     Button("Simulador", systemImage: "flask") {
                         simulation = Library(simulating: record, degree: library.degree)
                     }

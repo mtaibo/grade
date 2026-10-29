@@ -67,9 +67,13 @@ struct SubjectRecord: Identifiable, Codable, Equatable {
         colorName = try container.decodeIfPresent(String.self, forKey: .colorName)
     }
 
-    /// The sitting worth showing by default: the extraordinary one once anything's been entered there.
+    /// Evaluated as "Nota única": just its final grade, with no sittings or dates.
+    var isSingleGrade: Bool { subject.root.asGrade != nil }
+
+    /// The sitting worth showing by default: the extraordinary one once anything's been entered
+    /// there. A single-grade subject has only one.
     var activeSession: Convocatoria {
-        extraordinaryEntries.isEmpty ? .ordinary : .extraordinary
+        isSingleGrade || extraordinaryEntries.isEmpty ? .ordinary : .extraordinary
     }
 
     func examDate(for session: Convocatoria) -> Date? {
@@ -316,6 +320,13 @@ final class Library {
         let names: Set<String> = ["Prueba objetiva", "Examen final", "Prueba mixta", "Examen", "Examen de teoría", "Examen de prácticas"]
         for course in courses.indices {
             for index in courses[course].subjects.indices {
+                // A single-grade subject is its final grade, not an exam with sittings (it was
+                // marked as one when "Nota única" first came in).
+                if case .grade(var grade) = courses[course].subjects[index].subject.root, grade.isFinalExam != nil {
+                    grade.isFinalExam = nil
+                    courses[course].subjects[index].subject.root = .grade(grade)
+                    continue
+                }
                 var root = courses[course].subjects[index].subject.root
                 guard !root.grades.contains(where: { $0.isFinalExam == true }) else { continue }
                 root.updateGrades { if names.contains($0.name) { $0.isFinalExam = true } }
