@@ -92,10 +92,11 @@ struct BackupView: View {
     }
 }
 
-/// "Borrar datos": empty the grades or remove the subjects, of the whole degree or part of it.
+/// "Borrar datos": empty the grades or remove the subjects, of the whole degree or part of it, or
+/// wipe everything.
 struct EraseDataView: View {
     private enum Action: Identifiable {
-        case grades, subjects
+        case grades, subjects, everything
         var id: Self { self }
     }
 
@@ -105,6 +106,14 @@ struct EraseDataView: View {
 
     private func subjectsLabel(_ count: Int) -> String {
         count == 1 ? "1 asignatura" : "\(count) asignaturas"
+    }
+
+    private func dialogTitle(scopeName: String) -> String {
+        switch confirming {
+        case .everything: "¿Borrar todos los datos?"
+        case .subjects: "¿Borrar las asignaturas de \(scopeName)?"
+        default: "¿Borrar las notas de \(scopeName)?"
+        }
     }
 
     var body: some View {
@@ -130,11 +139,17 @@ struct EraseDataView: View {
             } footer: {
                 Text("Elimina las asignaturas con sus notas, fechas y guías.")
             }
+
+            Section {
+                Button("Borrar todos los datos", role: .destructive) { confirming = .everything }
+            } footer: {
+                Text("Deja Grade como recién instalada: el estudio actual con sus ajustes, asignaturas, notas, fechas, vistas y guías, y también los estudios archivados.")
+            }
         }
         .navigationTitle("Borrar datos")
         .navigationBarTitleDisplayMode(.inline)
         .confirmationDialog(
-            confirming == .subjects ? "¿Borrar las asignaturas de \(scopeName)?" : "¿Borrar las notas de \(scopeName)?",
+            dialogTitle(scopeName: scopeName),
             isPresented: Binding(get: { confirming != nil }, set: { if !$0 { confirming = nil } }),
             titleVisibility: .visible,
             presenting: confirming
@@ -142,9 +157,14 @@ struct EraseDataView: View {
             switch action {
             case .grades: Button("Borrar notas", role: .destructive) { library.clearGrades(in: scope) }
             case .subjects: Button("Borrar asignaturas", role: .destructive) { library.removeSubjects(in: scope) }
+            case .everything: Button("Borrar todo", role: .destructive) { library.eraseAll() }
             }
-        } message: { _ in
-            Text("Afecta a \(subjectsLabel(count)). No se puede deshacer.")
+        } message: { action in
+            if action == .everything {
+                Text("Se borra todo, también los estudios archivados. Si quieres conservar algo, haz antes una copia de seguridad. No se puede deshacer.")
+            } else {
+                Text("Afecta a \(subjectsLabel(count)). No se puede deshacer.")
+            }
         }
     }
 }

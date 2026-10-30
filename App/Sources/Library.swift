@@ -644,6 +644,17 @@ final class Library {
         save()
     }
 
+    /// Everything gone, as on a fresh install: the current study and its settings, the archived
+    /// ones and every guide. Per-device preferences (sort, calendar filter…) stay.
+    func eraseAll() {
+        for id in guideIDs { removeGuide(for: id) }
+        courses = []
+        degree = DegreeSettings()
+        selections = []
+        archives = []
+        save()
+    }
+
     func deleteArchivedStudy(id: ArchivedStudy.ID) {
         guard let index = archives.firstIndex(where: { $0.id == id }) else { return }
         for subject in archives.remove(at: index).subjectIDs { removeGuide(for: subject) }
