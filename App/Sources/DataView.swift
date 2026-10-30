@@ -39,6 +39,9 @@ struct BackupView: View {
     var body: some View {
         let count = library.records(in: options.scope).count
         let scope = options.scope == .all ? "" : " de \(options.scope.title(in: library.degree))"
+        let archiveCount = options.scope == .all ? library.archives.count { !options.excludedArchives.contains($0.id) } : 0
+        // Archived studies are worth a copy even while the current one is still empty.
+        let canExport = count > 0 || archiveCount > 0
         List {
             Section {
                 ScopePicker(scope: $options.scope)
@@ -76,7 +79,9 @@ struct BackupView: View {
                 ShareLink(item: BackupFile(library: library, options: options), preview: SharePreview("Copia de Grade")) {
                     Label("Exportar copia", systemImage: "square.and.arrow.up")
                 }
-                .disabled(count == 0)
+                .disabled(!canExport)
+                // Grey while there is nothing to save, blue otherwise.
+                .foregroundStyle(canExport ? AnyShapeStyle(.tint) : AnyShapeStyle(.tertiary))
             }
 
             Section {
