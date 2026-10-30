@@ -31,6 +31,23 @@ struct BackupView: View {
     @Environment(Library.self) private var library
     @Environment(BackupImportCenter.self) private var backupCenter
     @State private var options = BackupOptions()
+    @State private var isExporting = false
+    @State private var exportError: String?
+
+    /// Gathers the copy here and writes it in the background, so the spinner keeps turning.
+    private func export() {
+        isExporting = true
+        let backup = library.backupContents(options)
+        let name = library.backupFileName(options)
+        Task {
+            defer { isExporting = false }
+            do {
+                ShareSheet.present(try await backup.writeTemporaryFile(named: name))
+            } catch {
+                exportError = error.localizedDescription
+            }
+        }
+    }
 
     private func subjectsLabel(_ count: Int) -> String {
         count == 1 ? "1 asignatura" : "\(count) asignaturas"
@@ -76,11 +93,18 @@ struct BackupView: View {
             }
 
             Section {
-                ShareLink(item: BackupFile(library: library, options: options), preview: SharePreview("Copia de Grade")) {
-                    Label("Exportar copia", systemImage: "square.and.arrow.up")
+                Button(action: export) {
+                    HStack {
+                        Label("Exportar copia", systemImage: "square.and.arrow.up")
+                        Spacer()
+                        if isExporting {
+                            ProgressView()
+                        }
+                    }
+                    .contentShape(.rect)
                 }
-                .disabled(!canExport)
-                // Grey while there is nothing to save, blue otherwise.
+                .disabled(!canExport || isExporting)
+                // Grey while there is nothing to save, blue otherwise (even while it works).
                 .foregroundStyle(canExport ? AnyShapeStyle(.tint) : AnyShapeStyle(.tertiary))
             }
 
@@ -91,6 +115,11 @@ struct BackupView: View {
             } footer: {
                 Text("Elige un archivo .grade (también puedes abrirlo con Grade desde Archivos o AirDrop). Puedes añadir sus asignaturas a las tuyas o sustituir tu estudio actual por el de la copia.")
             }
+        }
+        .alert("No se ha podido exportar", isPresented: Binding(get: { exportError != nil }, set: { if !$0 { exportError = nil } })) {
+            Button("Vale") {}
+        } message: {
+            Text(exportError ?? "")
         }
         .navigationTitle("Copia de seguridad")
         .navigationBarTitleDisplayMode(.inline)

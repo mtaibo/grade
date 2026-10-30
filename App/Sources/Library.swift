@@ -526,9 +526,20 @@ final class Library {
         save()
     }
 
-    /// What `options` picks out — every subject in its scope with its evaluation and dates, plus
-    /// the degree settings, and the grades, guides and views when asked — as a `.grade` file.
+    /// What `options` picks out, as a `.grade` file.
     func backupData(_ options: BackupOptions = BackupOptions()) throws -> Data {
+        try GradeBackup.encoder.encode(backupContents(options))
+    }
+
+    /// "Grade 1º Año 2026-10-30.grade": what the exported file is called.
+    func backupFileName(_ options: BackupOptions) -> String {
+        let scope = options.scope == .all ? "" : " \(scopeFileName(options.scope))"
+        return "Grade\(scope) \(Date.now.formatted(.iso8601.year().month().day())).grade"
+    }
+
+    /// What `options` picks out — every subject in its scope with its evaluation and dates, plus
+    /// the degree settings, and the grades, guides and views when asked — ready to encode.
+    func backupContents(_ options: BackupOptions = BackupOptions()) -> GradeBackup {
         let ids = Set(records(in: options.scope).map(\.id))
         let courses = self.courses.compactMap { course -> Course? in
             var course = course
@@ -554,7 +565,7 @@ final class Library {
         backup.includesGrades = options.includesGrades
         backup.scope = options.scope == .all ? nil : options.scope.title(in: degree)
         backup.archives = archives
-        return try GradeBackup.encoder.encode(backup)
+        return backup
     }
 
     /// Replaces the current study with a backup's. Archived studies are never dropped: the

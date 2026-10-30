@@ -1,5 +1,6 @@
 import Foundation
 import SwiftUI
+import UIKit
 import UniformTypeIdentifiers
 
 extension UTType {
@@ -104,20 +105,32 @@ extension GradeBackup {
     }
 }
 
-/// The file handed to the share sheet. The library (with every guide PDF) is only encoded and
-/// written to a temporary `.grade` when it's actually shared — never while the screen just redraws.
-struct BackupFile: Transferable {
-    let library: Library
-    var options = BackupOptions()
-
-    static var transferRepresentation: some TransferRepresentation {
-        FileRepresentation(exportedContentType: .gradeBackup) { file in
-            let data = try await file.library.backupData(file.options)
-            let scope = file.options.scope == .all ? "" : " \(await file.library.scopeFileName(file.options.scope))"
-            let url = URL.temporaryDirectory.appending(path: "Grade\(scope) \(Date.now.formatted(.iso8601.year().month().day())).grade")
+extension GradeBackup {
+    /// Encodes the copy and writes it to a temporary `.grade`, off the main thread: with every
+    /// guide PDF inside it can take a few seconds, and the screen keeps a spinner going meanwhile.
+    func writeTemporaryFile(named name: String) async throws -> URL {
+        try await Task.detached(priority: .userInitiated) {
+            let data = try GradeBackup.encoder.encode(self)
+            let url = URL.temporaryDirectory.appending(path: name)
             try data.write(to: url, options: .atomic)
-            return SentTransferredFile(url)
-        }
+            return url
+        }.value
+    }
+}
+
+/// The system share sheet for a file already on disk, presented by UIKit itself: wrapped in a
+/// SwiftUI sheet it animated in twice.
+@MainActor
+enum ShareSheet {
+    static func present(_ url: URL) {
+        let scene = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first { $0.activationState == .foregroundActive }
+        guard var top = scene?.keyWindow?.rootViewController else { return }
+        while let presented = top.presentedViewController { top = presented }
+        let controller = UIActivityViewController(activityItems: [url], applicationActivities: nil)
+        // iPad shows it as a popover, which needs somewhere to point.
+        controller.popoverPresentationController?.sourceView = top.view
+        controller.popoverPresentationController?.sourceRect = CGRect(x: top.view.bounds.midX, y: top.view.bounds.midY, width: 0, height: 0)
+        top.present(controller, animated: true)
     }
 }
 
