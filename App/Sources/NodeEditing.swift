@@ -127,6 +127,29 @@ extension Node {
         }
     }
 
+    /// Every grade and bonus under this node renamed by `transform`.
+    mutating func renameLeaves(_ transform: (String) -> String) {
+        switch self {
+        case .grade(var grade):
+            grade.name = transform(grade.name)
+            self = .grade(grade)
+        case .bonus(var bonus):
+            bonus.name = transform(bonus.name)
+            self = .bonus(bonus)
+        case .group(var group):
+            for index in group.children.indices { group.children[index].node.renameLeaves(transform) }
+            self = .group(group)
+        case .formula(var formula):
+            for key in formula.variables.keys { formula.variables[key]?.renameLeaves(transform) }
+            self = .formula(formula)
+        case .alternatives(var alternatives):
+            for index in alternatives.branches.indices { alternatives.branches[index].node.renameLeaves(transform) }
+            self = .alternatives(alternatives)
+        case .requirement:
+            break
+        }
+    }
+
     /// Brings back into range what a form can leave out of it — an empty, negative or non-numeric
     /// weight, a scale of 0 — so the engine never divides by it or averages a negative share.
     mutating func sanitize() {

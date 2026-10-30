@@ -40,6 +40,10 @@ struct SubjectRecord: Identifiable, Codable, Equatable {
     /// The degree-wide term (cuatrimestre) it's taught in — 3 is the first term of the second
     /// year. `nil` for a year-long subject. The UI shows it relative to the year (see `Period`).
     var term: Int?
+    /// A year-long subject graded separately in each of its year's terms: its root is the general
+    /// evaluation, with one child per term holding that term's own (see `SubjectEditorView`). It
+    /// shows in every term on the home screen.
+    var isPerTerm = false
     /// Tile customisation: an SF Symbol name and a `SubjectColor` raw value. `nil` falls back to
     /// ones derived from the subject (see `SubjectStyle`).
     var symbol: String?
@@ -63,6 +67,7 @@ struct SubjectRecord: Identifiable, Codable, Equatable {
         ordinaryExamDate = try container.decodeIfPresent(Date.self, forKey: .ordinaryExamDate)
         extraordinaryExamDate = try container.decodeIfPresent(Date.self, forKey: .extraordinaryExamDate)
         term = try container.decodeIfPresent(Int.self, forKey: .term)
+        isPerTerm = try container.decodeIfPresent(Bool.self, forKey: .isPerTerm) ?? false
         symbol = try container.decodeIfPresent(String.self, forKey: .symbol)
         colorName = try container.decodeIfPresent(String.self, forKey: .colorName)
     }

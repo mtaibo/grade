@@ -38,10 +38,65 @@ struct SubjectEditorView: View {
                     lastTerm = draft.term
                     draft.term = nil
                 } else {
+                    if draft.isPerTerm { mergeTerms() }
                     draft.term = lastTerm ?? degree.absoluteTerm(year: year, relative: 1)
                 }
             }
         )
+    }
+
+    /// On: each term of the year gets its own evaluation and the root becomes the general one,
+    /// which combines them. Off: back to a single evaluation.
+    private var isPerTerm: Binding<Bool> {
+        Binding(get: { draft.isPerTerm }, set: { $0 ? splitByTerm() : mergeTerms() })
+    }
+
+    private var termCount: Int { max(degree.termsPerYear, 1) }
+
+    /// "1º Trimestre", for the `n`th term of the subject's year.
+    private func termLabel(_ n: Int) -> String {
+        degree.termLabel(degree.absoluteTerm(year: year, relative: n))
+    }
+
+    /// What tells one term's copy of a part from another's: "Examen (1º Trimestre)".
+    private func termSuffix(_ n: Int) -> String { " (\(termLabel(n)))" }
+
+    /// Turns the evaluation into one copy per term, under a general evaluation that averages them
+    /// (changed below like any other). Grades already entered go to the first term. Leaf names have
+    /// to stay unique, so each copy's carry its term; none is the final exam any more, since the
+    /// sittings belong to the whole subject.
+    private func splitByTerm() {
+        let base = draft.subject.root
+        for name in base.allLeafNames() { recordRename(from: name, to: name + termSuffix(1)) }
+        let children = (1...termCount).map { n in
+            var node = base
+            node.updateGrades { $0.isFinalExam = nil }
+            node.renameLeaves { $0 + termSuffix(n) }
+            var term = Group(name: termLabel(n), combination: .weightedAverage, children: [WeightedChild(weight: 1, node: node)])
+            if case .group(let group) = node {
+                term = group
+                term.name = termLabel(n)
+            }
+            return WeightedChild(weight: 1 / Double(termCount), node: .group(term))
+        }
+        draft.subject.root = .group(Group(name: draft.subject.name, combination: .weightedAverage, children: children))
+        draft.isPerTerm = true
+    }
+
+    /// Keeps the first term's evaluation, with its grades, as the whole subject's.
+    private func mergeTerms() {
+        draft.isPerTerm = false
+        guard case .group(let general) = draft.subject.root, var first = general.children.first?.node else { return }
+        let suffix = termSuffix(1)
+        for name in first.allLeafNames() where name.hasSuffix(suffix) {
+            recordRename(from: name, to: String(name.dropLast(suffix.count)))
+        }
+        first.renameLeaves { $0.hasSuffix(suffix) ? String($0.dropLast(suffix.count)) : $0 }
+        if case .group(var group) = first {
+            group.name = draft.subject.name
+            first = .group(group)
+        }
+        draft.subject.root = first
     }
 
     private var duplicateLeafNames: [String] {
@@ -75,6 +130,9 @@ struct SubjectEditorView: View {
 
                 Section {
                     Toggle("Anual", isOn: isYearLong.animation())
+                    if draft.term == nil {
+                        Toggle("Nota por periodo", isOn: isPerTerm.animation())
+                    }
                     if draft.term != nil {
                         Picker(degree.termName.isEmpty ? DegreeSettings.defaultTermName : degree.termName, selection: $draft.term) {
                             ForEach(1...max(degree.termsPerYear, 1), id: \.self) { n in
@@ -84,7 +142,11 @@ struct SubjectEditorView: View {
                         }
                     }
                 } footer: {
-                    Text("Una asignatura anual aparece en todos los periodos de su año. Si no, solo en el que elijas.")
+                    if draft.isPerTerm {
+                        Text("Cada periodo tiene su propia evaluación, y la de abajo es la general: cómo se juntan las notas de los periodos en la final. Aparece en todos los periodos del año.")
+                    } else {
+                        Text("Una asignatura anual aparece en todos los periodos de su año. Si no, solo en el que elijas. Con «Nota por periodo», cada periodo se evalúa por separado.")
+                    }
                 }
 
                 NodeContentsSections(node: $draft.subject.root, isRoot: true, onRenameLeaf: recordRename)

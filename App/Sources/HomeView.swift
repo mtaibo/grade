@@ -147,11 +147,14 @@ struct HomeView: View {
         library.courses.first { $0.year == period.year }?.subjects ?? []
     }
 
-    private var termSubjects: [SubjectRecord] { yearSubjects.filter { $0.term == period.term } }
+    /// The term's subjects, with the year-long ones graded per term among them.
+    private var termSubjects: [SubjectRecord] {
+        yearSubjects.filter { $0.term == period.term || (period.term != nil && $0.term == nil && $0.isPerTerm) }
+    }
 
-    /// Year-long subjects, listed under the term's own when one is selected.
+    /// Year-long subjects with one evaluation, listed under the term's own when one is selected.
     private var yearLongSubjects: [SubjectRecord] {
-        period.term == nil ? [] : yearSubjects.filter { $0.term == nil }
+        period.term == nil ? [] : yearSubjects.filter { $0.term == nil && !$0.isPerTerm }
     }
 
     private var columns: [GridItem] {
