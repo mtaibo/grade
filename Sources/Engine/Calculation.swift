@@ -305,3 +305,51 @@ extension Node {
         }
     }
 }
+
+extension Node {
+    /// What each pending leaf needs (as a fraction of its own scale) to reach `target`, sparing
+    /// the final exam as much as possible: every other top-level part first aims at its own pass
+    /// mark (`target` on its scale, so with a 10 already in one of two labs the other needs a 0),
+    /// and the exam makes up the rest. When even a 10 in the exam isn't enough, it stays at a 10
+    /// and the other pending leaves rise together. `nil` when `target` is out of reach, an empty
+    /// plan when nothing is pending.
+    public func passPlan(_ inputs: [String: Double], target: Double) -> [String: Double]? {
+        let pending = Set(pendingLeaves(inputs))
+        guard !pending.isEmpty else { return [:] }
+        guard neededFraction(inputs, target: target) != nil else { return nil }
+
+        let parts = children.isEmpty ? [self] : children
+        let isExam = { (part: Node) in part.grades.contains { $0.isFinalExam == true } }
+        let examLeaves = Set(parts.filter(isExam).flatMap { $0.allLeafNames() }).intersection(pending)
+
+        // Each other part, on its own, up to its pass mark.
+        var plan: [String: Double] = [:]
+        for part in parts where !isExam(part) {
+            let leaves = part.pendingLeaves(inputs)
+            guard !leaves.isEmpty else { continue }
+            let fraction = part.neededFraction(inputs, target: target / 10 * part.scaleMax) ?? 1
+            for leaf in leaves { plan[leaf] = fraction }
+        }
+
+        // The exam, on top of that.
+        if !examLeaves.isEmpty, let exam = neededFraction(inputs.merging(filled(plan)) { $1 }, target: target) {
+            for leaf in examLeaves { plan[leaf] = exam }
+            return plan
+        }
+        if examLeaves.isEmpty, neededFraction(inputs.merging(filled(plan)) { $1 }, target: target) == 0 {
+            return plan
+        }
+
+        // Not enough: a 10 in the exam and the rest evenly, as high as it takes.
+        let maxedExam = filled(Dictionary(uniqueKeysWithValues: examLeaves.map { ($0, 1.0) }))
+        let rest = neededFraction(inputs.merging(maxedExam) { $1 }, target: target) ?? 1
+        return Dictionary(uniqueKeysWithValues: pending.map { ($0, examLeaves.contains($0) ? 1 : rest) })
+    }
+
+    /// `fractions` turned into values on each leaf's own scale, ready to merge into the inputs.
+    private func filled(_ fractions: [String: Double]) -> [String: Double] {
+        fractions.reduce(into: [:]) { result, pair in
+            if let max = leaf(named: pair.key)?.scaleMax { result[pair.key] = pair.value * max }
+        }
+    }
+}

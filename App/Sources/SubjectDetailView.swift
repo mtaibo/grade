@@ -55,7 +55,12 @@ struct SubjectDetailView: View {
                     .font(.largeTitle.bold())
                     .fixedSize(horizontal: false, vertical: true)
 
-                GradeCard(progress: progress, session: session, formula: record.subject.root.asFormula)
+                GradeCard(
+                    progress: progress,
+                    session: session,
+                    formula: record.subject.root.asFormula,
+                    needs: NeededGrade.rows(for: record, session: session, progress: progress, items: items)
+                )
                     .tourTarget("subject.summary")
 
                 if !record.isSingleGrade {
@@ -259,6 +264,7 @@ private struct GradeCard: View {
     let progress: SubjectProgress
     let session: Convocatoria
     let formula: Formula?
+    let needs: [NeededGrade]
 
     @State private var isExpanded = false
 
@@ -292,15 +298,18 @@ private struct GradeCard: View {
             GradeRangeBar(worst: progress.worst, best: hasGrades ? progress.best : 0, threshold: progress.threshold, tint: barTint)
 
             if isExpanded {
-                VStack(alignment: .leading, spacing: 14) {
-                    if hasGrades {
-                        GradeRangeLegend(worst: progress.worst, best: progress.best, threshold: progress.threshold, tint: barTint)
-                    } else {
-                        Text("Apruebas con un \(progress.threshold.formatted())")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 22) {
+                    HStack(alignment: .top, spacing: 36) {
+                        GradeStat(label: "Asegurada", value: progress.worst, swatch: AnyShapeStyle(barTint))
+                        GradeStat(label: "Máxima", value: hasGrades ? progress.best : 10, swatch: AnyShapeStyle(barTint.opacity(0.25)))
+                        // Almost always a 5; only worth a column when the guide asks for something else.
+                        if progress.threshold != 5 {
+                            GradeStat(label: "Apruebas con", value: progress.threshold, swatch: AnyShapeStyle(.primary.opacity(0.6)), isTick: true)
+                        }
                     }
-                    if let message = verdict {
+                    if !needs.isEmpty {
+                        NeedsList(needs: needs)
+                    } else if let message = verdict {
                         Label {
                             Text(message)
                                 .fixedSize(horizontal: false, vertical: true)
@@ -316,10 +325,14 @@ private struct GradeCard: View {
                     if let formula {
                         Text(formula.expression.source)
                             .font(.footnote.monospaced())
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(.tertiary)
                     }
                 }
-                .transition(.opacity.combined(with: .move(edge: .top)))
+                // Only fade: sliding in from the top made it pass over the bar while the card grew.
+                .transition(.asymmetric(
+                    insertion: .opacity.animation(.easeOut(duration: 0.25).delay(0.08)),
+                    removal: .opacity.animation(.easeIn(duration: 0.12))
+                ))
             }
         }
         .card(padding: 18)
@@ -374,6 +387,119 @@ private struct GradeCard: View {
         case .impossible: "exclamationmark.triangle.fill"
         case .possible: "target"
         }
+    }
+}
+
+/// The least each pending part needs for the subject to pass, the final exam last: the other parts
+/// aim at their own pass mark and the exam makes up the rest (see `Node.passPlan`).
+private struct NeededGrade: Identifiable {
+    let id: String
+    let title: String
+    /// True when several grades of the part are still to come: the value is what they need on average.
+    let isAverage: Bool
+    let value: Double
+    let scaleMax: Double
+
+    static func rows(for record: SubjectRecord, session: Convocatoria, progress: SubjectProgress, items: [PartItem]) -> [NeededGrade] {
+        guard progress.status == .possible,
+              let plan = record.root(for: session).passPlan(progress.inputs, target: progress.threshold)
+        else { return [] }
+        let ordered = items.filter { !$0.isExam } + items.filter(\.isExam)
+        return ordered.compactMap { item in
+            let leaves = item.node.allLeafNames()
+            let pending = leaves.filter { plan[$0] != nil }
+            guard let first = pending.first, let leaf = item.node.leaf(named: first) else { return nil }
+            let value = pending.compactMap { plan[$0] }.max() ?? 0
+            let scaleMax = leaf.scaleMax
+            if item.node.asGrade != nil || leaves.count == 1 {
+                return NeededGrade(id: item.id, title: item.node.title, isAverage: false, value: value * scaleMax, scaleMax: scaleMax)
+            } else if pending.count == 1 {
+                return NeededGrade(id: item.id, title: first, isAverage: false, value: value * scaleMax, scaleMax: scaleMax)
+            } else {
+                return NeededGrade(id: item.id, title: item.node.title, isAverage: true, value: value * scaleMax, scaleMax: scaleMax)
+            }
+        }
+    }
+}
+
+/// "Para aprobar": one row per pending part with the grade it needs.
+private struct NeedsList: View {
+    let needs: [NeededGrade]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            // Only the title is blue, on a faint band behind its one line.
+            Label("Para aprobar", systemImage: "target")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(Color.accentColor)
+                .padding(.vertical, 7)
+                .padding(.leading, 12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(Color.accentColor.opacity(0.12), in: .rect(cornerRadius: 8))
+            ForEach(needs) { need in
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text(need.title)
+                        .font(.subheadline)
+                    Spacer(minLength: 8)
+                    valueText(need)
+                }
+                .accessibilityElement(children: .combine)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    @ViewBuilder
+    private func valueText(_ need: NeededGrade) -> some View {
+        // Rounded up: a 4,66 shown as 4,7 still passes, as 4,6 it wouldn't.
+        let value = (need.value * 10 - 0.0001).rounded(.up) / 10
+        if value <= 0 {
+            Text("Cualquier nota")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+        } else {
+            let number = value.formatted(.number.precision(.fractionLength(0...1)))
+            HStack(alignment: .firstTextBaseline, spacing: 4) {
+                if need.isAverage {
+                    Text("media")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+                Text(need.scaleMax == 10 ? number : "\(number) / \(need.scaleMax.formatted())")
+                    .font(.system(.title3, design: .rounded, weight: .bold))
+                    .monospacedDigit()
+            }
+        }
+    }
+}
+
+/// One number of the unfolded grade card, with the swatch that finds it on the bar above.
+private struct GradeStat: View {
+    let label: LocalizedStringKey
+    let value: Double
+    let swatch: AnyShapeStyle
+    var isTick = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 5) {
+                if isTick {
+                    Rectangle().fill(swatch).frame(width: 2, height: 10)
+                } else {
+                    Capsule().fill(swatch).frame(width: 12, height: 6)
+                }
+                Text(label)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+            }
+            .font(.caption.weight(.medium))
+            .foregroundStyle(.secondary)
+            Text(value, format: .number.precision(.fractionLength(0...2)))
+                .font(.system(.title2, design: .rounded, weight: .bold))
+                .monospacedDigit()
+                .contentTransition(.numericText())
+        }
+        .accessibilityElement(children: .combine)
     }
 }
 
