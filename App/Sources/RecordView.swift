@@ -1,15 +1,17 @@
 import Engine
 import SwiftUI
 
-/// The record's numbers, worked out once per redraw: each subject's progress, and credit-weighted
-/// averages over the subjects whose grades are all in — one still in progress has no final grade
+/// The record's numbers, worked out once per redraw: each subject's progress, and averages over
+/// the subjects whose grades are all in, weighted by credits when the study uses them — one still in progress has no final grade
 /// yet to average (§2).
 struct RecordSummary {
     let progress: [SubjectRecord.ID: SubjectProgress]
     let subjects: [SubjectRecord]
+    let usesCredits: Bool
 
-    init(_ courses: [Course]) {
+    init(_ courses: [Course], degree: DegreeSettings) {
         subjects = courses.flatMap(\.subjects)
+        usesCredits = degree.usesCredits
         progress = Dictionary(subjects.map { ($0.id, SubjectProgress($0)) }) { first, _ in first }
     }
 
@@ -23,9 +25,10 @@ struct RecordSummary {
 
     func average(of records: [SubjectRecord]) -> Double? {
         let done = completed(records)
-        let credits = done.reduce(0) { $0 + $1.subject.ectsCredits }
-        guard credits > 0 else { return nil }
-        return done.reduce(0) { $0 + progress(of: $1).worst * $1.subject.ectsCredits } / credits
+        let weight = { (record: SubjectRecord) in usesCredits ? record.subject.ectsCredits : 1 }
+        let total = done.reduce(0) { $0 + weight($1) }
+        guard total > 0 else { return nil }
+        return done.reduce(0) { $0 + progress(of: $1).worst * weight($1) } / total
     }
 
     var average: Double? { average(of: subjects) }
@@ -42,7 +45,8 @@ struct RecordSummary {
     }
 }
 
-/// The three headline numbers: overall average, passed subjects and passed credits.
+/// The headline numbers: overall average, passed subjects and, when the study uses them, passed
+/// credits.
 struct RecordStats: View {
     let summary: RecordSummary
 
@@ -51,8 +55,10 @@ struct RecordStats: View {
             RecordStat(value: RecordSummary.format(summary.average), label: "Media")
             Divider()
             RecordStat(value: "\(summary.passed.count)/\(summary.subjects.count)", label: "Aprobadas")
-            Divider()
-            RecordStat(value: summary.passedCredits.formatted(), label: "Créditos")
+            if summary.usesCredits {
+                Divider()
+                RecordStat(value: summary.passedCredits.formatted(), label: "Créditos")
+            }
         }
         .padding(.vertical, 4)
     }
@@ -68,12 +74,14 @@ struct RecordView: View {
     private var degree: DegreeSettings { archived?.degree ?? library.degree }
 
     var body: some View {
-        let summary = RecordSummary(courses)
+        let summary = RecordSummary(courses, degree: degree)
         return List {
             Section {
                 RecordStats(summary: summary)
             } footer: {
-                Text("Las medias cuentan las asignaturas con todas las notas puestas, ponderadas por sus créditos. Llevas \(summary.passedCredits.formatted()) de \(summary.totalCredits.formatted()) créditos.")
+                Text(degree.usesCredits
+                     ? "Las medias cuentan las asignaturas con todas las notas puestas, ponderadas por sus créditos. Llevas \(summary.passedCredits.formatted()) de \(summary.totalCredits.formatted()) créditos."
+                     : "Las medias cuentan las asignaturas con todas las notas puestas, todas por igual.")
             }
 
             ForEach(courses) { course in
@@ -85,7 +93,7 @@ struct RecordView: View {
                             average: summary.average(of: subjects)
                         )
                         ForEach(subjects) { record in
-                            RecordRow(record: record, progress: summary.progress(of: record))
+                            RecordRow(record: record, progress: summary.progress(of: record), showsCredits: degree.usesCredits)
                         }
                     }
                 } header: {
@@ -148,6 +156,7 @@ private struct TermRow: View {
 private struct RecordRow: View {
     let record: SubjectRecord
     let progress: SubjectProgress
+    let showsCredits: Bool
 
     var body: some View {
         LabeledContent {
@@ -162,9 +171,11 @@ private struct RecordRow: View {
         } label: {
             VStack(alignment: .leading, spacing: 2) {
                 Text(record.subject.name)
-                Text("\(record.subject.ectsCredits.formatted()) ECTS")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                if showsCredits {
+                    Text("\(record.subject.ectsCredits.formatted()) ECTS")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
         }
     }

@@ -58,7 +58,7 @@ struct AccountView: View {
                 }
 
                 Section {
-                    RecordStats(summary: RecordSummary(library.courses))
+                    RecordStats(summary: RecordSummary(library.courses, degree: library.degree))
                         .tourTarget("account.record")
                         .id("account.record")
                     NavigationLink {

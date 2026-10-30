@@ -29,6 +29,9 @@ enum StudyType: String, Codable, CaseIterable, Identifiable {
         }
     }
 
+    /// Whether its subjects usually carry credits (ECTS): university degrees and masters do.
+    var usesCredits: Bool { self == .university || self == .master }
+
     /// The usual years, terms per year and term name, applied when the type is picked. `nil` for
     /// `.other`, which keeps whatever was set.
     var defaults: (years: Int, termsPerYear: Int, termName: String)? {
@@ -62,6 +65,8 @@ struct DegreeSettings: Codable, Equatable {
     var termsPerYear = 2
     var termName = defaultTermName
     var yearName = defaultYearName
+    /// Off: no credits anywhere (record, editor) and averages count every subject the same.
+    var usesCredits = true
 
     /// The name given to the study, or its type when it has none.
     var displayName: String {
@@ -73,6 +78,7 @@ struct DegreeSettings: Codable, Equatable {
     func switching(to type: StudyType) -> DegreeSettings {
         var new = self
         new.studyType = type
+        if type != .other { new.usesCredits = type.usesCredits }
         if let defaults = type.defaults {
             new.years = defaults.years
             new.termsPerYear = defaults.termsPerYear
@@ -132,7 +138,7 @@ struct DegreeSettings: Codable, Equatable {
 }
 
 extension DegreeSettings {
-    private enum CodingKeys: String, CodingKey { case studyType, name, institution, years, termsPerYear, termName, yearName }
+    private enum CodingKeys: String, CodingKey { case studyType, name, institution, years, termsPerYear, termName, yearName, usesCredits }
 
     /// Clamped to what the settings screen allows, so a hand-edited backup can't hand the app zero
     /// terms a year (which it divides by) or a hundred years.
@@ -140,14 +146,17 @@ extension DegreeSettings {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         let years = try container.decodeIfPresent(Int.self, forKey: .years) ?? 4
         let terms = try container.decodeIfPresent(Int.self, forKey: .termsPerYear) ?? 2
+        let studyType = (try? container.decodeIfPresent(StudyType.self, forKey: .studyType)) ?? .university
         self.init(
-            studyType: (try? container.decodeIfPresent(StudyType.self, forKey: .studyType)) ?? .university,
+            studyType: studyType,
             name: try container.decodeIfPresent(String.self, forKey: .name) ?? "",
             institution: try container.decodeIfPresent(String.self, forKey: .institution) ?? "",
             years: min(max(years, 1), Self.maxYears),
             termsPerYear: min(max(terms, 1), Self.maxTermsPerYear),
             termName: try container.decodeIfPresent(String.self, forKey: .termName) ?? Self.defaultTermName,
-            yearName: try container.decodeIfPresent(String.self, forKey: .yearName) ?? Self.defaultYearName
+            yearName: try container.decodeIfPresent(String.self, forKey: .yearName) ?? Self.defaultYearName,
+            // Studies saved before the setting existed get their type's usual one.
+            usesCredits: try container.decodeIfPresent(Bool.self, forKey: .usesCredits) ?? studyType.usesCredits
         )
     }
 }

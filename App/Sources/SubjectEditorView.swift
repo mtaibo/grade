@@ -163,7 +163,7 @@ struct SubjectEditorView: View {
 
                 Section {
                     NavigationLink {
-                        AdvancedSubjectView(subject: $draft.subject)
+                        AdvancedSubjectView(subject: $draft.subject, showsCredits: library.degree.usesCredits)
                     } label: {
                         Label("Avanzado", systemImage: "slider.horizontal.3")
                     }
@@ -222,15 +222,19 @@ struct SubjectEditorView: View {
 /// What rarely changes once a subject is set up: its credits and the grade it takes to pass.
 private struct AdvancedSubjectView: View {
     @Binding var subject: Subject
+    /// Off when the study has no credits.
+    let showsCredits: Bool
 
     var body: some View {
         Form {
-            Section {
-                Stepper(value: $subject.ectsCredits, in: 0...30, step: 0.5) {
-                    LabeledContent("Créditos ECTS", value: subject.ectsCredits.formatted())
+            if showsCredits {
+                Section {
+                    Stepper(value: $subject.ectsCredits, in: 0...30, step: 0.5) {
+                        LabeledContent("Créditos ECTS", value: subject.ectsCredits.formatted())
+                    }
+                } footer: {
+                    Text("Insertar texto")
                 }
-            } footer: {
-                Text("Insertar texto")
             }
             Section {
                 Stepper(value: $subject.root.passThreshold, in: 0...10, step: 0.5) {

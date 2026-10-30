@@ -61,6 +61,7 @@ struct CurrentStudyView: View {
                         .multilineTextAlignment(.trailing)
                         .textInputAutocapitalization(.words)
                 }
+                Toggle("Créditos", isOn: degree.usesCredits)
             } header: {
                 Text("Organización")
             } footer: {
@@ -157,7 +158,7 @@ struct ArchivedStudyView: View {
             }
 
             Section("Expediente") {
-                RecordStats(summary: RecordSummary(study.courses))
+                RecordStats(summary: RecordSummary(study.courses, degree: study.degree))
                 NavigationLink {
                     RecordView(archived: study)
                 } label: {
