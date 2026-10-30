@@ -326,7 +326,7 @@ struct HomeView: View {
                     Button("Mover", systemImage: "arrow.right.circle") {
                         placement = .move(record.id, name: record.subject.name, from: library.period(of: record.id) ?? Period(year: period.year, term: record.term))
                     }
-                    Button("Editar evaluación", systemImage: "slider.horizontal.3") { editing = record }
+                    Button("Editar", systemImage: "slider.horizontal.3") { editing = record }
                     Divider()
                     Button("Eliminar", systemImage: "trash", role: .destructive) { deleting = record }
                 }
