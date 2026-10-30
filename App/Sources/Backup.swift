@@ -175,7 +175,10 @@ struct BackupImportHost: ViewModifier {
                 presenting: center.pending
             ) { pending in
                 Button("Añadir a lo que tengo") { center.confirm(pending, into: library, replacing: false) }
-                Button("Sustituir mi estudio actual", role: .destructive) { center.confirm(pending, into: library, replacing: true) }
+                // A copy of part of the study would leave only that part: the rest's grades would go.
+                if pending.backup.scope == nil {
+                    Button("Sustituir mi estudio actual", role: .destructive) { center.confirm(pending, into: library, replacing: true) }
+                }
             } message: { pending in
                 Text(Self.summary(of: pending.backup))
             }
@@ -192,6 +195,9 @@ struct BackupImportHost: ViewModifier {
         if backup.includesGrades == false { text += ", sin notas" }
         if let archives = backup.archives, !archives.isEmpty {
             text += archives.count == 1 ? " y 1 estudio archivado" : " y \(archives.count) estudios archivados"
+        }
+        if backup.scope != nil {
+            return text + ". Se suman a las tuyas y sustituyen las que ya estaban en la copia. Como es solo una parte del estudio, no puede sustituir el tuyo entero. No se puede deshacer."
         }
         return text + ". «Añadir» las suma a las tuyas y sustituye las que ya estaban en la copia; «Sustituir» cambia tu estudio actual por el de la copia. Los estudios archivados se conservan. No se puede deshacer."
     }
