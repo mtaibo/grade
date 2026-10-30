@@ -406,8 +406,8 @@ private struct ProgressPill: View {
 
 // MARK: - Exam
 
-/// The final exam, which every subject has: its weight and, below it, one slot per sitting with the
-/// grade, its own bar and the date. Tap a slot to put its grade; the date is changed from "…".
+/// The final exam, which every subject has: its weight and, below it, one row per sitting with the
+/// grade, its own bar and the date, laid out like the other part cards. Tap a slot to put its grade; the date is changed from "…".
 private struct ExamCard: View {
     let record: SubjectRecord
     let exam: PartItem?
@@ -415,15 +415,19 @@ private struct ExamCard: View {
     let onOpen: (Convocatoria, CGPoint) -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Label(exam?.node.title ?? "Examen", systemImage: "calendar")
+                Text(exam?.node.title ?? "Examen")
                     .font(.headline)
                 if let weightPercent = exam?.weightPercent {
                     WeightChip(percent: weightPercent, isMaximum: exam?.isMaximum == true)
                 }
             }
+            .padding(.bottom, 6)
             ForEach(Convocatoria.allCases) { session in
+                if session != Convocatoria.allCases.first {
+                    Divider()
+                }
                 ExamSlot(
                     session: session,
                     date: record.examDate(for: session),
@@ -447,7 +451,7 @@ private struct ExamSlot: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .center) {
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: 2) {
                     Text(session.label)
                         .font(.subheadline.weight(.semibold))
                     dateLine
@@ -466,8 +470,6 @@ private struct ExamSlot: View {
                 ProgressBar(fraction: summary.fraction, tint: summary.tint)
             }
         }
-        .padding(12)
-        .background(Color(.tertiarySystemFill), in: .rect(cornerRadius: 14))
         .contentShape(.rect)
         .onTapGesture(coordinateSpace: .global) { point in if summary != nil { onOpen(point) } }
     }
@@ -479,9 +481,9 @@ private struct ExamSlot: View {
                 .font(.footnote)
                 .foregroundStyle(.secondary)
         } else {
-            Button("Añadir fecha", action: onAddDate)
-                .buttonStyle(.bordered)
-                .controlSize(.small)
+            Button("Añadir fecha", systemImage: "plus", action: onAddDate)
+                .font(.footnote.weight(.medium))
+                .buttonStyle(.borderless)
         }
     }
 
