@@ -185,7 +185,7 @@ struct HomeView: View {
                         }
                         if customSelection == nil, !yearLongSubjects.isEmpty {
                             VStack(alignment: .leading, spacing: 10) {
-                                Text("Todo el año")
+                                Text("Anual")
                                     .font(.footnote.weight(.semibold))
                                     .foregroundStyle(.secondary)
                                     .textCase(.uppercase)
