@@ -149,7 +149,7 @@ struct SubjectEditorView: View {
                     }
                 }
 
-                NodeContentsSections(node: $draft.subject.root, isRoot: true, onRenameLeaf: recordRename)
+                NodeContentsSections(node: $draft.subject.root, isRoot: true, isPerTerm: draft.isPerTerm, onRenameLeaf: recordRename)
 
                 if !duplicateLeafNames.isEmpty {
                     Section {
@@ -250,6 +250,8 @@ private struct AdvancedSubjectView: View {
 private struct NodeContentsSections: View {
     @Binding var node: Node
     var isRoot = false
+    /// The root of a subject graded per term: its children are the terms.
+    var isPerTerm = false
     let onRenameLeaf: (String, String) -> Void
 
     var body: some View {
@@ -258,7 +260,7 @@ private struct NodeContentsSections: View {
                 .tourTarget(isRoot ? "editor.evaluation" : nil)
         }
         if let group = Binding(unwrapping: $node.asGroup) {
-            GroupSections(group: group, isRoot: isRoot, onRenameLeaf: onRenameLeaf)
+            GroupSections(group: group, isRoot: isRoot, isPerTerm: isPerTerm, onRenameLeaf: onRenameLeaf)
                 .tourTarget(isRoot ? "editor.sections" : nil)
         } else if let formula = Binding(unwrapping: $node.asFormula) {
             FormulaSections(formula: formula, onRenameLeaf: onRenameLeaf)
@@ -443,6 +445,7 @@ private struct CheckFooter: View {
 private struct GroupSections: View {
     @Binding var group: Engine.Group
     var isRoot = false
+    var isPerTerm = false
     let onRenameLeaf: (String, String) -> Void
 
     private var totalWeight: Double { group.children.reduce(0) { $0 + $1.weight } }
@@ -485,9 +488,11 @@ private struct GroupSections: View {
                     .foregroundStyle(.tint)
             }
         } header: {
-            CheckedHeader(title: isRoot ? "Secciones" : "Subsecciones", isValid: check.map { $0 == nil })
+            CheckedHeader(title: isPerTerm ? "Periodos" : isRoot ? "Secciones" : "Subsecciones", isValid: check.map { $0 == nil })
         } footer: {
-            CheckFooter(problem: check ?? nil, hint: isRoot
+            CheckFooter(problem: check ?? nil, hint: isPerTerm
+                ? "Cada periodo con su propia evaluación y su peso en la nota final."
+                : isRoot
                 ? "Personaliza las secciones en las que se divide la nota final."
                 : "Personaliza las subsecciones en las que se divide esta sección.")
         }
