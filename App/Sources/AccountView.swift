@@ -1,8 +1,8 @@
 import Engine
 import SwiftUI
 
-/// The account tab, four modules top to bottom: your studies (the current one and any archived),
-/// your record, your data (backups and deletes) and about the app.
+/// The account tab, top to bottom: your studies (with the archive once something's been archived),
+/// your record, your data (backups and deletes), the tutorials and about the app.
 struct AccountView: View {
     @Environment(Library.self) private var library
     @Environment(Tour.self) private var tour: Tour?
@@ -44,13 +44,13 @@ struct AccountView: View {
                         AccountRow(title: "Plantillas", detail: "Cursos completos o asignaturas sueltas", symbol: "square.stack")
                     }
                     .tourTarget("account.study")
-                    ForEach(library.archives.reversed()) { study in
+                    if !library.archives.isEmpty {
                         NavigationLink {
-                            ArchivedStudyView(id: study.id)
+                            ArchiveView()
                         } label: {
                             AccountRow(
-                                title: study.degree.displayName,
-                                detail: "Archivado el \(study.archivedAt.formatted(date: .abbreviated, time: .omitted))",
+                                title: "Archivo",
+                                detail: library.archives.count == 1 ? "1 estudio archivado" : "\(library.archives.count) estudios archivados",
                                 symbol: "archivebox"
                             )
                         }
@@ -156,5 +156,34 @@ struct AccountRow: View {
         } icon: {
             Image(systemName: symbol)
         }
+    }
+}
+
+/// "Archivo", from Estudios: the studies put away, newest first.
+private struct ArchiveView: View {
+    @Environment(Library.self) private var library
+
+    var body: some View {
+        List {
+            ForEach(library.archives.reversed()) { study in
+                NavigationLink {
+                    ArchivedStudyView(id: study.id)
+                } label: {
+                    AccountRow(
+                        title: study.degree.displayName,
+                        detail: "Archivado el \(study.archivedAt.formatted(date: .abbreviated, time: .omitted))",
+                        symbol: study.degree.studyType.symbol
+                    )
+                }
+            }
+        }
+        .overlay {
+            // After deleting the last one.
+            if library.archives.isEmpty {
+                ContentUnavailableView("Nada archivado", systemImage: "archivebox")
+            }
+        }
+        .navigationTitle("Archivo")
+        .navigationBarTitleDisplayMode(.inline)
     }
 }

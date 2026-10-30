@@ -49,13 +49,27 @@ struct BackupView: View {
                 if !library.selections.isEmpty {
                     Toggle("Vistas personalizadas", isOn: $options.includesViews)
                 }
-                if !library.archives.isEmpty, options.scope == .all {
-                    Toggle("Estudios archivados", isOn: $options.includesArchives)
-                }
             } header: {
                 Text("Qué guardar")
             } footer: {
                 Text("Se guardan \(subjectsLabel(count))\(scope) con su evaluación\(options.includesGrades ? ", sus fechas y sus notas" : " y sus fechas, sin notas"). Sin notas sirve para pasarle tus asignaturas a un compañero.")
+            }
+
+            if !library.archives.isEmpty, options.scope == .all {
+                Section {
+                    ForEach(library.archives.reversed()) { study in
+                        Toggle(isOn: Binding(
+                            get: { !options.excludedArchives.contains(study.id) },
+                            set: { if $0 { options.excludedArchives.remove(study.id) } else { options.excludedArchives.insert(study.id) } }
+                        )) {
+                            Label(study.degree.displayName, systemImage: "archivebox")
+                        }
+                    }
+                } header: {
+                    Text("Archivo")
+                } footer: {
+                    Text("Los estudios archivados que marques van en la copia con todas sus asignaturas, notas y vistas.")
+                }
             }
 
             Section {

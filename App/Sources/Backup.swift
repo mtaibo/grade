@@ -65,8 +65,8 @@ struct BackupOptions: Equatable, Sendable {
     var includesGrades = true
     var includesGuides = true
     var includesViews = true
-    /// Only with the whole study in scope.
-    var includesArchives = true
+    /// Archived studies left out; every one goes in otherwise. Only with the whole study in scope.
+    var excludedArchives: Set<ArchivedStudy.ID> = []
 }
 
 enum BackupError: LocalizedError {

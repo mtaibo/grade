@@ -541,7 +541,8 @@ final class Library {
             }
             return course.subjects.isEmpty ? nil : course
         }
-        let archives = options.includesArchives && options.scope == .all && !self.archives.isEmpty ? self.archives : nil
+        let picked = options.scope == .all ? self.archives.filter { !options.excludedArchives.contains($0.id) } : []
+        let archives = picked.isEmpty ? nil : picked
         let guideIDs = ids.union(archives?.flatMap(\.subjectIDs) ?? [])
         let guides = options.includesGuides ? guides(for: guideIDs) : nil
         let selections = options.includesViews ? self.selections.compactMap { selection -> CustomSelection? in
