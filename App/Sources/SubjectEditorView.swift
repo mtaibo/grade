@@ -11,6 +11,8 @@ struct SubjectEditorView: View {
     @State private var draft: SubjectRecord
     /// Leaf renames made while editing (original name → current name), so stored grades follow.
     @State private var renames: [String: String] = [:]
+    /// The term it had before being made year-long, to go back to if switched off again.
+    @State private var lastTerm: Int?
 
     init(record: SubjectRecord) {
         // Grades from before the type was required show the type they were already guessed as, so
@@ -20,6 +22,26 @@ struct SubjectEditorView: View {
             if grade.category == nil { grade.category = grade.kind }
         }
         _draft = State(initialValue: record)
+        _lastTerm = State(initialValue: record.term)
+    }
+
+    private var degree: DegreeSettings { library.degree }
+    private var year: Int { library.year(of: draft.id) ?? 1 }
+
+    /// On: the subject belongs to the whole year (no term) and shows in every one of its periods.
+    /// Off: back to the term it had, or the year's first.
+    private var isYearLong: Binding<Bool> {
+        Binding(
+            get: { draft.term == nil },
+            set: { yearLong in
+                if yearLong {
+                    lastTerm = draft.term
+                    draft.term = nil
+                } else {
+                    draft.term = lastTerm ?? degree.absoluteTerm(year: year, relative: 1)
+                }
+            }
+        )
     }
 
     private var duplicateLeafNames: [String] {
@@ -49,6 +71,20 @@ struct SubjectEditorView: View {
                     .tourTarget("editor.name")
                 } footer: {
                     Text("Nombre de la asignatura. Toca para cambiarlo.")
+                }
+
+                Section {
+                    Toggle("Anual", isOn: isYearLong.animation())
+                    if draft.term != nil {
+                        Picker(degree.termName.isEmpty ? DegreeSettings.defaultTermName : degree.termName, selection: $draft.term) {
+                            ForEach(1...max(degree.termsPerYear, 1), id: \.self) { n in
+                                let term = degree.absoluteTerm(year: year, relative: n)
+                                Text(degree.termLabel(term)).tag(Int?.some(term))
+                            }
+                        }
+                    }
+                } footer: {
+                    Text("Una asignatura anual aparece en todos los periodos de su año. Si no, solo en el que elijas.")
                 }
 
                 NodeContentsSections(node: $draft.subject.root, isRoot: true, onRenameLeaf: recordRename)
