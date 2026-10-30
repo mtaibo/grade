@@ -85,16 +85,37 @@ extension Library {
 }
 
 /// "Calendario": a compact month with a coloured dot on every day something is due, and below it the
-/// next three things (or the selected day's). The filter at the top right picks which kinds show.
+/// next six things, three more at a time with "Ver más". It opens on the list alone: unfolding the
+/// month (from the chevron by its title) folds the list, and a day picked on it shows that day's
+/// dates above the list. The filter at the top right picks which kinds show.
 struct CalendarView: View {
+    /// Whether the Calendario tab is the one on screen: leaving it puts "Ver más" back to the start.
+    let isCurrentTab: Bool
     @Environment(Library.self) private var library
+    @Environment(Tour.self) private var tour: Tour?
     @State private var selectedDay: CalendarDay?
     @State private var isFiltering = false
+    /// How many upcoming dates the list shows; "Ver más" adds `pageSize` more.
+    @State private var upcomingCount = CalendarView.initialCount
+    @State private var isMonthShown = false
+    @State private var isListShown = true
     @ScaledMetric(relativeTo: .largeTitle) private var titleSize = 40
     /// Per-device: which kinds are shown, stored as their raw values.
     @AppStorage("calendarKinds") private var storedKinds = GradeCategory.allCases.map(\.rawValue).joined(separator: ",")
 
+    private static let initialCount = 6
+    private static let pageSize = 3
+
     private var calendar: Calendar { .current }
+
+    /// The tour points at the month and the list, so it unfolds them while it does.
+    private var showsMonth: Bool { isMonthShown || tour?.current?.target == "calendar.month" }
+    private var showsList: Bool { isListShown || tour?.current?.target == "calendar.list" }
+
+    private func upcoming(_ deadlines: [Deadline]) -> [Deadline] {
+        let today = calendar.startOfDay(for: .now)
+        return deadlines.filter { $0.date >= today }
+    }
 
     private var shownKinds: Set<GradeCategory> {
         Set(storedKinds.split(separator: ",").compactMap { GradeCategory(rawValue: String($0)) })
@@ -111,19 +132,21 @@ struct CalendarView: View {
         }
     }
 
-    private func visible(_ deadlines: [Deadline]) -> [Deadline] {
-        if let selectedDay {
-            return deadlines.filter { CalendarDay($0.date, calendar: calendar) == selectedDay }
-        }
-        let today = calendar.startOfDay(for: .now)
-        return Array(deadlines.filter { $0.date >= today }.prefix(3))
+    private func title(of day: CalendarDay) -> String {
+        calendar.date(from: day.components)?.formatted(.dateTime.weekday(.wide).day().month(.wide)) ?? ""
     }
 
-    private var listTitle: String {
-        if let selectedDay, let day = calendar.date(from: selectedDay.components) {
-            return day.formatted(.dateTime.weekday(.wide).day().month(.wide))
+    /// The month and the list take turns: one opens as the other folds, from either chevron. A day
+    /// picked on the month goes when the month does, and a folded list starts again from the first
+    /// few, once it's out of sight so the fold doesn't jump.
+    private func showList(_ shown: Bool) {
+        withAnimation(.smooth(duration: 0.4)) {
+            isListShown = shown
+            isMonthShown = !shown
+            if shown { selectedDay = nil }
+        } completion: {
+            if !isListShown { upcomingCount = Self.initialCount }
         }
-        return "Próximas fechas"
     }
 
     private func toggle(_ kind: GradeCategory) {
@@ -137,55 +160,107 @@ struct CalendarView: View {
         let allDeadlines = library.deadlines
         let shownKinds = shownKinds
         let deadlines = allDeadlines.filter { shownKinds.contains($0.kind) }
-        let visible = visible(deadlines)
+        let upcoming = upcoming(deadlines)
+        let visible = Array(upcoming.prefix(upcomingCount))
+        let hasMore = upcoming.count > visible.count
         return NavigationStack {
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 20) {
-                    Text("Calendario")
-                        .font(.system(size: titleSize, weight: .bold, design: .rounded))
-                        .padding(.leading, 4)
-                        .accessibilityAddTraits(.isHeader)
+                    VStack(alignment: .leading, spacing: 0) {
+                        FoldingHeader(title: "Calendario", isExpanded: showsMonth) { showList(isMonthShown) }
+                            .font(.system(size: titleSize, weight: .bold, design: .rounded))
+                            .padding(.leading, 4)
 
-                    MonthCalendar(dayKinds: dayKinds(deadlines), selection: $selectedDay)
-                        .frame(maxWidth: 320)
-                        .frame(maxWidth: .infinity)
-                        .card(padding: 4)
-                        .tourTarget("calendar.month")
-                        .padding(.top, 8)
+                        MonthCalendar(dayKinds: dayKinds(deadlines), selection: $selectedDay)
+                            .frame(maxWidth: 320)
+                            .frame(maxWidth: .infinity)
+                            .card(padding: 4)
+                            .tourTarget("calendar.month")
+                            .padding(.top, 28)
+                            .folded(!showsMonth)
+                    }
 
-                    VStack(alignment: .leading, spacing: 10) {
-                        HStack {
-                            Text(listTitle)
-                                .font(.title3.bold())
-                            Spacer()
-                            if selectedDay != nil {
-                                Button("Ver próximas") { selectedDay = nil }
-                                    .font(.subheadline)
-                            }
-                        }
-                        .padding(.horizontal, 4)
-
-                        if allDeadlines.isEmpty {
-                            ContentUnavailableView(
-                                "Sin fechas todavía",
-                                systemImage: "calendar.badge.plus",
-                                description: Text("Pon la fecha del examen en la ficha de cada asignatura, o la de una entrega desde Editar.")
-                            )
-                        } else if visible.isEmpty {
-                            Text(selectedDay != nil ? "Nada este día." : isFiltered && deadlines.isEmpty ? "Nada con estos filtros." : "No queda nada pendiente. 🎉")
-                                .foregroundStyle(.secondary)
-                                .padding(.horizontal, 4)
-                        } else {
-                            ForEach(visible) { deadline in
-                                NavigationLink(value: deadline.recordID) {
-                                    DeadlineRow(deadline: deadline)
+                    if let day = selectedDay {
+                        let dayDeadlines = deadlines.filter { CalendarDay($0.date, calendar: calendar) == day }
+                        VStack(alignment: .leading, spacing: 10) {
+                            HStack {
+                                Text(title(of: day))
+                                    .font(.title3.bold())
+                                    .accessibilityAddTraits(.isHeader)
+                                Spacer()
+                                Button { selectedDay = nil } label: {
+                                    Image(systemName: "xmark.circle.fill")
+                                        .font(.title3)
+                                        .symbolRenderingMode(.hierarchical)
+                                        .foregroundStyle(.secondary)
                                 }
                                 .buttonStyle(.plain)
+                                .accessibilityLabel("Quitar el día")
+                            }
+                            .padding(.horizontal, 4)
+
+                            if dayDeadlines.isEmpty {
+                                Text("Nada este día.")
+                                    .foregroundStyle(.secondary)
+                                    .padding(.horizontal, 4)
+                            } else {
+                                ForEach(dayDeadlines) { deadline in
+                                    NavigationLink(value: deadline.recordID) {
+                                        DeadlineRow(deadline: deadline)
+                                    }
+                                    .buttonStyle(.plain)
+                                }
                             }
                         }
+                        .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .top)))
+                    }
+
+                    VStack(alignment: .leading, spacing: 10) {
+                        FoldingHeader(title: "Próximas fechas", isExpanded: showsList) { showList(!isListShown) }
+                            .font(.title3.bold())
+                            .padding(.horizontal, 4)
+
+                        VStack(alignment: .leading, spacing: 10) {
+                            if allDeadlines.isEmpty {
+                                ContentUnavailableView(
+                                    "Sin fechas todavía",
+                                    systemImage: "calendar.badge.plus",
+                                    description: Text("Pon la fecha del examen en la ficha de cada asignatura, o la de una entrega desde Editar.")
+                                )
+                            } else if visible.isEmpty {
+                                Text(isFiltered && deadlines.isEmpty ? "Nada con estos filtros." : "No queda nada pendiente. 🎉")
+                                    .foregroundStyle(.secondary)
+                                    .padding(.horizontal, 4)
+                            } else {
+                                ForEach(visible) { deadline in
+                                    NavigationLink(value: deadline.recordID) {
+                                        DeadlineRow(deadline: deadline)
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                                if hasMore {
+                                    Button {
+                                        withAnimation { upcomingCount += Self.pageSize }
+                                    } label: {
+                                        Label("Ver más", systemImage: "chevron.down")
+                                            .labelStyle(TrailingIconLabelStyle())
+                                            .font(.subheadline.weight(.medium))
+                                            .frame(maxWidth: .infinity)
+                                            .padding(.vertical, 6)
+                                            .contentShape(.rect)
+                                    }
+                                    .buttonStyle(.plain)
+                                    .foregroundStyle(.tint)
+                                }
+                            }
+                        }
+                        .folded(!showsList)
                     }
                     .tourTarget("calendar.list")
                 }
+                .animation(.smooth(duration: 0.4), value: showsMonth)
+                .animation(.smooth(duration: 0.4), value: showsList)
+                .animation(.smooth(duration: 0.3), value: selectedDay)
                 .padding(.horizontal)
                 .padding(.bottom, 24)
             }
@@ -209,6 +284,71 @@ struct CalendarView: View {
             .navigationDestination(for: SubjectRecord.ID.self) { id in
                 SubjectDetailView(recordID: id)
             }
+            .onChange(of: isCurrentTab) {
+                if !isCurrentTab { upcomingCount = Self.initialCount }
+            }
+        }
+    }
+}
+
+/// A section title with a chevron right after it that folds the section away: up while it's
+/// shown, down while it's folded, like the expandable cards in a subject. Takes its font from the environment.
+private struct FoldingHeader: View {
+    let title: String
+    let isExpanded: Bool
+    let toggle: () -> Void
+
+    var body: some View {
+        Button(action: toggle) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(title)
+                Image(systemName: "chevron.down")
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .rotationEffect(.degrees(isExpanded ? 180 : 0))
+            }
+            .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(.isHeader)
+        .accessibilityValue(isExpanded ? "Mostrado" : "Oculto")
+        .accessibilityHint(isExpanded ? "Toca para ocultar" : "Toca para mostrar")
+    }
+}
+
+extension View {
+    /// Shrinks the view to nothing from the bottom up, fading as it goes, instead of removing it:
+    /// the month keeps its state (the month it's on, the selected day) and isn't rebuilt each time,
+    /// and what's below slides up with its bottom edge.
+    func folded(_ isFolded: Bool) -> some View {
+        modifier(Folded(isFolded: isFolded))
+    }
+}
+
+private struct Folded: ViewModifier {
+    let isFolded: Bool
+    @State private var height: CGFloat?
+
+    func body(content: Content) -> some View {
+        content
+            .fixedSize(horizontal: false, vertical: true)
+            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height = $0 }
+            .opacity(isFolded ? 0 : 1)
+            .scaleEffect(isFolded ? 0.96 : 1, anchor: .top)
+            .frame(height: isFolded ? 0 : height, alignment: .top)
+            .clipped()
+            .allowsHitTesting(!isFolded)
+            .accessibilityHidden(isFolded)
+    }
+}
+
+/// The icon after the title, as in "Ver más ⌄".
+private struct TrailingIconLabelStyle: LabelStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        HStack(spacing: 5) {
+            configuration.title
+            configuration.icon
+                .font(.caption.weight(.bold))
         }
     }
 }
@@ -410,8 +550,12 @@ private struct MonthCalendar: UIViewRepresentable {
             parent.selection = dateComponents.flatMap(CalendarDay.init)
         }
 
+        /// UIKit has no way to unpick a day; tapping the picked one again does it here.
         func dateSelection(_ selection: UICalendarSelectionSingleDate, canSelectDate dateComponents: DateComponents?) -> Bool {
-            true
+            guard let day = dateComponents.flatMap(CalendarDay.init), day == parent.selection else { return true }
+            selection.setSelected(nil, animated: true)
+            parent.selection = nil
+            return false
         }
     }
 }

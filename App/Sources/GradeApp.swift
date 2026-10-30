@@ -16,7 +16,7 @@ struct GradeApp: App {
         WindowGroup {
             TabView(selection: $selectedTab) {
                 Tab("Calendario", systemImage: "calendar", value: .calendar) {
-                    CalendarView()
+                    CalendarView(isCurrentTab: selectedTab == .calendar)
                 }
                 Tab("Asignaturas", systemImage: "books.vertical", value: .subjects) {
                     HomeView()
