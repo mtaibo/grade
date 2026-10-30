@@ -173,6 +173,8 @@ struct ArchivedStudyView: View {
 
             Section {
                 Button("Eliminar estudio", systemImage: "trash", role: .destructive) { confirming = .delete }
+                    // In a list the icon takes the accent colour, not the destructive red.
+                    .foregroundStyle(.red)
             }
         }
         .navigationTitle(study.degree.displayName)
