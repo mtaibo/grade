@@ -95,6 +95,8 @@ struct CalendarView: View {
     @Environment(Tour.self) private var tour: Tour?
     @State private var selectedDay: CalendarDay?
     @State private var isFiltering = false
+    /// The scroll view's height, so the empty state can sit in the middle of the screen.
+    @State private var viewportHeight: CGFloat = 0
     /// How many upcoming dates the list shows; "Ver más" adds `pageSize` more.
     @State private var upcomingCount = CalendarView.initialCount
     @State private var isMonthShown = false
@@ -222,11 +224,8 @@ struct CalendarView: View {
 
                         VStack(alignment: .leading, spacing: 10) {
                             if allDeadlines.isEmpty {
-                                ContentUnavailableView(
-                                    "Sin fechas todavía",
-                                    systemImage: "calendar.badge.plus",
-                                    description: Text("Pon la fecha del examen en la ficha de cada asignatura, o la de una entrega desde Editar.")
-                                )
+                                // Said once, in the middle of the screen, below.
+                                EmptyView()
                             } else if visible.isEmpty {
                                 Text(isFiltered && deadlines.isEmpty ? "Nada con estos filtros." : "No queda nada pendiente. 🎉")
                                     .foregroundStyle(.secondary)
@@ -257,13 +256,25 @@ struct CalendarView: View {
                         .folded(!showsList)
                     }
                     .tourTarget("calendar.list")
+
+                    if allDeadlines.isEmpty {
+                        ContentUnavailableView(
+                            "Sin fechas todavía",
+                            systemImage: "calendar.badge.plus",
+                            description: Text("Pon la fecha del examen en la ficha de cada asignatura, o la de una entrega desde Editar.")
+                        )
+                        // Takes the rest of the screen and sits in its middle.
+                        .frame(maxHeight: .infinity)
+                    }
                 }
                 .animation(.smooth(duration: 0.4), value: showsMonth)
                 .animation(.smooth(duration: 0.4), value: showsList)
                 .animation(.smooth(duration: 0.3), value: selectedDay)
                 .padding(.horizontal)
                 .padding(.bottom, 24)
+                .frame(maxWidth: .infinity, minHeight: viewportHeight, alignment: .top)
             }
+            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { viewportHeight = $0 }
             .background(Color(.systemGroupedBackground))
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)

@@ -166,7 +166,7 @@ struct HomeView: View {
             ScrollView {
                 if periods.isEmpty {
                     EmptyHome { placement = .create(period) }
-                        .padding(.top, 80)
+                        .frame(maxWidth: .infinity, minHeight: viewportHeight)
                 } else {
                     VStack(spacing: 0) {
                     VStack(alignment: .leading, spacing: 28) {
