@@ -135,7 +135,7 @@ struct Course: Identifiable, Codable, Equatable {
     var year: Int
     var subjects: [SubjectRecord]
 
-    var name: String { Period(year: year).title }
+    func name(in degree: DegreeSettings) -> String { degree.yearLabel(year) }
 
     init(id: UUID = UUID(), year: Int, subjects: [SubjectRecord] = []) {
         self.id = id

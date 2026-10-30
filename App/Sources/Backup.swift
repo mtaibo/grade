@@ -52,9 +52,9 @@ enum DataScope: Hashable, Sendable {
     func title(in degree: DegreeSettings) -> String {
         switch self {
         case .all: "Todo el estudio"
-        case .year(let year): Period(year: year).title
+        case .year(let year): degree.yearLabel(year)
         case .term(let term):
-            "\(Period(year: (term - 1) / max(degree.termsPerYear, 1) + 1).title) · \(degree.termLabel(term))"
+            "\(degree.yearLabel((term - 1) / max(degree.termsPerYear, 1) + 1)) · \(degree.termLabel(term))"
         }
     }
 }

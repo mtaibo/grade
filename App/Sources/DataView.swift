@@ -10,8 +10,8 @@ private struct ScopePicker: View {
         Picker("Alcance", selection: $scope) {
             Text("Todo el estudio").tag(DataScope.all)
             ForEach(library.courses.filter { !$0.subjects.isEmpty }) { course in
-                Section(course.name) {
-                    Text("\(course.name) completo").tag(DataScope.year(course.year))
+                Section(course.name(in: library.degree)) {
+                    Text("\(course.name(in: library.degree)) completo").tag(DataScope.year(course.year))
                     ForEach(Set(course.subjects.compactMap(\.term)).sorted(), id: \.self) { term in
                         // The section already names the year; the full title would wrap in the menu.
                         Text(library.degree.termLabel(term)).tag(DataScope.term(term))

@@ -278,7 +278,7 @@ struct HomeView: View {
     /// The year and term as the screen's title, big enough to read at a glance.
     private var header: some View {
         let heading: (title: String, subtitle: String?) = customSelection.map(library.heading(for:))
-            ?? (period.title, period.subtitle(in: library.degree))
+            ?? (period.title(in: library.degree), period.subtitle(in: library.degree))
         return VStack(alignment: .leading, spacing: 0) {
             Text(heading.title)
                 .font(.system(size: yearSize, weight: .bold, design: .rounded))
@@ -406,7 +406,7 @@ struct HomeView: View {
     @ViewBuilder
     private var viewSwitcher: some View {
         ForEach(Dictionary(grouping: periods, by: \.year).sorted { $0.key < $1.key }, id: \.key) { year, options in
-            Section(Period(year: year).title) {
+            Section(library.degree.yearLabel(year)) {
                 ForEach(options, id: \.self) { option in
                     switcherButton(option.term.map(library.degree.termLabel) ?? "Todo el año", isCurrent: currentSelection == .period(option)) {
                         select(option)

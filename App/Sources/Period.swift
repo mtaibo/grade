@@ -45,11 +45,13 @@ enum StudyType: String, Codable, CaseIterable, Identifiable {
 
 /// How the user's degree is divided, set in the account tab: what they study, how many years it
 /// has and what its terms are (cuatrimestres, semestres, trimestres…). Stored term numbers are
-/// degree-wide, so this is also what turns them into "1º Cuatrimestre" on screen.
+/// degree-wide, so this is also what turns them into "1º Cuatrimestre" on screen. Years and
+/// terms are named by the user ("Año", "Curso"; "Cuatrimestre", "Trimestre"…).
 struct DegreeSettings: Codable, Equatable {
     static let maxYears = 10
     static let maxTermsPerYear = 4
     static let defaultTermName = "Cuatrimestre"
+    static let defaultYearName = "Año"
 
     var studyType = StudyType.university
     /// What the user calls it ("Ingeniería Informática"); empty shows the study type.
@@ -59,6 +61,7 @@ struct DegreeSettings: Codable, Equatable {
     var years = 4
     var termsPerYear = 2
     var termName = defaultTermName
+    var yearName = defaultYearName
 
     /// The name given to the study, or its type when it has none.
     var displayName: String {
@@ -92,6 +95,12 @@ struct DegreeSettings: Codable, Equatable {
         return word + "es"
     }
 
+    /// "Año", or what the user calls the years.
+    var displayYearName: String {
+        let trimmed = yearName.trimmingCharacters(in: .whitespaces)
+        return trimmed.isEmpty ? Self.defaultYearName : trimmed
+    }
+
     private var displayTermName: String {
         let trimmed = termName.trimmingCharacters(in: .whitespaces)
         return trimmed.isEmpty ? Self.defaultTermName : trimmed
@@ -111,6 +120,11 @@ struct DegreeSettings: Codable, Equatable {
         (year - 1) * safeTermsPerYear + n
     }
 
+    /// "2º Año", or whatever the years are called.
+    func yearLabel(_ year: Int) -> String {
+        "\(year)º \(displayYearName)"
+    }
+
     /// "1º Cuatrimestre", for a degree-wide term number.
     func termLabel(_ term: Int) -> String {
         "\(relativeTerm(term))º \(displayTermName)"
@@ -118,7 +132,7 @@ struct DegreeSettings: Codable, Equatable {
 }
 
 extension DegreeSettings {
-    private enum CodingKeys: String, CodingKey { case studyType, name, institution, years, termsPerYear, termName }
+    private enum CodingKeys: String, CodingKey { case studyType, name, institution, years, termsPerYear, termName, yearName }
 
     /// Clamped to what the settings screen allows, so a hand-edited backup can't hand the app zero
     /// terms a year (which it divides by) or a hundred years.
@@ -132,7 +146,8 @@ extension DegreeSettings {
             institution: try container.decodeIfPresent(String.self, forKey: .institution) ?? "",
             years: min(max(years, 1), Self.maxYears),
             termsPerYear: min(max(terms, 1), Self.maxTermsPerYear),
-            termName: try container.decodeIfPresent(String.self, forKey: .termName) ?? Self.defaultTermName
+            termName: try container.decodeIfPresent(String.self, forKey: .termName) ?? Self.defaultTermName,
+            yearName: try container.decodeIfPresent(String.self, forKey: .yearName) ?? Self.defaultYearName
         )
     }
 }
@@ -148,7 +163,9 @@ struct Period: Hashable {
         self.term = term
     }
 
-    var title: String { "\(year)º Año" }
+    func title(in degree: DegreeSettings) -> String {
+        degree.yearLabel(year)
+    }
 
     func subtitle(in degree: DegreeSettings) -> String? {
         term.map(degree.termLabel)

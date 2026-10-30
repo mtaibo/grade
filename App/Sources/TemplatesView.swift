@@ -64,7 +64,7 @@ struct TemplateView: View {
                             }
                         } header: {
                             HStack {
-                                Text("\(Period(year: year).title) · \(degree.termLabel(degree.absoluteTerm(year: year, relative: min(term, degree.termsPerYear))))")
+                                Text("\(degree.yearLabel(year)) · \(degree.termLabel(degree.absoluteTerm(year: year, relative: min(term, degree.termsPerYear))))")
                                 Spacer()
                                 let all = Set(indices)
                                 Button(all.isSubset(of: selected) ? "Ninguna" : "Todas") {
@@ -217,8 +217,8 @@ struct SubjectTemplateView: View {
             }
 
             Section {
-                Picker("Año", selection: $year) {
-                    ForEach(1...max(degree.years, year), id: \.self) { Text(Period(year: $0).title).tag($0) }
+                Picker(degree.displayYearName, selection: $year) {
+                    ForEach(1...max(degree.years, year), id: \.self) { Text(degree.yearLabel($0)).tag($0) }
                 }
                 Picker(degree.termName.isEmpty ? "Cuatrimestre" : degree.termName, selection: $relativeTerm) {
                     Text("Todo el año").tag(Int?.none)
@@ -230,7 +230,7 @@ struct SubjectTemplateView: View {
                 Text("Dónde añadirla")
             } footer: {
                 if alreadyThere {
-                    Text("Ya tienes una asignatura llamada «\(subject.name)» en \(Period(year: year).title). Se añadiría otra.")
+                    Text("Ya tienes una asignatura llamada «\(subject.name)» en \(degree.yearLabel(year)). Se añadiría otra.")
                 } else {
                     Text("Viene puesta donde va en el grado; cámbialo si la cursas en otro momento.")
                 }
@@ -259,7 +259,7 @@ struct SubjectTemplateView: View {
         .alert("Asignatura añadida", isPresented: $isAdded) {
             Button("Vale") {}
         } message: {
-            Text("«\(subject.name)» está en \(Period(year: year).title)\(relativeTerm.map { " · " + degree.termLabel(degree.absoluteTerm(year: year, relative: $0)) } ?? ", todo el año"). Puedes editar su evaluación desde la asignatura.")
+            Text("«\(subject.name)» está en \(degree.yearLabel(year))\(relativeTerm.map { " · " + degree.termLabel(degree.absoluteTerm(year: year, relative: $0)) } ?? ", todo el año"). Puedes editar su evaluación desde la asignatura.")
         }
     }
 }

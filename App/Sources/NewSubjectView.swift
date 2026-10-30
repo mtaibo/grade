@@ -68,9 +68,9 @@ struct NewSubjectView: View {
                 }
 
                 Section {
-                    LabeledContent("Año") {
+                    LabeledContent(degree.displayYearName) {
                         HStack(spacing: 10) {
-                            Text(Period(year: year).title)
+                            Text(degree.yearLabel(year))
                                 .monospacedDigit()
                                 .foregroundStyle(.secondary)
                                 .contentTransition(.numericText())

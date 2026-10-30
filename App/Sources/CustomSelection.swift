@@ -30,10 +30,10 @@ extension Library {
             return (trimmed.isEmpty ? "Mi vista" : trimmed, nil)
         case .period(let year, let term):
             let period = Period(year: year, term: term)
-            return (period.title, period.subtitle(in: degree))
+            return (period.title(in: degree), period.subtitle(in: degree))
         case .automatic:
             guard let period = furthestPeriod(of: selection.subjectIDs) else { return ("Mi vista", nil) }
-            return (period.title, period.subtitle(in: degree))
+            return (period.title(in: degree), period.subtitle(in: degree))
         }
     }
 
@@ -61,7 +61,7 @@ struct HomeViewsScreen: View {
     var body: some View {
         Form {
             ForEach(Dictionary(grouping: periods, by: \.year).sorted { $0.key < $1.key }, id: \.key) { year, options in
-                Section(Period(year: year).title) {
+                Section(library.degree.yearLabel(year)) {
                     ForEach(options, id: \.self) { option in
                         SelectableRow(
                             title: option.term.map(library.degree.termLabel) ?? "Todo el año",
@@ -279,9 +279,9 @@ struct CustomSelectionEditor: View {
                     case .automatic:
                         LabeledContent("Se verá", value: preview)
                     case .period:
-                        Picker("Año", selection: year) {
+                        Picker(library.degree.displayYearName, selection: year) {
                             ForEach(1...library.degree.years, id: \.self) { year in
-                                Text(Period(year: year).title).tag(year)
+                                Text(library.degree.yearLabel(year)).tag(year)
                             }
                         }
                         Picker(termName, selection: term) {
@@ -316,7 +316,7 @@ struct CustomSelectionEditor: View {
                             }
                         }
                     } header: {
-                        Text([group.period.title, group.period.subtitle(in: library.degree) ?? "Todo el año"].joined(separator: " · "))
+                        Text([group.period.title(in: library.degree), group.period.subtitle(in: library.degree) ?? "Todo el año"].joined(separator: " · "))
                     }
                 }
 

@@ -19,6 +19,8 @@ struct CurrentStudyView: View {
         library.degree.termName.isEmpty ? "Cuatrimestre" : library.degree.termName
     }
 
+    private var yearName: String { library.degree.displayYearName }
+
     var body: some View {
         let subjectCount = library.courses.reduce(0) { $0 + $1.subjects.count }
         List {
@@ -46,6 +48,11 @@ struct CurrentStudyView: View {
                 Stepper(value: degree.years, in: 1...DegreeSettings.maxYears) {
                     LabeledContent("Años", value: library.degree.years.formatted())
                 }
+                InlineField("Nombre del año") {
+                    TextField(DegreeSettings.defaultYearName, text: degree.yearName)
+                        .multilineTextAlignment(.trailing)
+                        .textInputAutocapitalization(.words)
+                }
                 Stepper(value: degree.termsPerYear, in: 1...DegreeSettings.maxTermsPerYear) {
                     LabeledContent("Periodos por año", value: library.degree.termsPerYear.formatted())
                 }
@@ -57,7 +64,7 @@ struct CurrentStudyView: View {
             } header: {
                 Text("Organización")
             } footer: {
-                Text("Se usa en los títulos, p. ej. «2º Año · 1º \(termName)». Si cambias cuántos periodos hay por año, cada asignatura conserva su año y su posición dentro de él.")
+                Text("Se usa en los títulos, p. ej. «2º \(yearName) · 1º \(termName)». Si cambias cuántos periodos hay por año, cada asignatura conserva su año y su posición dentro de él. Sin créditos, no se muestran y todas las asignaturas cuentan igual en la media.")
             }
 
             Section {

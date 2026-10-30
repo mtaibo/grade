@@ -90,7 +90,7 @@ struct RecordView: View {
                     }
                 } header: {
                     HStack {
-                        Text(course.name)
+                        Text(course.name(in: degree))
                         Spacer()
                         Text("Media \(RecordSummary.format(summary.average(of: course.subjects)))")
                             .monospacedDigit()
