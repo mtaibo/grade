@@ -92,17 +92,17 @@ struct HomeView: View {
     @State private var isShowingHint = false
     @State private var hintTask: Task<Void, Never>?
 
-    /// Every period that has subjects, oldest first. A year with only year-long subjects is a
-    /// period of its own.
+    /// Every period that has subjects, oldest first. A year-long subject belongs to every term of
+    /// its year, so a year with one has all its terms, even if it's the only subject.
     private var periods: [Period] {
+        let degree = library.degree
         var result: [Period] = []
         for course in library.courses {
-            let terms = Set(course.subjects.compactMap(\.term)).sorted()
-            if terms.isEmpty {
-                if !course.subjects.isEmpty { result.append(Period(year: course.year)) }
-            } else {
-                result += terms.map { Period(year: course.year, term: $0) }
+            var terms = Set(course.subjects.compactMap(\.term))
+            if course.subjects.contains(where: { $0.term == nil }) {
+                terms.formUnion((1...max(degree.termsPerYear, 1)).map { degree.absoluteTerm(year: course.year, relative: $0) })
             }
+            result += terms.sorted().map { Period(year: course.year, term: $0) }
         }
         return result.sorted { ($0.year, $0.term ?? 0) < ($1.year, $1.term ?? 0) }
     }
