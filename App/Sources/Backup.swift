@@ -151,7 +151,9 @@ final class BackupImportCenter {
         } else {
             library.merge(pending.backup)
         }
-        message = "Se han importado \(pending.backup.subjectCount) asignaturas."
+        let archives = pending.backup.archives?.count ?? 0
+        message = "Se han importado \(pending.backup.subjectCount) asignaturas"
+            + (archives == 0 ? "." : archives == 1 ? " y 1 estudio archivado." : " y \(archives) estudios archivados.")
         self.pending = nil
     }
 }
