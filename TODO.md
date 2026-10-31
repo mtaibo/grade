@@ -9,7 +9,7 @@ dentro de `P4`). Para verlo y editarlo en el navegador: `make todo`.
 ### P1 · Pantalla principal
 
 - [x] Al soltar una tarjeta después de moverla en el modo de reordenar, la animación da un tirón extraño.
-- [ ] Indicador del cuatrimestre absoluto a la altura de «1.º Cuatrimestre»: `Q3` para el primer cuatrimestre de 2.º, etc. (Q mayúscula y el número pegado), con el mismo tamaño y color que el texto del cuatrimestre.
+- [x] Indicador del cuatrimestre absoluto a la altura de «1.º Cuatrimestre»: `Q3` para el primer cuatrimestre de 2.º, etc. (Q mayúscula y el número pegado), con el mismo tamaño y color que el texto del cuatrimestre.
 
 ### P2 · Calendario
 
@@ -24,22 +24,23 @@ dentro de `P4`). Para verlo y editarlo en el navegador: `make todo`.
 
 - [ ] Rediseñar el primer módulo grande de las notas: se ve bien, pero el desplegable necesita un repaso.
 - [ ] Rediseñar el bloque del examen final: da profundidad, pero los colores y las formas no acaban de encajar con el resto.
-- [ ] Menú «…» → «Abrir guía»: crashea a veces y va lento; además, la pantalla de la guía necesita retoques.
-- [ ] El pop-up para poner las notas: demasiado liquid glass, se siente lento y tosco; rediseñarlo.
+- [x] Menú «…» → «Abrir guía»: crashea a veces y va lento; además, la pantalla de la guía necesita retoques.
+- [x] El pop-up para poner las notas: demasiado liquid glass, se siente lento y tosco; rediseñarlo.
 - [x] Quitar la barra de scroll.
 - [ ] Poner la opción de inferir notas, es decir, poder poner la nota final, y que infiera las posibilidades del resto de notas y demás. Una feature compleja pero muy útil para cuando no te dan la nota de un control y solo tienes la nota final y tienes que inferir como puedieron salir las otras notas.
 
 #### P4.1 · Fechas
 
-- [ ] Cambiar el botón «Hecho» por una ✗ a la izquierda.
+- [x] Cambiar el botón «Hecho» por una ✗ a la izquierda.
 
 #### P4.2 · Editar asignatura
 
-- [ ] Cambiar el icono de la entrada a esta pantalla en el menú «…».
+- [x] Cambiar el icono de la entrada a esta pantalla en el menú «…».
 - [ ] Retocar toda la parte de fórmulas, todavía no se siente bien.
 
 ## v2
 
+- [ ] Sincronización con iCloud entre dispositivos (ahora los datos solo están en el iPhone y en las copias que exportes).
 - [ ] Asistente de IA: pasarle una guía docente y que configure la asignatura solo; poder chatear con él («si saco menos de un 4 en tal parte, la otra no hace media») y que haga los cambios en la app sin tener que entrar al editor.
 
 ## v3
