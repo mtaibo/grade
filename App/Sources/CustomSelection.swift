@@ -47,7 +47,9 @@ struct HomeViewsScreen: View {
                     }
                 }
                 .onDelete { offsets in
-                    for index in offsets { library.deleteSelection(id: library.selections[index].id) }
+                    // Ids first: each delete shifts the rest, so later offsets would point elsewhere.
+                    let ids = offsets.compactMap { library.selections.indices.contains($0) ? library.selections[$0].id : nil }
+                    for id in ids { library.deleteSelection(id: id) }
                 }
                 Button {
                     editing = CustomSelection()
