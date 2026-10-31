@@ -55,15 +55,21 @@ struct SubjectDetailView: View {
                     .font(.largeTitle.bold())
                     .fixedSize(horizontal: false, vertical: true)
 
-                GradeCard(
-                    progress: progress,
-                    session: session,
-                    formula: record.subject.root.asFormula,
-                    needs: NeededGrade.rows(for: record, session: session, progress: progress, items: items)
-                )
-                    .tourTarget("subject.summary")
+                if record.isUndecided {
+                    UndecidedCard(progress: progress)
+                        .tourTarget("subject.summary")
+                } else {
+                    GradeCard(
+                        progress: progress,
+                        session: session,
+                        formula: record.subject.root.asFormula,
+                        needs: NeededGrade.rows(for: record, session: session, progress: progress, items: items)
+                    )
+                        .tourTarget("subject.summary")
+                }
 
-                if !record.isSingleGrade {
+                // "Por definir" only has an exam card when one of its notes is the final exam.
+                if !record.isSingleGrade, !record.isUndecided || exam != nil {
                     ExamCard(
                         record: record,
                         exam: exam,
@@ -125,8 +131,11 @@ struct SubjectDetailView: View {
                     if !(library.record(id: recordID)?.isSingleGrade ?? false) {
                         Button("Fechas", systemImage: "calendar") { isEditingDates = true }
                     }
-                    Button("Simulador", systemImage: "flask") {
-                        simulation = Library(simulating: record, degree: library.degree)
+                    // "Por definir" has no grade to simulate.
+                    if !record.isUndecided {
+                        Button("Simulador", systemImage: "flask") {
+                            simulation = Library(simulating: record, degree: library.degree)
+                        }
                     }
                     Divider()
                     if library.guideIDs.contains(recordID) {
@@ -257,6 +266,24 @@ private struct GradeTarget: Identifiable {
 }
 
 // MARK: - Grade
+
+/// In place of the grade for a "Por definir" subject: just how many notes are in. The evaluation
+/// is picked from "Editar" once it's known.
+private struct UndecidedCard: View {
+    let progress: SubjectProgress
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline) {
+            Label("Evaluación por definir", systemImage: "questionmark.circle")
+                .font(.headline)
+            Spacer(minLength: 8)
+            Text(progress.leafCount == 0 ? "Sin notas" : "\(progress.enteredCount) de \(progress.leafCount)")
+                .font(.subheadline.weight(.semibold).monospacedDigit())
+                .foregroundStyle(.secondary)
+        }
+        .card()
+    }
+}
 
 /// The grade up front with its bar; tap to unfold what's secured, what's still reachable, the pass
 /// mark and what's needed.
@@ -738,7 +765,9 @@ private struct PartItem: Identifiable {
 
     static func items(of record: SubjectRecord) -> [PartItem] {
         let root = record.subject.root
-        if case .group(let group) = root {
+        if case .group(let group) = root, group.combination == .undecided {
+            return group.children.map { PartItem(id: $0.id.uuidString, node: $0.node, weightPercent: nil) }
+        } else if case .group(let group) = root {
             let total = group.combination == .weightedAverage ? group.children.reduce(0) { $0 + $1.weight } : 1
             return group.children.map { child in
                 PartItem(id: child.id.uuidString, node: child.node, weightPercent: total > 0 ? child.weight / total * 100 : nil)
@@ -769,11 +798,18 @@ private struct PartSummary {
         let inputs = SubjectProgress.inputs(record, session: session)
         let leaves = node.allLeafNames()
         let entered = leaves.count { inputs[$0] != nil }
+        hasAnyGrade = entered > 0
+        let complete = !leaves.isEmpty && entered == leaves.count
+        if record.isUndecided, node.asGrade == nil {
+            // Nothing is combined: the bar and the text say how many notes are in, not a grade.
+            fraction = leaves.isEmpty ? 0 : Double(entered) / Double(leaves.count)
+            tint = .accentColor
+            text = leaves.isEmpty ? "—" : "\(entered) de \(leaves.count)"
+            return
+        }
         let max = node.scaleMax
         let value = node.evaluate(inputs, pendingFraction: 0)
         fraction = max > 0 ? Swift.min(Swift.max(value / max, 0), 1) : 0
-        hasAnyGrade = entered > 0
-        let complete = !leaves.isEmpty && entered == leaves.count
         tint = complete ? GradeBand.color(for: fraction * 10) : .accentColor
         if let grade = node.asGrade {
             text = Self.display(of: grade, record: record, session: session)

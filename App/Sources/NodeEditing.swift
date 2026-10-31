@@ -275,7 +275,7 @@ extension Node {
 
 /// `Group.Combination` without its associated value, for a `Picker`.
 enum CombinationKind: String, CaseIterable, Identifiable {
-    case weightedAverage, sum, max, min, bestOf
+    case weightedAverage, sum, max, min, bestOf, undecided
 
     var id: Self { self }
 
@@ -286,6 +286,7 @@ enum CombinationKind: String, CaseIterable, Identifiable {
         case .max: "La mejor"
         case .min: "La peor"
         case .bestOf: "Las mejores N"
+        case .undecided: "Por definir"
         }
     }
 }
@@ -298,6 +299,7 @@ extension Group.Combination {
         case .max: .max
         case .min: .min
         case .bestOf: .bestOf
+        case .undecided: .undecided
         }
     }
 
@@ -308,6 +310,7 @@ extension Group.Combination {
         case .max: self = .max
         case .min: self = .min
         case .bestOf: self = .bestOf(count)
+        case .undecided: self = .undecided
         }
     }
 

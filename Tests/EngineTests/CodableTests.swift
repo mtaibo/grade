@@ -21,6 +21,18 @@ struct CodableTests {
         #expect(grade.date == nil)
     }
 
+    /// "Por definir": sections with no weights, kept as they are until the evaluation is chosen.
+    @Test func undecidedGroupSurvivesARoundTrip() throws {
+        let root = Node.group(Group(name: "Física", combination: .undecided, children: [
+            WeightedChild(weight: 0, node: .grade(Grade(name: "Práctica 1"))),
+            WeightedChild(weight: 0, node: .grade(Grade(name: "Control 1", scaleMax: 2))),
+        ]))
+        let decoded = try JSONDecoder().decode(Node.self, from: JSONEncoder().encode(root))
+        #expect(decoded == root)
+        // Weightless parts still give the engine a value in range, even if the app never shows it.
+        #expect(abs(root.evaluate(["Práctica 1": 8, "Control 1": 1], pendingFraction: 0) - 6.5) < 1e-9)
+    }
+
     @Test func gradeDateSurvivesARoundTrip() throws {
         let grade = Grade(name: "Entrega práctica 1", date: Date(timeIntervalSinceReferenceDate: 815_000_000))
         let decoded = try JSONDecoder().decode(Grade.self, from: JSONEncoder().encode(grade))

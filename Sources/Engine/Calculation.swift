@@ -16,7 +16,7 @@ extension Node {
             switch group.combination {
             case .sum:
                 return group.children.reduce(0) { $0 + $1.weight } * 10
-            case .weightedAverage, .max, .min, .bestOf:
+            case .weightedAverage, .max, .min, .bestOf, .undecided:
                 return 10
             }
         case .alternatives(let alternatives):
@@ -72,6 +72,8 @@ extension Node {
                 let count = Swift.max(n, 1)
                 let best = fractions.sorted(by: >).prefix(count)
                 return best.isEmpty ? 0 : (best.reduce(0, +) / Double(best.count)) * 10
+            case .undecided:
+                return fractions.isEmpty ? 0 : (fractions.reduce(0, +) / Double(fractions.count)) * 10
             }
         case .alternatives(let alternatives):
             return Self.defaultBranch(alternatives)?.node.rawValue(inputs, pendingFraction: pendingFraction) ?? 0

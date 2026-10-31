@@ -77,6 +77,9 @@ public struct Group: Sendable, Equatable, Codable {
         case max
         case min
         case bestOf(Int)
+        /// The guide's rule isn't known yet: the parts are only listed, with no weights. The app
+        /// shows no result for it; the engine averages the parts equally just to stay total.
+        case undecided
     }
 
     public var name: String

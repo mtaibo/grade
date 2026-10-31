@@ -75,6 +75,9 @@ struct SubjectRecord: Identifiable, Codable, Equatable {
     /// Evaluated as "Nota única": just its final grade, with no sittings or dates.
     var isSingleGrade: Bool { subject.root.asGrade != nil }
 
+    /// Evaluated as "Por definir": its notes are only listed by section, with no final grade.
+    var isUndecided: Bool { subject.root.asGroup?.combination == .undecided }
+
     /// The sitting worth showing by default: the extraordinary one once anything's been entered
     /// there. A single-grade subject has only one.
     var activeSession: Convocatoria {
@@ -727,8 +730,10 @@ struct SubjectProgress {
     let enteredCount: Int
     let leafCount: Int
     let inputs: [String: Double]
+    /// "Por definir": nothing is worked out, so it never has a final grade, however many are in.
+    let isUndecided: Bool
 
-    var isComplete: Bool { leafCount > 0 && enteredCount == leafCount }
+    var isComplete: Bool { !isUndecided && leafCount > 0 && enteredCount == leafCount }
 
     let session: Convocatoria
 
@@ -748,6 +753,7 @@ struct SubjectProgress {
         self.neededAverage = status == .possible ? root.neededFraction(inputs, target: threshold).map { $0 * 10 } : nil
         self.enteredCount = inputs.count
         self.leafCount = root.allLeafNames().count
+        self.isUndecided = record.isUndecided
     }
 
     /// What the engine reads for one sitting — without the status and needed-grade search, for

@@ -186,6 +186,7 @@ struct SubjectEditorView: View {
                 }
             }
         }
+        .environment(\.isUndecidedEvaluation, draft.subject.root.asGroup?.combination == .undecided)
         .tourPerforms(.editorOpened)
         .tourPerforms(.editorClosed, onAppear: false)
     }
@@ -217,6 +218,12 @@ struct SubjectEditorView: View {
         library.update(record)
         dismiss()
     }
+}
+
+private extension EnvironmentValues {
+    /// True while the subject's evaluation is "Por definir": its sections only sort the notes, so
+    /// weights, evaluations and minimums are hidden all the way down.
+    @Entry var isUndecidedEvaluation = false
 }
 
 /// What rarely changes once a subject is set up: its credits and the grade it takes to pass.
@@ -258,8 +265,10 @@ private struct NodeContentsSections: View {
     var isPerTerm = false
     let onRenameLeaf: (String, String) -> Void
 
+    @Environment(\.isUndecidedEvaluation) private var isUndecided
+
     var body: some View {
-        if isRoot || node.asGroup != nil || node.asFormula != nil {
+        if isRoot || (!isUndecided && (node.asGroup != nil || node.asFormula != nil)) {
             CalculationSection(node: $node, isRoot: isRoot)
                 .tourTarget(isRoot ? "editor.evaluation" : nil)
         }
@@ -329,7 +338,7 @@ private struct CalculationSection: View {
     /// worst…) so editing it doesn't silently change it.
     private var methods: [Method] {
         var methods: [Method] = isRoot
-            ? [.group(.weightedAverage), .formula, .group(.sum), .single]
+            ? [.group(.weightedAverage), .formula, .group(.sum), .single, .group(.undecided)]
             : [.group(.weightedAverage), .group(.sum), .formula, .finalExam]
         if !methods.contains(current) { methods.append(current) }
         return methods
@@ -357,6 +366,8 @@ private struct CalculationSection: View {
         } footer: {
             Text(current == .single
                  ? "Solo la nota final, sin partes, pesos ni fechas: para llevar el expediente sin guardar todo lo que hiciste."
+                 : current == .group(.undecided)
+                 ? "Para cuando aún no sabes cómo te evalúan: apunta las notas por secciones, sin pesos ni nota final. Cuando lo sepas, elige otra evaluación y las notas se quedan donde están."
                  : isRoot
                  ? "Tipo de evaluación de la asignatura: cómo se juntan sus notas en la final."
                  : current == .finalExam
@@ -389,6 +400,11 @@ private struct CalculationSection: View {
             node = .group(formula.asGroup(kind: kind))
         case (.group(var group), .group(let kind)):
             group.combination = Engine.Group.Combination(kind: kind, bestOf: group.combination.bestOfCount ?? 1)
+            // Sections added while "Por definir" have no weight: with none at all, they start equal.
+            if kind == .weightedAverage || kind == .sum, !group.children.isEmpty,
+               group.children.reduce(0, { $0 + $1.weight }) <= 0 {
+                for index in group.children.indices { group.children[index].weight = 1 / Double(group.children.count) }
+            }
             node = .group(group)
         case (.group(var group), .formula):
             // A formula can only spell out fixed weights; anything else starts from equal ones.
@@ -452,13 +468,15 @@ private struct GroupSections: View {
     var isPerTerm = false
     let onRenameLeaf: (String, String) -> Void
 
+    @Environment(\.isUndecidedEvaluation) private var isUndecided
+
     private var totalWeight: Double { group.children.reduce(0) { $0 + $1.weight } }
 
     /// A weighted average should share out exactly 100 %, and the subject's own sum exactly its 10
     /// points. A sum inside another part can add up to anything: its parent scales it.
     /// `nil` when there's nothing to check, `.some(nil)` when it adds up, else what's off.
     private var check: String?? {
-        guard !group.children.isEmpty else { return nil }
+        guard !group.children.isEmpty, !isUndecided else { return nil }
         let isOff = abs(totalWeight - 1) > 0.001
         switch group.combination {
         case .weightedAverage:
@@ -478,7 +496,7 @@ private struct GroupSections: View {
                         group.children.removeAll { $0.id == child.id }
                     })
                 } label: {
-                    ComponentRow(title: child.node.title, subtitle: child.node.rowSubtitle, value: share(of: child))
+                    ComponentRow(title: child.node.title, subtitle: child.node.rowSubtitle, value: isUndecided ? "" : share(of: child))
                 }
             }
             .onDelete { group.children.remove(atOffsets: $0) }
@@ -494,7 +512,11 @@ private struct GroupSections: View {
         } header: {
             CheckedHeader(title: isPerTerm ? "Periodos" : isRoot ? "Secciones" : "Subsecciones", isValid: check.map { $0 == nil })
         } footer: {
-            CheckFooter(problem: check ?? nil, hint: isPerTerm
+            CheckFooter(problem: check ?? nil, hint: isUndecided
+                ? (isRoot
+                   ? "Las secciones solo ordenan tus notas: no tienen peso ni cuentan para nada."
+                   : "Las notas en las que se divide esta sección.")
+                : isPerTerm
                 ? "Cada periodo con su propia evaluación y su peso en la nota final."
                 : isRoot
                 ? "Personaliza las secciones en las que se divide la nota final."
@@ -510,7 +532,7 @@ private struct GroupSections: View {
             return "\(formatted(points)) \(abs(points - 1) < 1e-9 ? "pt" : "pts")"
         case .weightedAverage:
             return "\(formatted(child.weight * 100))\u{00A0}%"
-        case .max, .min, .bestOf:
+        case .max, .min, .bestOf, .undecided:
             return ""
         }
     }
@@ -776,6 +798,7 @@ private struct ComponentEditorView: View {
     var onAdd: (() -> Void)?
 
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.isUndecidedEvaluation) private var isUndecided
     @State private var isDeleting = false
 
     private var isPoints: Bool { combination == .sum }
@@ -799,32 +822,36 @@ private struct ComponentEditorView: View {
             }
 
             Section {
-                LabeledContent(isPoints ? "Puntos" : "Peso") {
-                    HStack(spacing: 4) {
-                        TextField("0", value: Binding(
-                            get: { child.weight * (isPoints ? 10 : 100) },
-                            set: { child.weight = $0 / (isPoints ? 10 : 100) }
-                        ), format: .number)
-                            .keyboardType(.decimalPad)
-                            .multilineTextAlignment(.trailing)
-                        Text(isPoints ? "pts" : "%").foregroundStyle(.secondary)
+                if !isUndecided {
+                    LabeledContent(isPoints ? "Puntos" : "Peso") {
+                        HStack(spacing: 4) {
+                            TextField("0", value: Binding(
+                                get: { child.weight * (isPoints ? 10 : 100) },
+                                set: { child.weight = $0 / (isPoints ? 10 : 100) }
+                            ), format: .number)
+                                .keyboardType(.decimalPad)
+                                .multilineTextAlignment(.trailing)
+                            Text(isPoints ? "pts" : "%").foregroundStyle(.secondary)
+                        }
                     }
                 }
                 if child.node.asGrade != nil || child.node.isGroupOfGrades {
                     NoteCountRow(node: $child.node)
                 }
             } footer: {
-                Text(isPoints
+                Text(isUndecided
+                     ? "En cuántas subsecciones se divide esta sección."
+                     : isPoints
                      ? "Los puntos que da esta sección y en cuántas subsecciones se divide."
                      : "Lo que cuenta esta sección en la nota y en cuántas subsecciones se divide.")
             }
 
             if child.node.asGroup != nil || child.node.asFormula != nil {
-                MinimumSection(node: $child.node)
+                if !isUndecided { MinimumSection(node: $child.node) }
                 NodeContentsSections(node: $child.node, onRenameLeaf: onRenameLeaf)
             } else if let grade = Binding(unwrapping: $child.node.asGrade) {
                 GradeInputSections(grade: grade)
-                MinimumSection(node: $child.node)
+                if !isUndecided { MinimumSection(node: $child.node) }
                 GradeDateSection(grade: grade)
             }
 

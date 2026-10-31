@@ -55,7 +55,11 @@ enum SubjectSort: String, CaseIterable, Identifiable {
             return records.sorted(by: byName)
         case .grade:
             // The grade guaranteed so far — the final one once everything's in.
-            let grades = Dictionary(records.map { ($0.id, SubjectProgress($0).worst) }) { first, _ in first }
+            // "Por definir" has no grade at all: it sorts below every graded subject.
+            let grades = Dictionary(records.map { record in
+                let progress = SubjectProgress(record)
+                return (record.id, progress.isUndecided ? -1 : progress.worst)
+            }) { first, _ in first }
             return records.sorted {
                 let (a, b) = (grades[$0.id] ?? 0, grades[$1.id] ?? 0)
                 return a != b ? (ascending ? a < b : a > b) : byName($0, $1)
