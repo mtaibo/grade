@@ -793,9 +793,17 @@ private struct ExamSlot: View {
                 .font(.footnote)
                 .foregroundStyle(.secondary)
         } else {
-            Button("Añadir fecha", systemImage: "plus", action: onAddDate)
-                .font(.footnote.weight(.medium))
-                .buttonStyle(.borderless)
+            // Plain and fixed to its own label: as a borderless button its tap area reached up over
+            // the sitting's name, so tapping «Ordinaria» opened the date instead of the grade.
+            Button(action: onAddDate) {
+                Label("Añadir fecha", systemImage: "plus")
+                    .padding(.vertical, 4)
+                    .contentShape(.rect)
+            }
+            .font(.footnote.weight(.medium))
+            .foregroundStyle(.tint)
+            .buttonStyle(.plain)
+            .fixedSize()
         }
     }
 
@@ -1092,6 +1100,26 @@ private struct PartCard: View {
         }
         .card()
         .contentShape(.rect)
+        // One element for VoiceOver: "Prácticas, 40 %, 7,5. Abre para poner sus notas."
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(accessibilityText(summary))
+        .accessibilityHint("Abre sus notas")
+    }
+
+    private func accessibilityText(_ summary: PartSummary) -> String {
+        var parts = [item.node.title]
+        if let weight = item.weightPercent {
+            parts.append("\(item.isMaximum ? "hasta " : "")\(weight.formatted(.number.precision(.fractionLength(0...1)))) por ciento")
+        }
+        parts.append(summary.hasAnyGrade ? summary.text : "sin notas")
+        if let group = item.node.asGroup, group.children.allSatisfy({ $0.node.asGrade != nil }) {
+            for child in group.children {
+                if let grade = child.node.asGrade {
+                    parts.append("\(grade.name): \(PartSummary.display(of: grade, record: record, session: session))")
+                }
+            }
+        }
+        return parts.joined(separator: ", ").replacingOccurrences(of: "—", with: "sin nota")
     }
 
     /// Each note's share of the whole subject — its share of the part times the part's weight, so
