@@ -1,6 +1,5 @@
 import Engine
 import SwiftUI
-import UIKit
 
 /// A dated grade somewhere in the library — a lab hand-in, an assignment, an exam.
 struct Deadline: Identifiable {
@@ -475,9 +474,8 @@ private struct RelativeDay {
     }
 }
 
-/// A calendar day as a plain value. `DateComponents` can't be used as a `Set` key here: the ones
-/// UIKit hands back and the ones built from a `Date` compare equal but can hash differently, so
-/// lookups would succeed or fail depending on the run.
+/// A calendar day as a plain value, to key days by. `DateComponents` made it flaky: two that
+/// compare equal can hash differently, so lookups succeeded or failed depending on the run.
 struct CalendarDay: Hashable {
     let year: Int
     let month: Int
@@ -486,11 +484,6 @@ struct CalendarDay: Hashable {
     init(_ date: Date, calendar: Calendar) {
         let parts = calendar.dateComponents([.year, .month, .day], from: date)
         self.init(year: parts.year ?? 0, month: parts.month ?? 0, day: parts.day ?? 0)
-    }
-
-    init?(_ components: DateComponents) {
-        guard let year = components.year, let month = components.month, let day = components.day else { return nil }
-        self.init(year: year, month: month, day: day)
     }
 
     init(year: Int, month: Int, day: Int) {
@@ -502,71 +495,156 @@ struct CalendarDay: Hashable {
     var components: DateComponents { DateComponents(year: year, month: month, day: day) }
 }
 
-/// UIKit's month calendar, since SwiftUI has no equivalent that can mark days: a dot on every day
-/// in `dayKinds`, in its kind's colour, with single-day selection bound to `selection`.
-private struct MonthCalendar: UIViewRepresentable {
+/// The month, drawn here rather than with `UICalendarView`, which can't show the days of the months
+/// either side: they fill the first and last weeks, in a dim grey. A dot marks every day in
+/// `dayKinds`, in its kind's colour; tapping a day picks it into `selection` and tapping it again
+/// unpicks it (a dimmed day moves to its own month first). Swipe or the arrows change month.
+private struct MonthCalendar: View {
     let dayKinds: [CalendarDay: GradeCategory]
     @Binding var selection: CalendarDay?
+    @State private var month = Calendar.current.dateInterval(of: .month, for: .now)?.start ?? .now
+    /// Which way the last change went, so the new month slides in from that side.
+    @State private var step = 1
 
-    func makeCoordinator() -> Coordinator { Coordinator(parent: self) }
+    private var calendar: Calendar { .current }
 
-    func makeUIView(context: Context) -> UICalendarView {
-        let view = UICalendarView()
-        view.calendar = .current
-        view.locale = .current
-        view.fontDesign = .rounded
-        view.delegate = context.coordinator
-        view.selectionBehavior = UICalendarSelectionSingleDate(delegate: context.coordinator)
-        view.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        return view
+    /// "LUN", "MAR"… starting on the locale's first day of the week.
+    private var weekdaySymbols: [String] {
+        let symbols = calendar.shortWeekdaySymbols
+        let first = calendar.firstWeekday - 1
+        return Array(symbols[first...] + symbols[..<first]).map { $0.replacingOccurrences(of: ".", with: "").uppercased() }
     }
 
-    func updateUIView(_ view: UICalendarView, context: Context) {
-        let previous = context.coordinator.parent.dayKinds
-        context.coordinator.parent = self
-        let changed = Set(previous.keys).union(dayKinds.keys).filter { previous[$0] != dayKinds[$0] }
-        if !changed.isEmpty {
-            view.reloadDecorations(forDateComponents: changed.map(\.components), animated: true)
+    /// Every day on screen: from the start of the week holding the 1st to the end of the one
+    /// holding the last day.
+    private var days: [Date] {
+        guard let interval = calendar.dateInterval(of: .month, for: month),
+              let start = calendar.dateInterval(of: .weekOfMonth, for: interval.start)?.start,
+              let end = calendar.dateInterval(of: .weekOfMonth, for: interval.end.addingTimeInterval(-1))?.end
+        else { return [] }
+        var days: [Date] = []
+        var day = start
+        while day < end, let next = calendar.date(byAdding: .day, value: 1, to: day) {
+            days.append(day)
+            day = next
         }
-        let selectionBehavior = view.selectionBehavior as? UICalendarSelectionSingleDate
-        if selectionBehavior?.selectedDate.flatMap(CalendarDay.init) != selection {
-            selectionBehavior?.setSelected(selection?.components, animated: true)
-        }
+        return days
     }
 
-    func sizeThatFits(_ proposal: ProposedViewSize, uiView: UICalendarView, context: Context) -> CGSize? {
-        guard let width = proposal.width else { return nil }
-        let size = uiView.systemLayoutSizeFitting(
-            CGSize(width: width, height: UIView.layoutFittingCompressedSize.height),
-            withHorizontalFittingPriority: .required,
-            verticalFittingPriority: .fittingSizeLevel
+    private var title: String {
+        let text = month.formatted(.dateTime.month(.wide).year())
+        return text.prefix(1).uppercased() + text.dropFirst()
+    }
+
+    private func move(_ months: Int) {
+        guard let new = calendar.date(byAdding: .month, value: months, to: month) else { return }
+        step = months
+        withAnimation(.smooth(duration: 0.3)) { month = new }
+    }
+
+    private func tap(_ day: Date) {
+        let key = CalendarDay(day, calendar: calendar)
+        if !calendar.isDate(day, equalTo: month, toGranularity: .month) {
+            move(day < month ? -1 : 1)
+        }
+        withAnimation(.snappy) { selection = selection == key ? nil : key }
+    }
+
+    var body: some View {
+        VStack(spacing: 14) {
+            HStack(spacing: 24) {
+                Text(title)
+                    .font(.system(.headline, design: .rounded))
+                    .contentTransition(.numericText())
+                Spacer()
+                Button { move(-1) } label: { Image(systemName: "chevron.left") }
+                    .accessibilityLabel("Mes anterior")
+                Button { move(1) } label: { Image(systemName: "chevron.right") }
+                    .accessibilityLabel("Mes siguiente")
+            }
+            .font(.title3.weight(.semibold))
+            .padding(.horizontal, 10)
+
+            HStack(spacing: 0) {
+                ForEach(weekdaySymbols, id: \.self) { symbol in
+                    Text(symbol)
+                        .font(.system(.caption, design: .rounded).weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity)
+                }
+            }
+            .accessibilityHidden(true)
+
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 0), count: 7), spacing: 6) {
+                ForEach(days, id: \.self) { day in
+                    let key = CalendarDay(day, calendar: calendar)
+                    DayCell(
+                        date: day,
+                        kind: dayKinds[key],
+                        isInMonth: calendar.isDate(day, equalTo: month, toGranularity: .month),
+                        isSelected: selection == key,
+                        isToday: calendar.isDateInToday(day)
+                    ) { tap(day) }
+                }
+            }
+            .id(month)
+            .transition(.asymmetric(
+                insertion: .move(edge: step > 0 ? .trailing : .leading).combined(with: .opacity),
+                removal: .move(edge: step > 0 ? .leading : .trailing).combined(with: .opacity)
+            ))
+        }
+        .padding(.vertical, 14)
+        .padding(.horizontal, 6)
+        .clipped()
+        .contentShape(.rect)
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 24).onEnded { drag in
+                let width = drag.translation.width
+                guard abs(width) > 50, abs(width) > abs(drag.translation.height) else { return }
+                move(width < 0 ? 1 : -1)
+            }
         )
-        return CGSize(width: width, height: size.height)
+    }
+}
+
+private struct DayCell: View {
+    let date: Date
+    let kind: GradeCategory?
+    let isInMonth: Bool
+    let isSelected: Bool
+    let isToday: Bool
+    let action: () -> Void
+
+    private var numberStyle: AnyShapeStyle {
+        if isSelected { return AnyShapeStyle(Color(.systemBackground)) }
+        // Today stays blue even among the other month's days, just as dimmed as they are.
+        if isToday { return isInMonth ? AnyShapeStyle(.tint) : AnyShapeStyle(.tint.opacity(0.35)) }
+        if !isInMonth { return AnyShapeStyle(Color(.quaternaryLabel)) }
+        return AnyShapeStyle(.primary)
     }
 
-    @MainActor
-    final class Coordinator: NSObject, UICalendarViewDelegate, UICalendarSelectionSingleDateDelegate {
-        var parent: MonthCalendar
-
-        init(parent: MonthCalendar) {
-            self.parent = parent
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 3) {
+                Text(date.formatted(.dateTime.day()))
+                    .font(.system(.title3, design: .rounded).weight(isSelected || isToday ? .semibold : .regular))
+                    .monospacedDigit()
+                    .foregroundStyle(numberStyle)
+                    .frame(width: 40, height: 40)
+                    .background {
+                        if isSelected { Circle().fill(isToday ? AnyShapeStyle(.tint) : AnyShapeStyle(.primary)) }
+                    }
+                Circle()
+                    .fill(kind?.color ?? .clear)
+                    .frame(width: 6, height: 6)
+                    .opacity(isInMonth ? 1 : 0.3)
+            }
+            .frame(maxWidth: .infinity)
+            .contentShape(.rect)
         }
-
-        func calendarView(_ calendarView: UICalendarView, decorationFor dateComponents: DateComponents) -> UICalendarView.Decoration? {
-            guard let day = CalendarDay(dateComponents), let kind = parent.dayKinds[day] else { return nil }
-            return .default(color: UIColor(kind.color), size: .medium)
-        }
-
-        func dateSelection(_ selection: UICalendarSelectionSingleDate, didSelectDate dateComponents: DateComponents?) {
-            parent.selection = dateComponents.flatMap(CalendarDay.init)
-        }
-
-        /// UIKit has no way to unpick a day; tapping the picked one again does it here.
-        func dateSelection(_ selection: UICalendarSelectionSingleDate, canSelectDate dateComponents: DateComponents?) -> Bool {
-            guard let day = dateComponents.flatMap(CalendarDay.init), day == parent.selection else { return true }
-            selection.setSelected(nil, animated: true)
-            parent.selection = nil
-            return false
-        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(date.formatted(.dateTime.weekday(.wide).day().month(.wide)))
+        .accessibilityValue(kind.map(\.singular) ?? "")
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 }
