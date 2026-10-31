@@ -83,6 +83,9 @@ struct HomeView: View {
     @State private var isChoosingView = false
 
     @State private var placement: SubjectPlacement?
+    /// A subject to add once the study it needs has been created.
+    @State private var pendingPlacement: SubjectPlacement?
+    @State private var isCreatingStudy = false
     @State private var editing: SubjectRecord?
     @State private var customizing: SubjectRecord?
     @ScaledMetric(relativeTo: .largeTitle) private var yearSize = 32
@@ -109,6 +112,22 @@ struct HomeView: View {
             result += terms.sorted().map { Period(year: course.year, term: $0) }
         }
         return result.sorted { ($0.year, $0.term ?? 0) < ($1.year, $1.term ?? 0) }
+    }
+
+    /// Adding a subject with no current study (just archived one) sets the study up first.
+    private func add(in period: Period) {
+        if library.hasStudy {
+            placement = .create(period)
+        } else {
+            pendingPlacement = .create(period)
+            isCreatingStudy = true
+        }
+    }
+
+    /// The new-study sheet has finished closing: on to the subject if a study was made.
+    private func finishCreatingStudy() {
+        if library.hasStudy { placement = pendingPlacement }
+        pendingPlacement = nil
     }
 
     private func showHint() {
@@ -169,7 +188,7 @@ struct HomeView: View {
         NavigationStack {
             ScrollView {
                 if periods.isEmpty {
-                    EmptyHome { placement = .create(period) }
+                    EmptyHome(hasStudy: library.hasStudy) { add(in: period) }
                         .frame(maxWidth: .infinity, minHeight: viewportHeight)
                 } else {
                     VStack(spacing: 0) {
@@ -250,6 +269,9 @@ struct HomeView: View {
                         }
                     }
                 }
+            }
+            .sheet(isPresented: $isCreatingStudy, onDismiss: finishCreatingStudy) {
+                NewStudySheet()
             }
             .sheet(item: $placement) { placement in
                 NewSubjectView(placement: placement, degree: library.degree) { saved, id in
@@ -340,7 +362,7 @@ struct HomeView: View {
             },
             trailing: {
                 if canAdd {
-                    AddTile(isCompact: layout == .list) { placement = .create(newSubjectPeriod) }
+                    AddTile(isCompact: layout == .list) { add(in: newSubjectPeriod) }
                 }
             }
         )
@@ -368,7 +390,7 @@ struct HomeView: View {
             }
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
-                    Button("Añadir asignatura", systemImage: "plus") { placement = .create(newSubjectPeriod) }
+                    Button("Añadir asignatura", systemImage: "plus") { add(in: newSubjectPeriod) }
                     Button("Editar vistas", systemImage: "rectangle.stack") { isChoosingView = true }
                     Divider()
                     Picker("Diseño", selection: $layout) {
@@ -621,16 +643,22 @@ struct TilePressStyle: ButtonStyle {
 }
 
 private struct EmptyHome: View {
+    let hasStudy: Bool
     let add: () -> Void
 
     var body: some View {
         ContentUnavailableView {
             Label("Sin asignaturas", systemImage: "books.vertical")
         } description: {
-            Text("Añade las de este cuatrimestre o carga una plantilla en Cuenta → Plantillas.")
+            Text(hasStudy
+                 ? "Añade las de este cuatrimestre o carga una plantilla en Cuenta → Plantillas."
+                 : "No tienes ningún estudio en curso. Al añadir una asignatura creas uno nuevo.")
         } actions: {
-            Button("Añadir asignatura", action: add)
-                .buttonStyle(.borderedProminent)
+            Button(action: add) {
+                Label("Añadir asignatura", systemImage: "plus.circle.fill")
+                    .font(.headline)
+            }
+            .buttonStyle(.borderless)
                 .tourTarget("home.add")
         }
     }

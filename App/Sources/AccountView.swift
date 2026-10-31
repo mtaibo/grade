@@ -34,7 +34,11 @@ struct AccountView: View {
                     NavigationLink {
                         CurrentStudyView()
                     } label: {
-                        AccountRow(title: "Estudio actual", detail: library.degree.displayName, symbol: library.degree.studyType.symbol)
+                        AccountRow(
+                            title: "Estudio actual",
+                            detail: library.hasStudy ? library.degree.displayName : "Ninguno · Toca para crear uno",
+                            symbol: library.hasStudy ? library.degree.studyType.symbol : "plus.circle"
+                        )
                     }
                     .tourTarget("account.study")
                     .id("account.study")
@@ -58,9 +62,12 @@ struct AccountView: View {
                 }
 
                 Section {
-                    RecordStats(summary: RecordSummary(library.courses, degree: library.degree))
-                        .tourTarget("account.record")
-                        .id("account.record")
+                    // Only a current study has numbers of its own; archived ones are inside.
+                    if library.hasStudy {
+                        RecordStats(summary: RecordSummary(library.courses, degree: library.degree))
+                            .tourTarget("account.record")
+                            .id("account.record")
+                    }
                     NavigationLink {
                         RecordView()
                     } label: {
@@ -70,7 +77,9 @@ struct AccountView: View {
                 } header: {
                     Text("Expediente")
                 } footer: {
-                    Text("Tu media por año, por \(library.degree.termName.isEmpty ? "periodo" : library.degree.termName.lowercased()) y la de todo el estudio.")
+                    Text(library.hasStudy
+                         ? "Tu media por año, por \(library.degree.termName.isEmpty ? "periodo" : library.degree.termName.lowercased()) y la de todo el estudio, y la de tus estudios anteriores."
+                         : "El expediente de tus estudios anteriores.")
                 }
 
                 Section("Datos") {

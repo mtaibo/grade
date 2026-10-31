@@ -182,6 +182,10 @@ struct Course: Identifiable, Codable, Equatable {
 final class Library {
     private(set) var courses: [Course]
     private(set) var degree = DegreeSettings()
+    /// `false` once the current study has been archived and no other created yet: Cuenta offers to
+    /// create one, and so does adding a subject. A fresh install starts with one (a university
+    /// degree), ready to fill.
+    private(set) var hasStudy = true
     /// Home-screen views made by hand from any subjects (see `CustomSelection`).
     private(set) var selections: [CustomSelection] = []
     /// `nil` for a simulation: it lives only in memory and never touches the real library.
@@ -196,6 +200,7 @@ final class Library {
         var degree: DegreeSettings?
         var selections: [CustomSelection]?
         var archives: [ArchivedStudy]?
+        var hasStudy: Bool?
     }
 
     /// Both allow NaN and infinity, so a stray non-number can never make every later save fail.
@@ -219,6 +224,7 @@ final class Library {
             degree = snapshot.degree ?? DegreeSettings()
             selections = snapshot.selections ?? []
             archives = snapshot.archives ?? []
+            hasStudy = snapshot.hasStudy ?? true
         } else if let data, let courses = try? Self.fileDecoder.decode([Course].self, from: data) {
             // The first file format was a bare list of courses.
             self.courses = courses
@@ -384,6 +390,7 @@ final class Library {
             WeightedChild(weight: 1, node: .grade(Grade(name: "Examen", isFinalExam: true))),
         ]))
         let record = SubjectRecord(subject: Subject(name: name, ectsCredits: ects, root: root), term: term)
+        hasStudy = true
         courses[courseIndex(forYear: year)].subjects.append(record)
         save()
         return record.id
@@ -425,6 +432,7 @@ final class Library {
     @discardableResult
     func addSubject(_ subject: Subject, year: Int, term: Int?) -> SubjectRecord.ID {
         let record = SubjectRecord(subject: subject, term: term)
+        hasStudy = true
         courses[courseIndex(forYear: year)].subjects.append(record)
         save()
         return record.id
@@ -577,6 +585,7 @@ final class Library {
         for id in guideIDs.intersection(courses.flatMap(\.subjects).map(\.id)) { removeGuide(for: id) }
         courses = backup.courses
         degree = backup.degree
+        hasStudy = true
         selections = backup.selections ?? []
         normalize()
         addArchives(of: backup)
@@ -586,8 +595,12 @@ final class Library {
 
     /// Adds a backup's subjects to what's already here: one with the same id is replaced (keeping
     /// its grades when the copy was made without them), the rest are added to their year. The
-    /// degree settings stay as they are.
+    /// degree settings stay as they are, unless there's no current study: then the copy's start one.
     func merge(_ backup: GradeBackup) {
+        if !hasStudy {
+            degree = backup.degree
+            hasStudy = true
+        }
         let keepsGrades = backup.includesGrades == false
         for course in backup.courses {
             for var record in course.subjects {
@@ -633,13 +646,21 @@ final class Library {
 
     // MARK: Studies
 
-    /// Puts the current study away, subjects, grades, views and guides included, and starts an
-    /// empty one of `type`.
-    func archiveCurrentStudy(startingAs type: StudyType) {
+    /// Puts the current study away, subjects, grades, views and guides included, and leaves no
+    /// current study until one is created or resumed.
+    func archiveCurrentStudy() {
         archives.append(ArchivedStudy(degree: degree, courses: courses, selections: selections))
         courses = []
         selections = []
-        degree = DegreeSettings().switching(to: type)
+        degree = DegreeSettings()
+        hasStudy = false
+        save()
+    }
+
+    /// A new, empty current study with these settings.
+    func startStudy(_ settings: DegreeSettings) {
+        degree = settings
+        hasStudy = true
         save()
     }
 
@@ -653,6 +674,7 @@ final class Library {
         }
         courses = resumed.courses
         degree = resumed.degree
+        hasStudy = true
         selections = resumed.selections
         normalize()
         save()
@@ -664,6 +686,7 @@ final class Library {
         for id in guideIDs { removeGuide(for: id) }
         courses = []
         degree = DegreeSettings()
+        hasStudy = true
         selections = []
         archives = []
         save()
@@ -682,6 +705,8 @@ final class Library {
     func apply(_ template: DegreeTemplate, only: Set<Int>? = nil) -> (added: Int, skipped: Int) {
         var added = 0
         var skipped = 0
+        // A template is a whole study's subjects: applying one with no study starts one.
+        hasStudy = true
         for (index, entry) in template.entries.enumerated() where only?.contains(index) ?? true {
             let course = courseIndex(forYear: entry.year)
             if courses[course].subjects.contains(where: { $0.subject.name == entry.subject.name }) {
@@ -710,7 +735,7 @@ final class Library {
         guard let fileURL else { return }
         do {
             try FileManager.default.createDirectory(at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
-            try Self.fileEncoder.encode(Snapshot(courses: courses, degree: degree, selections: selections, archives: archives))
+            try Self.fileEncoder.encode(Snapshot(courses: courses, degree: degree, selections: selections, archives: archives, hasStudy: hasStudy))
                 .write(to: fileURL, options: .atomic)
         } catch {
             assertionFailure("Couldn't save the library: \(error)")

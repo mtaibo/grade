@@ -1,8 +1,8 @@
 import Engine
 import SwiftUI
 
-/// "Estudio actual", from the account tab: what you study and how it's divided, its templates,
-/// and archiving it to start another.
+/// "Estudio actual", from the account tab: what you study and how it's divided, and archiving it.
+/// With no current study (after archiving one) it's where a new one is created.
 struct CurrentStudyView: View {
     @Environment(Library.self) private var library
     @State private var isArchiving = false
@@ -11,115 +11,153 @@ struct CurrentStudyView: View {
         Binding(get: { library.degree }, set: { library.updateDegree($0) })
     }
 
-    private var studyType: Binding<StudyType> {
-        Binding(get: { library.degree.studyType }, set: { library.updateDegree(library.degree.switching(to: $0)) })
-    }
-
-    private var termName: String {
-        library.degree.termName.isEmpty ? "Cuatrimestre" : library.degree.termName
-    }
-
-    private var yearName: String { library.degree.displayYearName }
-
     var body: some View {
-        let subjectCount = library.courses.reduce(0) { $0 + $1.subjects.count }
-        List {
-            Section {
-                Picker("Tipo", selection: studyType) {
-                    ForEach(StudyType.allCases) { type in
-                        Label(type.label, systemImage: type.symbol).tag(type)
-                    }
-                }
-                InlineField("Nombre") {
-                    TextField(library.degree.studyType.label, text: degree.name)
-                        .multilineTextAlignment(.trailing)
-                        .textInputAutocapitalization(.words)
-                }
-                InlineField("Centro") {
-                    TextField("Opcional", text: degree.institution)
-                        .multilineTextAlignment(.trailing)
-                        .textInputAutocapitalization(.words)
-                }
-            } footer: {
-                Text("Por ahora Grade está pensada para la universidad. Al cambiar el tipo se ponen sus años y periodos habituales.")
-            }
-
-            Section {
-                Stepper(value: degree.years, in: 1...DegreeSettings.maxYears) {
-                    LabeledContent("Años", value: library.degree.years.formatted())
-                }
-                InlineField("Nombre del año") {
-                    TextField(DegreeSettings.defaultYearName, text: degree.yearName)
-                        .multilineTextAlignment(.trailing)
-                        .textInputAutocapitalization(.words)
-                }
-                Stepper(value: degree.termsPerYear, in: 1...DegreeSettings.maxTermsPerYear) {
-                    LabeledContent("Periodos por año", value: library.degree.termsPerYear.formatted())
-                }
-                InlineField("Nombre del periodo") {
-                    TextField("Cuatrimestre", text: degree.termName)
-                        .multilineTextAlignment(.trailing)
-                        .textInputAutocapitalization(.words)
-                }
-                Toggle("Créditos", isOn: degree.usesCredits)
-            } header: {
-                Text("Organización")
-            } footer: {
-                Text("Se usa en los títulos, p. ej. «2º \(yearName) · 1º \(termName)». Si cambias cuántos periodos hay por año, cada asignatura conserva su año y su posición dentro de él. Sin créditos, no se muestran y todas las asignaturas cuentan igual en la media.")
-            }
-
-            Section {
-                Button("Archivar y empezar otro", systemImage: "archivebox") { isArchiving = true }
-                    .disabled(subjectCount == 0)
-            } footer: {
-                Text("Guarda este estudio con sus \(subjectCount) asignaturas y sus notas para consultarlo cuando quieras, y empieza uno nuevo vacío. Por ejemplo, al pasar del instituto a la universidad.")
+        Group {
+            if library.hasStudy {
+                current
+            } else {
+                NewStudyForm { library.startStudy($0) }
             }
         }
-        .navigationTitle("Estudio actual")
+        .navigationTitle(library.hasStudy ? "Estudio actual" : "Nuevo estudio")
         .navigationBarTitleDisplayMode(.inline)
-        .sheet(isPresented: $isArchiving) {
-            ArchiveStudySheet()
+        // A solid bar, so the title reads as fixed while the rows scroll under it.
+        .scrollEdgeEffectStyle(.hard, for: .top)
+    }
+
+    private var current: some View {
+        let subjectCount = library.courses.reduce(0) { $0 + $1.subjects.count }
+        return List {
+            StudySettingsSections(degree: degree)
+
+            Section {
+                Button("Archivar", systemImage: "archivebox") { isArchiving = true }
+                    .disabled(subjectCount == 0)
+            } footer: {
+                Text("Guarda este estudio con sus \(subjectCount) asignaturas y sus notas en «Archivo» para consultarlo o volver a él cuando quieras. Después puedes crear otro, por ejemplo al pasar del instituto a la universidad.")
+            }
+        }
+        .confirmationDialog("¿Archivar «\(library.degree.displayName)»?", isPresented: $isArchiving, titleVisibility: .visible) {
+            Button("Archivar") { library.archiveCurrentStudy() }
+        } message: {
+            Text("Sus asignaturas, notas, fechas, vistas y guías quedan guardadas en «Archivo». Te quedas sin estudio actual hasta que crees otro o vuelvas a uno archivado.")
         }
     }
 }
 
-/// Asks what the new study is before putting the current one away.
-private struct ArchiveStudySheet: View {
+/// The settings a study is made of — what it is and how it's divided — shared by the current
+/// study's screen and the one that creates a new study.
+struct StudySettingsSections: View {
+    @Binding var degree: DegreeSettings
+
+    private var studyType: Binding<StudyType> {
+        Binding(get: { degree.studyType }, set: { degree = degree.switching(to: $0) })
+    }
+
+    private var termName: String {
+        degree.termName.isEmpty ? DegreeSettings.defaultTermName : degree.termName
+    }
+
+    var body: some View {
+        Section {
+            Picker("Tipo", selection: studyType) {
+                ForEach(StudyType.allCases) { type in
+                    Label(type.label, systemImage: type.symbol).tag(type)
+                }
+            }
+            InlineField("Nombre") {
+                TextField(degree.studyType.label, text: $degree.name)
+                    .multilineTextAlignment(.trailing)
+                    .textInputAutocapitalization(.words)
+            }
+            InlineField("Centro") {
+                TextField("Opcional", text: $degree.institution)
+                    .multilineTextAlignment(.trailing)
+                    .textInputAutocapitalization(.words)
+            }
+        } footer: {
+            Text("Por ahora Grade está pensada para la universidad. Al cambiar el tipo se ponen sus años y periodos habituales.")
+        }
+
+        Section {
+            CountRow(title: "Años", value: $degree.years, range: 1...DegreeSettings.maxYears)
+            InlineField("Nombre del año") {
+                TextField(DegreeSettings.defaultYearName, text: $degree.yearName)
+                    .multilineTextAlignment(.trailing)
+                    .textInputAutocapitalization(.words)
+            }
+            CountRow(title: "Periodos por año", value: $degree.termsPerYear, range: 1...DegreeSettings.maxTermsPerYear)
+            InlineField("Nombre del periodo") {
+                TextField(DegreeSettings.defaultTermName, text: $degree.termName)
+                    .multilineTextAlignment(.trailing)
+                    .textInputAutocapitalization(.words)
+            }
+            Toggle("Créditos", isOn: $degree.usesCredits)
+        } header: {
+            Text("Organización")
+        } footer: {
+            Text("Se usa en los títulos, p. ej. «2º \(degree.displayYearName) · 1º \(termName)». Si cambias cuántos periodos hay por año, cada asignatura conserva su año y su posición dentro de él. Sin créditos, no se muestran y todas las asignaturas cuentan igual en la media.")
+        }
+    }
+}
+
+/// A count with the app's glass − and + buttons, like the year in a new subject.
+private struct CountRow: View {
+    let title: String
+    @Binding var value: Int
+    let range: ClosedRange<Int>
+
+    var body: some View {
+        LabeledContent(title) {
+            HStack(spacing: 10) {
+                Text(value.formatted())
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
+                    .contentTransition(.numericText())
+                StepButton(systemImage: "minus", label: "\(title): uno menos", isEnabled: value > range.lowerBound) { value -= 1 }
+                StepButton(systemImage: "plus", label: "\(title): uno más", isEnabled: value < range.upperBound) { value += 1 }
+            }
+            .animation(.snappy, value: value)
+        }
+    }
+}
+
+/// Sets up a new study from scratch: its settings, then "Crear estudio".
+struct NewStudyForm: View {
+    let onCreate: (DegreeSettings) -> Void
+    @State private var draft = DegreeSettings()
+
+    var body: some View {
+        List {
+            StudySettingsSections(degree: $draft)
+            Section {
+                Button("Crear estudio", systemImage: "plus.circle") { onCreate(draft) }
+            } footer: {
+                Text("Todo esto se puede cambiar después en Cuenta → Estudio actual.")
+            }
+        }
+    }
+}
+
+/// "Nuevo estudio" as a sheet, for when adding a subject finds there's no study yet.
+struct NewStudySheet: View {
     @Environment(Library.self) private var library
     @Environment(\.dismiss) private var dismiss
-    @State private var newType = StudyType.university
 
     var body: some View {
         NavigationStack {
-            List {
-                Section {
-                    LabeledContent("Se archiva", value: library.degree.displayName)
-                } footer: {
-                    Text("Sus asignaturas, notas, fechas, vistas y guías quedan guardadas en «Estudios». Puedes volver a él en cualquier momento.")
-                }
-                Section("Nuevo estudio") {
-                    Picker("Tipo", selection: $newType) {
-                        ForEach(StudyType.allCases) { type in
-                            Label(type.label, systemImage: type.symbol).tag(type)
-                        }
-                    }
-                }
+            NewStudyForm { degree in
+                library.startStudy(degree)
+                dismiss()
             }
-            .navigationTitle("Archivar estudio")
+            .navigationTitle("Nuevo estudio")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button(role: .close) { dismiss() }
                 }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button(role: .confirm) {
-                        library.archiveCurrentStudy(startingAs: newType)
-                        dismiss()
-                    }
-                }
             }
         }
-        .presentationDetents([.medium])
     }
 }
 
@@ -169,7 +207,7 @@ struct ArchivedStudyView: View {
             Section {
                 Button("Volver a este estudio", systemImage: "arrow.uturn.backward") { confirming = .resume }
             } footer: {
-                Text("Pasa a ser tu estudio actual, y el actual se archiva en su lugar.")
+                Text(library.hasStudy ? "Pasa a ser tu estudio actual, y el actual se archiva en su lugar." : "Pasa a ser tu estudio actual.")
             }
 
             Section {
