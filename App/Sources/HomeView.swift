@@ -1,6 +1,32 @@
 import Engine
 import SwiftUI
 
+/// One sort option in a menu, ✓ when chosen. Name starts A to Z and grade highest first; choosing
+/// the one already chosen flips it, and its subtitle says which way it runs. Home and the record
+/// share it, each with its own stored order.
+struct SubjectSortToggle: View {
+    let option: SubjectSort
+    @Binding var sort: SubjectSort
+    @Binding var isAscending: Bool
+
+    var body: some View {
+        let isCurrent = sort == option
+        Toggle(isOn: Binding(get: { isCurrent }, set: { _ in
+            withAnimation(.snappy) {
+                isAscending = isCurrent ? !isAscending : option != .grade
+                sort = option
+            }
+        })) {
+            // Loose texts and image, not a Label: in a menu a Label drops its second text.
+            Text(option.title)
+            if isCurrent && option != .custom {
+                Text(isAscending ? "Ascendente" : "Descendente")
+            }
+            Image(systemName: option.icon)
+        }
+    }
+}
+
 /// How the subjects are laid out on the home screen: big cards in a grid, or one slim row each.
 enum SubjectLayout: String, CaseIterable, Identifiable {
     case cards, list
@@ -401,32 +427,13 @@ struct HomeView: View {
                     .pickerStyle(.inline)
                     Divider()
                     ForEach(SubjectSort.allCases) { option in
-                        sortToggle(option)
+                        SubjectSortToggle(option: option, sort: $sort, isAscending: $isAscending)
                     }
                 } label: {
                     Image(systemName: "ellipsis")
                 }
                 .accessibilityLabel("Más opciones")
             }
-        }
-    }
-
-    /// One sort option, ✓ when chosen. Name starts A to Z and grade highest first; choosing the one already
-    /// chosen flips it, and its subtitle says which way it runs.
-    private func sortToggle(_ option: SubjectSort) -> some View {
-        let isCurrent = sort == option
-        return Toggle(isOn: Binding(get: { isCurrent }, set: { _ in
-            withAnimation(.snappy) {
-                isAscending = isCurrent ? !isAscending : option != .grade
-                sort = option
-            }
-        })) {
-            // Loose texts and image, not a Label: in a menu a Label drops its second text.
-            Text(option.title)
-            if isCurrent && option != .custom {
-                Text(isAscending ? "Ascendente" : "Descendente")
-            }
-            Image(systemName: option.icon)
         }
     }
 

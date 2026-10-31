@@ -823,15 +823,7 @@ private struct PartSummary {
     }
 
     static func display(of grade: Grade, record: SubjectRecord, session: Convocatoria) -> String {
-        guard let entry = record.entry(for: grade.name, in: session), entry.value.isFinite, entry.outOf.isFinite, entry.outOf > 0 else { return "—" }
-        let number = { (value: Double) in value.formatted(.number.precision(.fractionLength(0...2))) }
-        if let letter = entry.letter { return letter }
-        switch grade.inputStyle ?? .points {
-        case .percent:
-            return "\(number(entry.outOf == 100 ? entry.value : entry.value / entry.outOf * 100)) %"
-        case .points, .letters:
-            return entry.outOf == 10 ? number(entry.value) : "\(number(entry.value)) / \(number(entry.outOf))"
-        }
+        record.displayedEntry(for: grade, in: session)
     }
 }
 
@@ -1299,6 +1291,21 @@ private struct LetterInput: View {
                     .accessibilityAddTraits(isSelected ? .isSelected : [])
                 }
             }
+        }
+    }
+}
+
+extension SubjectRecord {
+    /// A note as it was given: its letter, a percentage, or points ("8,5", or "1,7 / 2" off 10).
+    func displayedEntry(for grade: Grade, in session: Convocatoria) -> String {
+        guard let entry = entry(for: grade.name, in: session), entry.value.isFinite, entry.outOf.isFinite, entry.outOf > 0 else { return "—" }
+        let number = { (value: Double) in value.formatted(.number.precision(.fractionLength(0...2))) }
+        if let letter = entry.letter { return letter }
+        switch grade.inputStyle ?? .points {
+        case .percent:
+            return "\(number(entry.outOf == 100 ? entry.value : entry.value / entry.outOf * 100)) %"
+        case .points, .letters:
+            return entry.outOf == 10 ? number(entry.value) : "\(number(entry.value)) / \(number(entry.outOf))"
         }
     }
 }
