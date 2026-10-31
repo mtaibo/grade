@@ -98,6 +98,16 @@ struct StudySettingsSections: View {
         } footer: {
             Text("Se usa en los títulos, p. ej. «2º \(degree.displayYearName) · 1º \(termName)». Si cambias cuántos periodos hay por año, cada asignatura conserva su año y su posición dentro de él. Sin créditos, no se muestran y todas las asignaturas cuentan igual en la media.")
         }
+
+        Section {
+            Picker("Redondeo", selection: $degree.rounding) {
+                ForEach(GradeRounding.allCases) { Text($0.label).tag($0) }
+            }
+        } header: {
+            Text("Nota final")
+        } footer: {
+            Text("Cómo pone tu centro la nota en el acta. Redondeando, un 4,95 es un 5,0 y apruebas; truncando, un 4,99 se queda en 4,9. Mira tu normativa de evaluación si no lo sabes.")
+        }
     }
 }
 

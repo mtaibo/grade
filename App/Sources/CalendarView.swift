@@ -58,8 +58,13 @@ extension Library {
         courses.flatMap(\.subjects).flatMap { record in
             let inputs = SubjectProgress.inputs(record, session: .ordinary)
             let style = SubjectStyle(record)
-            let parts = record.subject.root.datedGrades.filter { record.subject.root.leaf(named: $0.name)?.asGrade?.isFinalExam != true }.map { item in
-                let grade = record.subject.root.leaf(named: item.name)?.asGrade
+            // Notes of both sittings' trees (the extraordinary's may add some), each once.
+            var seen: Set<String> = []
+            let trees = [record.subject.root] + (record.extraordinaryRoot.map { [$0] } ?? [])
+            let dated = trees.flatMap(\.datedGrades).filter { seen.insert($0.name).inserted }
+            let leaf = { (name: String) in trees.lazy.compactMap { $0.leaf(named: name)?.asGrade }.first }
+            let parts = dated.filter { leaf($0.name)?.isFinalExam != true }.map { item in
+                let grade = leaf(item.name)
                 return Deadline(
                     recordID: record.id,
                     subjectName: record.subject.name,

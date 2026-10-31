@@ -12,6 +12,7 @@ struct SubjectEditorView: View {
     /// Each note's id when the editor opened, by its name then: stored grades follow their note's
     /// id to wherever it ends up and whatever it's called by the time it's saved.
     @State private var openingIDs: [String: UUID] = [:]
+    @State private var openingExtraordinaryIDs: [String: UUID] = [:]
     /// The term it had before being made year-long, to go back to if switched off again.
     @State private var lastTerm: Int?
 
@@ -23,8 +24,13 @@ struct SubjectEditorView: View {
             if grade.category == nil { grade.category = grade.kind }
         }
         record.subject.root.identifyGrades()
+        record.extraordinaryRoot?.updateGrades { grade in
+            if grade.category == nil { grade.category = grade.kind }
+        }
+        record.extraordinaryRoot?.identifyGrades()
         _draft = State(initialValue: record)
         _openingIDs = State(initialValue: record.subject.root.gradeIDsByName)
+        _openingExtraordinaryIDs = State(initialValue: record.extraordinaryRoot?.gradeIDsByName ?? [:])
         _lastTerm = State(initialValue: record.term)
     }
 
@@ -98,9 +104,17 @@ struct SubjectEditorView: View {
         draft.subject.root = first
     }
 
+    /// Notes sharing a name within one evaluation. Two schemes, or the two sittings, may share a
+    /// note on purpose: that's how the same exam is typed once.
     private var duplicateLeafNames: [String] {
-        let names = draft.subject.root.allLeafNames()
-        return Array(Set(names.filter { name in names.count { $0 == name } > 1 })).sorted()
+        func duplicates(_ node: Node) -> Set<String> {
+            if case .alternatives(let alternatives) = node {
+                return alternatives.branches.reduce(into: []) { $0.formUnion(duplicates($1.node)) }
+            }
+            let names = node.grades.map(\.name)
+            return Set(names.filter { name in names.count { $0 == name } > 1 })
+        }
+        return Array(duplicates(draft.subject.root).union(draft.extraordinaryRoot.map(duplicates) ?? [])).sorted()
     }
 
     /// Notes whose "Tipo" is still unpicked — it's required. New sections can't be added without
@@ -160,9 +174,31 @@ struct SubjectEditorView: View {
                     }
                 }
 
+                if !draft.isSingleGrade && !draft.isUndecided {
+                    Section {
+                        Toggle("Se evalúa distinto", isOn: Binding(
+                            get: { draft.extraordinaryRoot != nil },
+                            set: { draft.extraordinaryRoot = $0 ? draft.subject.root : nil }
+                        ).animation())
+                        if draft.extraordinaryRoot != nil, let root = Binding(unwrapping: $draft.extraordinaryRoot) {
+                            NavigationLink {
+                                ExtraordinaryEditorView(node: root)
+                            } label: {
+                                Label("Evaluación de la extraordinaria", systemImage: "arrow.uturn.backward.circle")
+                            }
+                        }
+                    } header: {
+                        Text("Extraordinaria")
+                    } footer: {
+                        Text(draft.extraordinaryRoot == nil
+                             ? "Por defecto la extraordinaria usa esta misma evaluación. Actívalo si la guía la cambia, por ejemplo con el examen valiendo el 100 %."
+                             : "Empieza como una copia de la de arriba. Una nota con el mismo nombre en las dos es la misma nota: lo que se guarda de la ordinaria pasa solo.")
+                    }
+                }
+
                 Section {
                     NavigationLink {
-                        AdvancedSubjectView(subject: $draft.subject, showsCredits: library.degree.usesCredits)
+                        AdvancedSubjectView(subject: $draft.subject, requirements: $draft.requirements, showsCredits: library.degree.usesCredits)
                     } label: {
                         Label("Avanzado", systemImage: "slider.horizontal.3")
                     }
@@ -195,7 +231,11 @@ struct SubjectEditorView: View {
         record.subject.root.sanitize()
         record.subject.name = record.subject.name.trimmingCharacters(in: .whitespacesAndNewlines)
         record.moveExamGradeDates()
-        record.reassignGrades(openingIDs: openingIDs)
+        record.extraordinaryRoot?.sanitize()
+        record.reassignGrades(openingIDs: openingIDs, openingExtraordinaryIDs: openingExtraordinaryIDs)
+        record.requirements = record.requirements
+            .map { var requirement = $0; requirement.name = requirement.name.trimmingCharacters(in: .whitespaces); return requirement }
+            .filter { !$0.name.isEmpty }
         library.update(record)
         dismiss()
     }
@@ -210,6 +250,7 @@ private extension EnvironmentValues {
 /// What rarely changes once a subject is set up: its credits and the grade it takes to pass.
 private struct AdvancedSubjectView: View {
     @Binding var subject: Subject
+    @Binding var requirements: [SubjectRequirement]
     /// Off when the study has no credits.
     let showsCredits: Bool
 
@@ -231,6 +272,7 @@ private struct AdvancedSubjectView: View {
             } footer: {
                 Text("La nota final con la que se aprueba, sobre 10. Casi siempre un 5.")
             }
+            RequirementsSection(requirements: $requirements)
         }
         .navigationTitle("Avanzado")
         .navigationBarTitleDisplayMode(.inline)
@@ -244,16 +286,21 @@ private struct NodeContentsSections: View {
     var isRoot = false
     /// The root of a subject graded per term: its children are the terms.
     var isPerTerm = false
+    /// The root of a scheme or of the extraordinary's evaluation (see `CalculationSection`).
+    var isSubtree = false
 
     @Environment(\.isUndecidedEvaluation) private var isUndecided
 
     var body: some View {
-        if isRoot || (!isUndecided && (node.asGroup != nil || node.asFormula != nil)) {
-            CalculationSection(node: $node, isRoot: isRoot)
+        if isRoot || isSubtree || (!isUndecided && (node.asGroup != nil || node.asFormula != nil)) {
+            CalculationSection(node: $node, isRoot: isRoot || isSubtree, isSubtree: isSubtree)
                 .tourTarget(isRoot ? "editor.evaluation" : nil)
         }
-        if let group = Binding(unwrapping: $node.asGroup) {
-            GroupSections(group: group, isRoot: isRoot, isPerTerm: isPerTerm)
+        if let alternatives = Binding(unwrapping: $node.asAlternatives) {
+            SchemesSections(alternatives: alternatives)
+                .tourTarget(isRoot ? "editor.sections" : nil)
+        } else if let group = Binding(unwrapping: $node.asGroup) {
+            GroupSections(group: group, isRoot: isRoot || isSubtree, isPerTerm: isPerTerm)
                 .tourTarget(isRoot ? "editor.sections" : nil)
         } else if let formula = Binding(unwrapping: $node.asFormula) {
             FormulaSections(formula: formula)
@@ -284,6 +331,9 @@ private struct CalculationSection: View {
     /// The subject's own result (Media ponderada / Fórmula / Suma); a section inside it also offers
     /// "Examen final".
     let isRoot: Bool
+    /// The root of one scheme or of the extraordinary's own evaluation: a whole grade, but only
+    /// Media ponderada / Fórmula / Suma.
+    var isSubtree = false
 
     private enum Method: Hashable {
         case group(CombinationKind)
@@ -291,6 +341,8 @@ private struct CalculationSection: View {
         case finalExam
         /// The subject is just its final grade, with no parts (e.g. only to keep the record).
         case single
+        /// "Evaluación continua" or "examen único".
+        case schemes
 
         var label: String {
             switch self {
@@ -298,6 +350,7 @@ private struct CalculationSection: View {
             case .formula: "Fórmula"
             case .finalExam: "Examen final"
             case .single: "Nota única"
+            case .schemes: "Continua o examen único"
             }
         }
     }
@@ -308,6 +361,7 @@ private struct CalculationSection: View {
     }
 
     private var current: Method {
+        if node.asAlternatives != nil { return .schemes }
         if isRoot, node.asGrade != nil { return .single }
         if !isRoot, node.isFinalExamPart { return .finalExam }
         if node.asFormula != nil { return .formula }
@@ -317,8 +371,10 @@ private struct CalculationSection: View {
     /// The methods offered for now, plus whatever an existing subject already uses (the best, the
     /// worst…) so editing it doesn't silently change it.
     private var methods: [Method] {
-        var methods: [Method] = isRoot
-            ? [.group(.weightedAverage), .formula, .group(.sum), .single, .group(.undecided)]
+        var methods: [Method] = isSubtree
+            ? [.group(.weightedAverage), .formula, .group(.sum)]
+            : isRoot
+            ? [.group(.weightedAverage), .formula, .group(.sum), .schemes, .single, .group(.undecided)]
             : [.group(.weightedAverage), .group(.sum), .formula, .finalExam]
         if !methods.contains(current) { methods.append(current) }
         return methods
@@ -346,6 +402,10 @@ private struct CalculationSection: View {
         } footer: {
             Text(current == .single
                  ? "Solo la nota final, sin partes, pesos ni fechas: para llevar el expediente sin guardar todo lo que hiciste."
+                 : current == .schemes
+                 ? "Para guías con evaluación continua y examen único: cada modalidad con su evaluación. Una nota con el mismo nombre en las dos es la misma nota (el examen que comparten)."
+                 : isSubtree
+                 ? "Cómo se juntan sus notas en la final."
                  : current == .group(.undecided)
                  ? "Para cuando aún no sabes cómo te evalúan: apunta las notas por secciones, sin pesos ni nota final. Cuando lo sepas, elige otra evaluación y las notas se quedan donde están."
                  : isRoot
@@ -354,6 +414,28 @@ private struct CalculationSection: View {
                  ? "Es el examen final: va en su propia tarjeta, con la ordinaria y la extraordinaria. Sus notas se juntan con los pesos de abajo."
                  : "Tipo de evaluación de la sección: cómo se juntan sus notas.")
         }
+    }
+
+    /// The evaluation as it was becomes "Evaluación continua", and "Examen único" is the final exam
+    /// alone — the same note (same name and id), so it's typed once for both.
+    static func schemes(from node: Node) -> Node {
+        var continuous = node
+        if case .grade(let grade) = continuous {
+            continuous = .group(Engine.Group(name: grade.name, combination: .weightedAverage, children: [WeightedChild(weight: 1, node: continuous)]))
+        }
+        let name = continuous.title
+        let minimum = continuous.minimum
+        continuous.minimum = nil
+        continuous.title = "Evaluación continua"
+        var exam = continuous.grades.first { $0.isFinalExam == true } ?? Grade(name: "Examen único", isFinalExam: true, category: .exam)
+        exam.minimum = nil
+        let single = Node.group(Engine.Group(name: "Examen único", combination: .weightedAverage, children: [WeightedChild(weight: 1, node: .grade(exam))]))
+        return .alternatives(Alternatives(
+            name: name,
+            branches: [.init(node: continuous), .init(node: single)],
+            selected: 0,
+            minimum: minimum ?? Minimum(threshold: 5, consequence: .fails)
+        ))
     }
 
     /// "Examen final" marks every note inside as the exam and keeps how they're combined; leaving it
@@ -366,6 +448,19 @@ private struct CalculationSection: View {
         }
         if current == .finalExam {
             node.updateGrades { $0.isFinalExam = nil }
+        }
+        if method == .schemes {
+            node = Self.schemes(from: node)
+            return
+        }
+        if case .alternatives(let alternatives) = node {
+            // Back to one evaluation: the scheme in use, with the subject's pass mark.
+            let index = alternatives.selected ?? 0
+            var kept = alternatives.branches.indices.contains(index) ? alternatives.branches[index].node : (alternatives.branches.first?.node ?? Self.singleGrade())
+            kept.title = alternatives.name
+            if let minimum = alternatives.minimum { kept.minimum = minimum }
+            node = kept
+            if method == current { return }
         }
         if method == .single {
             node = Self.singleGrade()
@@ -823,10 +918,12 @@ private struct ComponentEditorView: View {
 
             if child.node.asGroup != nil || child.node.asFormula != nil {
                 if !isUndecided { MinimumSection(node: $child.node) }
+                RecoverySection(node: $child.node)
                 NodeContentsSections(node: $child.node)
             } else if let grade = Binding(unwrapping: $child.node.asGrade) {
                 GradeInputSections(grade: grade)
                 if !isUndecided { MinimumSection(node: $child.node) }
+                RecoverySection(node: $child.node)
                 GradeDateSection(grade: grade)
             }
 
@@ -936,6 +1033,165 @@ struct StepButton: View {
         .buttonBorderShape(.circle)
         .disabled(!isEnabled)
         .accessibilityLabel(label)
+    }
+}
+
+/// "Modalidades": one row per scheme, opening its own evaluation, and whether the student picks
+/// one or the best counts.
+private struct SchemesSections: View {
+    @Binding var alternatives: Alternatives
+
+    var body: some View {
+        Section {
+            ForEach(alternatives.branches.indices, id: \.self) { index in
+                NavigationLink {
+                    SchemeEditorView(node: $alternatives.branches[index].node)
+                } label: {
+                    ComponentRow(title: alternatives.branches[index].node.title, subtitle: alternatives.branches[index].node.rowSubtitle, value: "")
+                }
+            }
+        } header: {
+            Text("Modalidades")
+        } footer: {
+            Text("Toca una para cambiar sus secciones y pesos.")
+        }
+
+        Section {
+            Toggle("Cuenta la mejor de las dos", isOn: $alternatives.pickBest)
+            if !alternatives.pickBest {
+                Picker("Tu modalidad", selection: Binding(get: { alternatives.selected ?? 0 }, set: { alternatives.selected = $0 })) {
+                    ForEach(alternatives.branches.indices, id: \.self) { index in
+                        Text(alternatives.branches[index].node.title).tag(index)
+                    }
+                }
+            }
+        } footer: {
+            Text(alternatives.pickBest
+                 ? "La nota final es la mejor de las dos modalidades que apruebe. Apunta todas tus notas y Grade calcula las dos."
+                 : "La que vas a seguir: es la que cuenta. Se puede cambiar cuando quieras, también desde «…» en la asignatura.")
+        }
+    }
+}
+
+/// One scheme's evaluation: its name, then the same sections as a subject.
+private struct SchemeEditorView: View {
+    @Binding var node: Node
+
+    var body: some View {
+        Form {
+            Section {
+                NameField(node: $node)
+            } footer: {
+                Text("Nombre de la modalidad, como en la guía.")
+            }
+            NodeContentsSections(node: $node, isSubtree: true)
+        }
+        .navigationTitle(node.title)
+        .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+/// The extraordinary sitting's own evaluation, when the guide changes it.
+private struct ExtraordinaryEditorView: View {
+    @Binding var node: Node
+
+    var body: some View {
+        Form {
+            NodeContentsSections(node: $node, isSubtree: true)
+        }
+        .navigationTitle("Extraordinaria")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+/// "En la extraordinaria": whether a section's grade carries over, is taken again, carries over
+/// only from a grade, or can't be taken again at all.
+private struct RecoverySection: View {
+    @Binding var node: Node
+
+    private enum Choice: Hashable, CaseIterable {
+        case inherited, kept, retaken, keptFrom, locked
+
+        var label: String {
+            switch self {
+            case .inherited: "Como siempre"
+            case .kept: "Se guarda"
+            case .retaken: "Se repite"
+            case .keptFrom: "Se guarda si llegas a…"
+            case .locked: "No se puede recuperar"
+            }
+        }
+    }
+
+    private var choice: Binding<Choice> {
+        Binding(
+            get: {
+                switch node.recovery {
+                case nil: .inherited
+                case .recoverableInExtraordinary: .retaken
+                case .notRecoverable: .locked
+                case .savedIfAtLeast: .keptFrom
+                default: .kept
+                }
+            },
+            set: { choice in
+                switch choice {
+                case .inherited: node.recovery = nil
+                case .kept: node.recovery = .savedForExtraordinary
+                case .retaken: node.recovery = .recoverableInExtraordinary
+                case .keptFrom: node.recovery = .savedIfAtLeast(node.scaleMax / 2)
+                case .locked: node.recovery = .notRecoverable
+                }
+            }
+        )
+    }
+
+    private var threshold: Binding<Double> {
+        Binding(
+            get: { if case .savedIfAtLeast(let value)? = node.recovery { value } else { node.scaleMax / 2 } },
+            set: { node.recovery = .savedIfAtLeast($0.isFinite ? $0 : node.scaleMax / 2) }
+        )
+    }
+
+    var body: some View {
+        Section {
+            Picker("En la extraordinaria", selection: choice) {
+                ForEach(Choice.allCases, id: \.self) { Text($0.label).tag($0) }
+            }
+            if case .savedIfAtLeast? = node.recovery {
+                LabeledContent("Se guarda desde") {
+                    HStack(spacing: 4) {
+                        TextField("5", value: threshold, format: .number)
+                            .keyboardType(.decimalPad)
+                            .multilineTextAlignment(.trailing)
+                        Text("/ \(node.scaleMax.formatted(.number.precision(.fractionLength(0...2))))").foregroundStyle(.secondary)
+                    }
+                }
+            }
+        } footer: {
+            Text("Si su nota de la ordinaria pasa a la extraordinaria. «Como siempre»: se guarda todo menos el examen final, salvo que la sección de arriba diga otra cosa. «No se puede recuperar»: se queda la de la ordinaria y no se cambia.")
+        }
+    }
+}
+
+/// "Requisitos": conditions with no grade, like compulsory attendance; one not met fails.
+private struct RequirementsSection: View {
+    @Binding var requirements: [SubjectRequirement]
+
+    var body: some View {
+        Section {
+            ForEach($requirements) { $requirement in
+                TextField("Asistencia mínima del 80 %", text: $requirement.name)
+            }
+            .onDelete { requirements.remove(atOffsets: $0) }
+            Button("Añadir requisito", systemImage: "plus.circle.fill") {
+                requirements.append(SubjectRequirement(name: ""))
+            }
+        } header: {
+            Text("Requisitos")
+        } footer: {
+            Text("Condiciones sin nota que hay que cumplir para aprobar, como la asistencia o entregar todas las prácticas. Se marcan en la asignatura; si una no se cumple, no apruebas.")
+        }
     }
 }
 
