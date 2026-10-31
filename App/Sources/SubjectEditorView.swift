@@ -9,8 +9,9 @@ struct SubjectEditorView: View {
 
     /// Seeded once from the record being edited; the library only changes on save.
     @State private var draft: SubjectRecord
-    /// Leaf renames made while editing (original name → current name), so stored grades follow.
-    @State private var renames: [String: String] = [:]
+    /// Each note's id when the editor opened, by its name then: stored grades follow their note's
+    /// id to wherever it ends up and whatever it's called by the time it's saved.
+    @State private var openingIDs: [String: UUID] = [:]
     /// The term it had before being made year-long, to go back to if switched off again.
     @State private var lastTerm: Int?
 
@@ -21,7 +22,9 @@ struct SubjectEditorView: View {
         record.subject.root.updateGrades { grade in
             if grade.category == nil { grade.category = grade.kind }
         }
+        record.subject.root.identifyGrades()
         _draft = State(initialValue: record)
+        _openingIDs = State(initialValue: record.subject.root.gradeIDsByName)
         _lastTerm = State(initialValue: record.term)
     }
 
@@ -67,7 +70,6 @@ struct SubjectEditorView: View {
     /// sittings belong to the whole subject.
     private func splitByTerm() {
         let base = draft.subject.root
-        for name in base.allLeafNames() { recordRename(from: name, to: name + termSuffix(1)) }
         let children = (1...termCount).map { n in
             var node = base
             node.updateGrades { $0.isFinalExam = nil }
@@ -88,9 +90,6 @@ struct SubjectEditorView: View {
         draft.isPerTerm = false
         guard case .group(let general) = draft.subject.root, var first = general.children.first?.node else { return }
         let suffix = termSuffix(1)
-        for name in first.allLeafNames() where name.hasSuffix(suffix) {
-            recordRename(from: name, to: String(name.dropLast(suffix.count)))
-        }
         first.renameLeaves { $0.hasSuffix(suffix) ? String($0.dropLast(suffix.count)) : $0 }
         if case .group(var group) = first {
             group.name = draft.subject.name
@@ -149,7 +148,7 @@ struct SubjectEditorView: View {
                     }
                 }
 
-                NodeContentsSections(node: $draft.subject.root, isRoot: true, isPerTerm: draft.isPerTerm, onRenameLeaf: recordRename)
+                NodeContentsSections(node: $draft.subject.root, isRoot: true, isPerTerm: draft.isPerTerm)
 
                 if !duplicateLeafNames.isEmpty {
                     Section {
@@ -191,35 +190,12 @@ struct SubjectEditorView: View {
         .tourPerforms(.editorClosed, onAppear: false)
     }
 
-    private func recordRename(from old: String, to new: String) {
-        if let original = renames.first(where: { $0.value == old })?.key {
-            renames[original] = new
-        } else {
-            renames[old] = new
-        }
-    }
-
-    /// Moves grades onto renamed leaves and drops grades for leaves that no longer exist.
     private func save() {
         var record = draft
         record.subject.root.sanitize()
         record.subject.name = record.subject.name.trimmingCharacters(in: .whitespacesAndNewlines)
         record.moveExamGradeDates()
-        let leaves = Set(record.subject.root.allLeafNames())
-        func migrated(_ entries: [String: GradeEntry]) -> [String: GradeEntry] {
-            var moved: [String: GradeEntry] = [:]
-            for (name, entry) in entries where renames[name] == nil {
-                moved[name] = entry
-            }
-            // Renamed ones last: a note deleted and its name then given to another hands it over,
-            // so the deleted note's grade must never land on the renamed one.
-            for (name, entry) in entries {
-                if let new = renames[name] { moved[new] = entry }
-            }
-            return moved.filter { leaves.contains($0.key) }
-        }
-        record.entries = migrated(record.entries)
-        record.extraordinaryEntries = migrated(record.extraordinaryEntries)
+        record.reassignGrades(openingIDs: openingIDs)
         library.update(record)
         dismiss()
     }
@@ -268,7 +244,6 @@ private struct NodeContentsSections: View {
     var isRoot = false
     /// The root of a subject graded per term: its children are the terms.
     var isPerTerm = false
-    let onRenameLeaf: (String, String) -> Void
 
     @Environment(\.isUndecidedEvaluation) private var isUndecided
 
@@ -278,10 +253,10 @@ private struct NodeContentsSections: View {
                 .tourTarget(isRoot ? "editor.evaluation" : nil)
         }
         if let group = Binding(unwrapping: $node.asGroup) {
-            GroupSections(group: group, isRoot: isRoot, isPerTerm: isPerTerm, onRenameLeaf: onRenameLeaf)
+            GroupSections(group: group, isRoot: isRoot, isPerTerm: isPerTerm)
                 .tourTarget(isRoot ? "editor.sections" : nil)
         } else if let formula = Binding(unwrapping: $node.asFormula) {
-            FormulaSections(formula: formula, onRenameLeaf: onRenameLeaf)
+            FormulaSections(formula: formula)
                 .tourTarget(isRoot ? "editor.sections" : nil)
         } else if let grade = Binding(unwrapping: $node.asGrade) {
             if isRoot {
@@ -471,7 +446,6 @@ private struct GroupSections: View {
     @Binding var group: Engine.Group
     var isRoot = false
     var isPerTerm = false
-    let onRenameLeaf: (String, String) -> Void
 
     @Environment(\.isUndecidedEvaluation) private var isUndecided
 
@@ -497,7 +471,7 @@ private struct GroupSections: View {
         Section {
             ForEach($group.children) { $child in
                 NavigationLink {
-                    ComponentEditorView(child: $child, combination: group.combination, onRenameLeaf: onRenameLeaf, onDelete: {
+                    ComponentEditorView(child: $child, combination: group.combination, onDelete: {
                         group.children.removeAll { $0.id == child.id }
                     })
                 } label: {
@@ -573,7 +547,6 @@ private struct GroupSections: View {
 
 private struct FormulaSections: View {
     @Binding var formula: Formula
-    let onRenameLeaf: (String, String) -> Void
 
     @State private var text = ""
     @State private var parseError: String?
@@ -627,7 +600,7 @@ private struct FormulaSections: View {
         Section {
             ForEach(orderedKeys, id: \.self) { key in
                 NavigationLink {
-                    FormulaVariableEditor(key: key, formula: $formula, onRenameKey: renameKey, onRenameLeaf: onRenameLeaf)
+                    FormulaVariableEditor(key: key, formula: $formula, onRenameKey: renameKey)
                 } label: {
                     ComponentRow(
                         title: "\(key) · \(formula.variables[key]?.title ?? key)",
@@ -711,16 +684,14 @@ private struct FormulaVariableEditor: View {
     let key: String
     @Binding var formula: Formula
     let onRenameKey: (String, String) -> Void
-    let onRenameLeaf: (String, String) -> Void
 
     @State private var keyText: String
     @State private var keyError: String?
 
-    init(key: String, formula: Binding<Formula>, onRenameKey: @escaping (String, String) -> Void, onRenameLeaf: @escaping (String, String) -> Void) {
+    init(key: String, formula: Binding<Formula>, onRenameKey: @escaping (String, String) -> Void) {
         self.key = key
         _formula = formula
         self.onRenameKey = onRenameKey
-        self.onRenameLeaf = onRenameLeaf
         _keyText = State(initialValue: key)
     }
 
@@ -741,7 +712,7 @@ private struct FormulaVariableEditor: View {
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                 }
-                NameField(node: node, onRenameLeaf: onRenameLeaf)
+                NameField(node: node)
             } footer: {
                 if let keyError {
                     Label(keyError, systemImage: "exclamationmark.triangle.fill").foregroundStyle(.orange)
@@ -758,7 +729,7 @@ private struct FormulaVariableEditor: View {
             }
             if node.wrappedValue.asGroup != nil || node.wrappedValue.asFormula != nil {
                 MinimumSection(node: node)
-                NodeContentsSections(node: node, onRenameLeaf: onRenameLeaf)
+                NodeContentsSections(node: node)
             } else if let grade = Binding(unwrapping: node.asGrade) {
                 GradeInputSections(grade: grade)
                 MinimumSection(node: node)
@@ -794,7 +765,6 @@ private struct ComponentEditorView: View {
     @Binding var child: WeightedChild
     /// How the parent combines its parts: a sum counts each in points, anything else in percent.
     let combination: Engine.Group.Combination
-    let onRenameLeaf: (String, String) -> Void
     /// Removes this section from its parent; called once the screen has gone, so nothing here
     /// reads the removed child.
     var onDelete: () -> Void = {}
@@ -817,7 +787,7 @@ private struct ComponentEditorView: View {
     var body: some View {
         Form {
             Section {
-                NameField(node: $child.node, onRenameLeaf: onRenameLeaf)
+                NameField(node: $child.node)
             } footer: {
                 Text("Nombre de la sección. Toca para cambiarlo.")
             }
@@ -853,7 +823,7 @@ private struct ComponentEditorView: View {
 
             if child.node.asGroup != nil || child.node.asFormula != nil {
                 if !isUndecided { MinimumSection(node: $child.node) }
-                NodeContentsSections(node: $child.node, onRenameLeaf: onRenameLeaf)
+                NodeContentsSections(node: $child.node)
             } else if let grade = Binding(unwrapping: $child.node.asGrade) {
                 GradeInputSections(grade: grade)
                 if !isUndecided { MinimumSection(node: $child.node) }
@@ -922,8 +892,7 @@ private struct NewSectionView: View {
     }
 
     var body: some View {
-        // A brand-new note has no stored grade to move, so renames need no tracking here.
-        ComponentEditorView(child: $child, combination: combination, onRenameLeaf: { _, _ in }, onAdd: {
+        ComponentEditorView(child: $child, combination: combination, onAdd: {
             onAdd(child)
         })
     }
@@ -972,18 +941,10 @@ struct StepButton: View {
 
 private struct NameField: View {
     @Binding var node: Node
-    let onRenameLeaf: (String, String) -> Void
 
     var body: some View {
         InlineField("Nombre") {
-            TextField("Nombre", text: Binding(
-                get: { node.title },
-                set: { newName in
-                    let oldName = node.title
-                    node.title = newName
-                    if node.isLeaf { onRenameLeaf(oldName, newName) }
-                }
-            ))
+            TextField("Nombre", text: $node.title)
             .multilineTextAlignment(.trailing)
             .foregroundStyle(.secondary)
         }

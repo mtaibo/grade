@@ -12,6 +12,10 @@ public indirect enum Node: Sendable, Equatable, Codable {
 
 /// A leaf grade entered by the user, on its own scale.
 public struct Grade: Sendable, Equatable, Codable {
+    /// Who this note is while it's being edited: grades are stored by name, and the editor uses
+    /// the id to carry each one to its note however it's renamed or moved. `nil` in older files
+    /// and in templates; the editor gives every note one.
+    public var id: UUID?
     public var name: String
     /// Marks the final exam (every subject has one): shown in its own card with an ordinary and an
     /// extraordinary slot. Presentation only. `nil` means it isn't.
@@ -29,6 +33,7 @@ public struct Grade: Sendable, Equatable, Codable {
     public var inputStyle: GradeInputStyle?
 
     public init(
+        id: UUID? = nil,
         name: String,
         isFinalExam: Bool? = nil,
         category: GradeCategory? = nil,
@@ -38,6 +43,7 @@ public struct Grade: Sendable, Equatable, Codable {
         date: Date? = nil,
         inputStyle: GradeInputStyle? = nil
     ) {
+        self.id = id
         self.name = name
         self.isFinalExam = isFinalExam
         self.category = category

@@ -127,6 +127,28 @@ extension Node {
         }
     }
 
+    /// Gives every note an id of its own: one without (an older file, a template) or repeating
+    /// an earlier one's (a copied section) gets a new one. In tree order, so the first copy keeps it.
+    mutating func identifyGrades() {
+        var seen: Set<UUID> = []
+        updateGrades { grade in
+            if let id = grade.id, seen.insert(id).inserted { return }
+            let id = UUID()
+            grade.id = id
+            seen.insert(id)
+        }
+    }
+
+    /// Each note's id by its name (the first note, if a name repeats).
+    var gradeIDsByName: [String: UUID] {
+        Dictionary(grades.compactMap { grade in grade.id.map { (grade.name, $0) } }) { first, _ in first }
+    }
+
+    /// Each note's name by its id (the first note, if an id repeats).
+    var gradeNamesByID: [UUID: String] {
+        Dictionary(grades.compactMap { grade in grade.id.map { ($0, grade.name) } }) { first, _ in first }
+    }
+
     /// Every grade and bonus under this node renamed by `transform`.
     mutating func renameLeaves(_ transform: (String) -> String) {
         switch self {
@@ -208,14 +230,6 @@ extension Node {
             self = .alternatives(alternatives)
         case .bonus, .requirement:
             break
-        }
-    }
-
-    /// Leaves carry the grades the user types; renaming one has to move its stored grade along.
-    var isLeaf: Bool {
-        switch self {
-        case .grade, .bonus: true
-        default: false
         }
     }
 

@@ -110,6 +110,30 @@ struct SubjectRecord: Identifiable, Codable, Equatable {
         return !subject.root.leavesSentToExtraordinary(SubjectProgress.inputs(self, session: .ordinary)).contains(leaf)
     }
 
+    /// After an edit: moves each stored grade to its note, found by the id it had when the editor
+    /// opened (`openingIDs`, by the name it had then), under whatever name it has now. A copied
+    /// section repeats its notes' ids and the first copy keeps them, with their grades; grades of
+    /// notes that are gone are dropped.
+    mutating func reassignGrades(openingIDs: [String: UUID]) {
+        subject.root.identifyGrades()
+        let names = subject.root.gradeNamesByID
+        let gradeNames = Set(subject.root.grades.map(\.name))
+        let otherLeaves = Set(subject.root.allLeafNames()).subtracting(gradeNames)
+        func moved(_ entries: [String: GradeEntry]) -> [String: GradeEntry] {
+            var moved: [String: GradeEntry] = [:]
+            // Leaves that aren't notes (a bonus) have no id and keep their name.
+            for (name, entry) in entries where otherLeaves.contains(name) {
+                moved[name] = entry
+            }
+            for (name, entry) in entries {
+                if let id = openingIDs[name], let new = names[id] { moved[new] = entry }
+            }
+            return moved
+        }
+        entries = moved(entries)
+        extraordinaryEntries = moved(extraordinaryEntries)
+    }
+
     /// The tree a sitting is worked out with: the extraordinary one drops the minimums that only
     /// sent you there.
     func root(for session: Convocatoria) -> Node {

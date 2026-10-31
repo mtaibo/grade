@@ -26,7 +26,8 @@ extension Node {
             for index in group.children.indices { group.children[index].node.updateGrades(body) }
             self = .group(group)
         case .formula(var formula):
-            for key in formula.variables.keys { formula.variables[key]?.updateGrades(body) }
+            // Sorted, like `grades`, so every pass visits the notes in the same order.
+            for key in formula.variables.keys.sorted() { formula.variables[key]?.updateGrades(body) }
             self = .formula(formula)
         case .alternatives(var alternatives):
             for index in alternatives.branches.indices { alternatives.branches[index].node.updateGrades(body) }
