@@ -208,8 +208,13 @@ struct SubjectEditorView: View {
         let leaves = Set(record.subject.root.allLeafNames())
         func migrated(_ entries: [String: GradeEntry]) -> [String: GradeEntry] {
             var moved: [String: GradeEntry] = [:]
+            for (name, entry) in entries where renames[name] == nil {
+                moved[name] = entry
+            }
+            // Renamed ones last: a note deleted and its name then given to another hands it over,
+            // so the deleted note's grade must never land on the renamed one.
             for (name, entry) in entries {
-                moved[renames[name] ?? name] = entry
+                if let new = renames[name] { moved[new] = entry }
             }
             return moved.filter { leaves.contains($0.key) }
         }
