@@ -225,14 +225,14 @@ struct SubjectDetailView: View {
 }
 
 extension SubjectDetailView {
-    /// One animation in and one out: the card slides from the top and the dim fades, nothing else
-    /// moves (the screen behind isn't blurred or redrawn).
+    /// One animation in and one out: the card slides from the top and the blur fades, nothing else
+    /// moves (the screen behind isn't redrawn: the blur is a layer over it).
     fileprivate func open(_ target: GradeTarget) {
-        withAnimation(.snappy(duration: 0.28)) { gradeTarget = target }
+        withAnimation(.snappy(duration: 0.36)) { gradeTarget = target }
     }
 
     fileprivate func close() {
-        withAnimation(.snappy(duration: 0.24)) { gradeTarget = nil }
+        withAnimation(.snappy(duration: 0.3)) { gradeTarget = nil }
     }
 
     /// Reads the chosen PDF (it must really be one) and keeps a copy inside the app — read and
@@ -1153,8 +1153,8 @@ private struct ProgressBar: View {
 /// Where a grade is typed: a card pinned to the top of the screen over a blurred background, so the
 /// keyboard rising from the bottom never pushes it around. It focuses the first empty field, and
 /// "Hecho" or a tap outside closes it.
-/// One part's grades for one sitting, in a card that slides down from the top over a dimmed
-/// screen, the first empty note ready to type in. Each grade is saved as it's typed; «Hecho» or a
+/// One part's grades for one sitting, in a card that slides down from the top over a softly
+/// blurred screen, the first empty note ready to type in. Each grade is saved as it's typed; «Hecho» or a
 /// tap on the dim closes it.
 ///
 /// Its height comes from how many notes the part has, never measured while it animates, and the
@@ -1177,7 +1177,11 @@ private struct GradePopup: View {
     var body: some View {
         ZStack(alignment: .top) {
             if let target, let record = library.record(id: recordID), let item = Self.item(in: record, for: target) {
-                Color.black.opacity(0.28)
+                // A soft blur and a light dim over the screen, as a layer of its own: blurring the
+                // screen itself redrew it all at the start of the animation.
+                Rectangle()
+                    .fill(.ultraThinMaterial)
+                    .overlay(Color.black.opacity(0.12))
                     .ignoresSafeArea()
                     .onTapGesture(perform: close)
                     .transition(.opacity)
@@ -1187,7 +1191,7 @@ private struct GradePopup: View {
                     .transition(.move(edge: .top).combined(with: .opacity))
                     .task(id: target.id) {
                         // After the card has arrived, so the keyboard doesn't rise mid-slide.
-                        try? await Task.sleep(for: .milliseconds(300))
+                        try? await Task.sleep(for: .milliseconds(380))
                         let leaves = item.node.allLeafNames()
                         if let first = leaves.first(where: { record.entry(for: $0, in: target.session) == nil }) ?? leaves.first {
                             focusedField = "\(target.session.rawValue)/\(first)"
