@@ -34,8 +34,8 @@ struct SubjectDetailView: View {
 
     private func content(_ record: SubjectRecord) -> some View {
         let session = record.activeSession
-        let progress = SubjectProgress(record, session: session)
-        let items = PartItem.items(of: record)
+        let progress = SubjectProgress(record, session: session, rounding: library.degree.rounding)
+        let items = PartItem.items(of: record, session: record.activeSession)
         // "Nota única": one card for the final grade, no exam sittings.
         let exam = record.isSingleGrade ? nil : items.first(where: \.isExam)
         let others = items.filter { $0.id != exam?.id }
@@ -74,9 +74,13 @@ struct SubjectDetailView: View {
                         record: record,
                         exam: exam,
                         onAddDate: { addingDateFor = $0 },
-                        onOpen: { session, point in gradeTarget = GradeTarget(partID: exam?.id ?? "", session: session, origin: point) }
+                        onOpen: { session, point in gradeTarget = GradeTarget(partID: exam?.id ?? "", session: session, origin: point, isExam: true) }
                     )
                     .tourTarget("subject.exam")
+                }
+
+                if !record.requirements.isEmpty {
+                    RequirementsCard(record: record) { library.update($0) }
                 }
 
                 if !others.isEmpty {
@@ -135,6 +139,46 @@ struct SubjectDetailView: View {
                     if !record.isUndecided {
                         Button("Simulador", systemImage: "flask") {
                             simulation = Library(simulating: record, degree: library.degree)
+                        }
+                    }
+                    Divider()
+                    if let alternatives = record.subject.root.asAlternatives, !alternatives.pickBest {
+                        Picker(selection: Binding(
+                            get: { alternatives.selected ?? 0 },
+                            set: { index in
+                                var changed = record
+                                changed.subject.root.asAlternatives?.selected = index
+                                library.update(changed)
+                            }
+                        )) {
+                            ForEach(alternatives.branches.indices, id: \.self) { index in
+                                Text(alternatives.branches[index].node.title).tag(index)
+                            }
+                        } label: {
+                            Label("Modalidad", systemImage: "arrow.triangle.branch")
+                        }
+                        .pickerStyle(.menu)
+                    }
+                    Toggle(isOn: Binding(
+                        get: { record.isNotPresented(in: session) },
+                        set: { value in
+                            var changed = record
+                            if session == .ordinary { changed.ordinaryNotPresented = value } else { changed.extraordinaryNotPresented = value }
+                            library.update(changed)
+                        }
+                    )) {
+                        Label("No presentado en la \(session.label.lowercased())", systemImage: "person.slash")
+                    }
+                    if record.hasHonors || (progress.isComplete && progress.worst >= 9) {
+                        Toggle(isOn: Binding(
+                            get: { record.hasHonors },
+                            set: { value in
+                                var changed = record
+                                changed.hasHonors = value
+                                library.update(changed)
+                            }
+                        )) {
+                            Label("Matrícula de honor", systemImage: "rosette")
                         }
                     }
                     Divider()
@@ -309,6 +353,8 @@ private struct GradeTarget: Identifiable {
     let session: Convocatoria
     /// Where on screen it was tapped: the popup grows out of that point.
     var origin: CGPoint = .zero
+    /// Opened from the exam card.
+    var isExam = false
     let id = UUID()
 }
 
@@ -332,6 +378,45 @@ private struct UndecidedCard: View {
     }
 }
 
+/// Conditions with no grade (attendance…), each marked met, not met or still unknown; one not
+/// met fails the subject.
+private struct RequirementsCard: View {
+    let record: SubjectRecord
+    let onChange: (SubjectRecord) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Requisitos")
+                .font(.headline)
+            ForEach(record.requirements) { requirement in
+                HStack {
+                    Text(requirement.name)
+                        .font(.subheadline)
+                    Spacer(minLength: 8)
+                    Picker(requirement.name, selection: Binding(
+                        get: { requirement.isMet },
+                        set: { value in
+                            var changed = record
+                            if let index = changed.requirements.firstIndex(where: { $0.id == requirement.id }) {
+                                changed.requirements[index].isMet = value
+                            }
+                            onChange(changed)
+                        }
+                    )) {
+                        Text("Pendiente").tag(Bool?.none)
+                        Text("Cumplido").tag(Bool?.some(true))
+                        Text("No cumplido").tag(Bool?.some(false))
+                    }
+                    .labelsHidden()
+                    .tint(requirement.isMet == false ? .red : requirement.isMet == true ? .green : .secondary)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .card()
+    }
+}
+
 /// The grade up front with its bar; tap to unfold what's secured, what's still reachable, the pass
 /// mark and what's needed.
 private struct GradeCard: View {
@@ -351,6 +436,8 @@ private struct GradeCard: View {
 
     /// For the verdict sentence: a sure pass or a lost one get a colour of their own.
     private var tint: Color {
+        if progress.isNotPresented { return .secondary }
+        if progress.missesARequirement { return .red }
         guard hasGrades else { return .secondary }
         switch progress.status {
         case .guaranteed: return .green
@@ -416,14 +503,28 @@ private struct GradeCard: View {
         HStack(alignment: .center) {
             VStack(alignment: .leading, spacing: 2) {
                 HStack(alignment: .firstTextBaseline, spacing: 4) {
-                    Text(progress.worst, format: .number.precision(.fractionLength(0...2)))
-                        .foregroundStyle(hasGrades ? .primary : .tertiary)
-                        .font(.system(size: 52, weight: .bold, design: .rounded))
-                        .monospacedDigit()
-                        .contentTransition(.numericText())
-                    Text("/ 10")
-                        .font(.title3)
-                        .foregroundStyle(.secondary)
+                    if progress.isNotPresented {
+                        Text("NP")
+                            .font(.system(size: 52, weight: .bold, design: .rounded))
+                            .foregroundStyle(.secondary)
+                            .accessibilityLabel("No presentado")
+                    } else {
+                        Text(progress.worst, format: .number.precision(.fractionLength(0...2)))
+                            .foregroundStyle(hasGrades ? .primary : .tertiary)
+                            .font(.system(size: 52, weight: .bold, design: .rounded))
+                            .monospacedDigit()
+                            .contentTransition(.numericText())
+                        Text("/ 10")
+                            .font(.title3)
+                            .foregroundStyle(.secondary)
+                        if progress.hasHonors {
+                            Text("MH")
+                                .font(.headline.weight(.bold))
+                                .foregroundStyle(GradeBand.color(for: 10))
+                                .padding(.leading, 6)
+                                .accessibilityLabel("Matrícula de honor")
+                        }
+                    }
                 }
                 if session == .extraordinary {
                     Text(session.label)
@@ -443,6 +544,12 @@ private struct GradeCard: View {
 
     /// The one sentence that answers "and so what?" for the numbers.
     private var verdict: LocalizedStringKey? {
+        if progress.isNotPresented {
+            return "No presentado en la \(session.label.lowercased()): no cuenta como suspenso ni entra en la media."
+        }
+        if progress.missesARequirement {
+            return "No cumples un requisito de la asignatura, así que no apruebas aunque las notas lleguen."
+        }
         guard hasGrades else { return nil }
         switch progress.status {
         case .guaranteed:
@@ -456,10 +563,11 @@ private struct GradeCard: View {
     }
 
     private var verdictIcon: String {
+        if progress.isNotPresented { return "person.slash" }
         switch progress.status {
-        case .guaranteed: "checkmark.seal.fill"
-        case .impossible: "exclamationmark.triangle.fill"
-        case .possible: "target"
+        case .guaranteed: return "checkmark.seal.fill"
+        case .impossible: return "exclamationmark.triangle.fill"
+        case .possible: return "target"
         }
     }
 }
@@ -476,7 +584,7 @@ private struct NeededGrade: Identifiable {
 
     static func rows(for record: SubjectRecord, session: Convocatoria, progress: SubjectProgress, items: [PartItem]) -> [NeededGrade] {
         guard progress.status == .possible,
-              let plan = record.root(for: session).passPlan(progress.inputs, target: progress.threshold)
+              let plan = record.root(for: session).passPlan(progress.inputs, target: progress.target)
         else { return [] }
         let ordered = items.filter { !$0.isExam } + items.filter(\.isExam)
         return ordered.compactMap { item in
@@ -583,7 +691,11 @@ private struct ProgressPill: View {
     let hasGrades: Bool
 
     var body: some View {
-        let (text, icon, tint): (String, String?, Color) = if !hasGrades {
+        let (text, icon, tint): (String, String?, Color) = if progress.isNotPresented {
+            ("No presentado", nil, .secondary)
+        } else if progress.missesARequirement {
+            ("No llega", "xmark.circle.fill", .red)
+        } else if !hasGrades {
             ("Sin notas", nil, .secondary)
         } else {
             switch progress.status {
@@ -810,8 +922,21 @@ private struct PartItem: Identifiable {
 
     var isExam: Bool { node.isFinalExamPart }
 
-    static func items(of record: SubjectRecord) -> [PartItem] {
-        let root = record.subject.root
+    /// The cards for a sitting: the parts of its tree (the extraordinary's own, if it has one). With
+    /// continuous and single-exam schemes, the chosen one's parts, or both's when the best counts
+    /// — a note they share shows once.
+    static func items(of record: SubjectRecord, session: Convocatoria) -> [PartItem] {
+        let root = session == .extraordinary ? (record.extraordinaryRoot ?? record.subject.root) : record.subject.root
+        guard case .alternatives(let alternatives) = root else { return items(of: root) }
+        var seen: Set<String> = []
+        return Node.activeBranches(alternatives).flatMap { items(of: $0.node) }.filter { item in
+            let leaves = item.node.allLeafNames()
+            defer { seen.formUnion(leaves) }
+            return leaves.isEmpty || !leaves.allSatisfy(seen.contains)
+        }
+    }
+
+    static func items(of root: Node) -> [PartItem] {
         if case .group(let group) = root, group.combination == .undecided {
             return group.children.map { PartItem(id: $0.id.uuidString, node: $0.node, weightPercent: nil) }
         } else if case .group(let group) = root {
@@ -1030,6 +1155,13 @@ private struct GradePopup: View {
         )
     }
 
+    /// The part tapped, in the sitting asked for; the exam's slot finds the exam even when the
+    /// extraordinary has a tree of its own.
+    static func item(in record: SubjectRecord, for target: GradeTarget) -> PartItem? {
+        let items = PartItem.items(of: record, session: target.session)
+        return items.first { $0.id == target.partID } ?? (target.isExam ? items.first(where: \.isExam) : nil)
+    }
+
     private func close() {
         guard shown else { return }
         withAnimation(.spring(duration: 0.25, bounce: 0)) { shown = false }
@@ -1042,7 +1174,7 @@ private struct GradePopup: View {
     }
 
     var body: some View {
-        if let record = library.record(id: recordID), let item = PartItem.items(of: record).first(where: { $0.id == target.partID }) {
+        if let record = library.record(id: recordID), let item = Self.item(in: record, for: target) {
             let session = target.session
             let inputs = SubjectProgress.inputs(record, session: session)
             ZStack(alignment: .top) {
@@ -1185,6 +1317,8 @@ private struct LeafInput: View {
     private var isFocused: Bool { context.focus.wrappedValue == fieldID }
     private var entry: GradeEntry? { context.record.entry(for: grade.name, in: context.session) }
     private var isCarriedOver: Bool { context.record.isCarriedOver(grade.name, in: context.session) }
+    /// Can't be taken again: the ordinary grade stands in the extraordinary and can't be changed.
+    private var isLocked: Bool { context.session == .extraordinary && context.record.isLockedInExtraordinary(grade.name) }
     private var isPercent: Bool { grade.inputStyle == .percent }
     private var limit: Double { isPercent ? 100 : grade.scaleMax }
     private var exceedsLimit: Bool { (Self.parse(text) ?? 0) > limit }
@@ -1198,7 +1332,12 @@ private struct LeafInput: View {
     var body: some View {
         VStack(alignment: compact ? .center : .trailing, spacing: 4) {
             input
-            if isCarriedOver {
+                .disabled(isLocked)
+            if isLocked {
+                Text("No se recupera")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            } else if isCarriedOver {
                 Text("De la ordinaria")
                     .font(.caption2)
                     .foregroundStyle(.secondary)

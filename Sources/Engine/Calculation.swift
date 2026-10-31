@@ -247,7 +247,7 @@ extension Node {
 
     /// The schemes that count: all of them when the best is taken, else the one chosen (the first
     /// when none is, or the choice points past the end).
-    static func activeBranches(_ alternatives: Alternatives) -> [Alternatives.Branch] {
+    public static func activeBranches(_ alternatives: Alternatives) -> [Alternatives.Branch] {
         if alternatives.pickBest { return alternatives.branches }
         let index = alternatives.selected ?? 0
         let branch = alternatives.branches.indices.contains(index) ? alternatives.branches[index] : alternatives.branches.first

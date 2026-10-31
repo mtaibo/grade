@@ -36,6 +36,7 @@ struct ReorderableGrid<Normal: View, Trailing: View>: View {
     @ViewBuilder let normal: (SubjectRecord) -> Normal
     @ViewBuilder let trailing: () -> Trailing
 
+    @Environment(Library.self) private var library
     @State private var order: [SubjectRecord.ID]?
     @State private var frames: [SubjectRecord.ID: CGRect] = [:]
     @State private var slots: [CGRect] = []
@@ -84,7 +85,7 @@ struct ReorderableGrid<Normal: View, Trailing: View>: View {
 
     private func editableTile(_ record: SubjectRecord) -> some View {
         let isDragging = dragging == record.id
-        return SubjectTile(record: record, isCompact: isCompact)
+        return SubjectTile(record: record, isCompact: isCompact, rounding: library.degree.rounding)
             // Inside the tile, before the wobble, so the badge is part of the card and tilts with it.
             .overlay(alignment: .topLeading) { deleteBadge(for: record) }
             .onGeometryChange(for: CGRect.self) { $0.frame(in: .named(space)) } action: { frames[record.id] = $0 }

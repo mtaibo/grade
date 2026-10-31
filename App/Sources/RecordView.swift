@@ -198,13 +198,20 @@ private struct RecordGrade: View {
     let progress: SubjectProgress
 
     var body: some View {
-        if progress.isComplete {
-            Text(progress.worst, format: .number.precision(.fractionLength(2)))
+        if progress.isNotPresented {
+            Text("NP")
+                .foregroundStyle(.secondary)
+                .fixedSize()
+                .accessibilityLabel("No presentado")
+        } else if progress.isComplete {
+            Text(progress.hasHonors
+                 ? "\(progress.worst.formatted(.number.precision(.fractionLength(2)))) MH"
+                 : progress.worst.formatted(.number.precision(.fractionLength(2))))
                 .font(.body.monospacedDigit().weight(.semibold))
                 .foregroundStyle(GradeBand.color(for: progress.worst))
                 .fixedSize()
         } else {
-            Text(progress.isUndecided ? "Por definir" : "En curso")
+            Text(progress.missesARequirement ? "Suspensa" : progress.isUndecided ? "Por definir" : "En curso")
                 .foregroundStyle(.secondary)
                 .fixedSize()
         }
@@ -216,10 +223,12 @@ private struct RecordGrade: View {
 private struct RecordSubjectView: View {
     let record: SubjectRecord
 
+    @Environment(Library.self) private var library
+
     var body: some View {
-        let progress = SubjectProgress(record)
+        let progress = SubjectProgress(record, rounding: library.degree.rounding)
         let inputs = progress.inputs
-        let parts = Self.parts(of: record.subject.root)
+        let parts = Self.parts(of: progress.session == .extraordinary ? (record.extraordinaryRoot ?? record.subject.root) : record.subject.root)
         List {
             Section {
                 HStack {
@@ -269,6 +278,14 @@ private struct RecordSubjectView: View {
             let keys = formula.expression.variableOrder.filter { formula.variables[$0] != nil }
                 + formula.variables.keys.sorted().filter { !formula.expression.variableOrder.contains($0) }
             return keys.compactMap { key in formula.variables[key].map { ($0, nil) } }
+        case .alternatives(let alternatives):
+            // The scheme that counts (both, when the best does), a shared note once.
+            var seen: Set<String> = []
+            return Node.activeBranches(alternatives).flatMap { parts(of: $0.node) }.filter { part in
+                let leaves = part.node.allLeafNames()
+                defer { seen.formUnion(leaves) }
+                return leaves.isEmpty || !leaves.allSatisfy(seen.contains)
+            }
         default:
             return []
         }

@@ -372,7 +372,7 @@ struct HomeView: View {
             onDelete: { deleting = $0 },
             normal: { record in
                 NavigationLink(value: record.id) {
-                    SubjectTile(record: record, isCompact: layout == .list)
+                    SubjectTile(record: record, isCompact: layout == .list, rounding: library.degree.rounding)
                 }
                 .buttonStyle(TilePressStyle())
                 .tourTarget(record.id == records.first?.id && selection == nil ? "home.firstTile" : nil)
@@ -500,17 +500,23 @@ struct SubjectTile: View {
     let count: (entered: Int, total: Int)?
     /// The subject's grade once every grade is in; it takes the ring's place.
     let finalGrade: Double?
+    /// "No presentado" in its current sitting: an NP takes the ring's place.
+    var isNotPresented = false
+    /// "Matrícula de honor", shown next to the final grade.
+    var hasHonors = false
     /// A slim row (icon, name, ring) instead of the tall card, for the list view.
     var isCompact = false
 
-    init(record: SubjectRecord, isCompact: Bool = false) {
+    init(record: SubjectRecord, isCompact: Bool = false, rounding: GradeRounding = .none) {
         let style = SubjectStyle(record)
-        let progress = SubjectProgress(record)
+        let progress = SubjectProgress(record, rounding: rounding)
         self.init(
             name: record.subject.name, symbol: style.symbol, tint: style.tint,
             count: (progress.enteredCount, progress.leafCount),
             finalGrade: progress.isComplete ? progress.worst : nil
         )
+        self.isNotPresented = progress.isNotPresented
+        self.hasHonors = progress.hasHonors
         self.isCompact = isCompact
     }
 
@@ -532,8 +538,16 @@ struct SubjectTile: View {
 
     @ViewBuilder
     private var indicator: some View {
-        if let finalGrade {
-            FinalGradeBadge(grade: finalGrade)
+        if isNotPresented {
+            Text("NP")
+                .font(.subheadline.weight(.bold))
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 4)
+                .background(Color(.tertiarySystemFill), in: Capsule())
+                .accessibilityLabel("No presentado")
+        } else if let finalGrade {
+            FinalGradeBadge(grade: finalGrade, hasHonors: hasHonors)
         } else if let count, count.total > 0 {
             CompletionRing(entered: count.entered, total: count.total)
         }
@@ -584,16 +598,17 @@ struct SubjectTile: View {
 /// The final grade, in the colour of its band, once the ring would be full.
 private struct FinalGradeBadge: View {
     let grade: Double
+    var hasHonors = false
 
     var body: some View {
         let tint = GradeBand.color(for: grade)
-        Text(grade, format: .number.precision(.fractionLength(0...2)))
+        Text(hasHonors ? "\(grade.formatted(.number.precision(.fractionLength(0...2)))) MH" : grade.formatted(.number.precision(.fractionLength(0...2))))
             .font(.subheadline.weight(.bold).monospacedDigit())
             .foregroundStyle(tint == .yellow ? Color.orange : tint)
             .padding(.horizontal, 10)
             .padding(.vertical, 4)
             .background(tint.opacity(0.18), in: Capsule())
-            .accessibilityLabel("Nota final \(grade.formatted(.number.precision(.fractionLength(0...2))))")
+            .accessibilityLabel("Nota final \(grade.formatted(.number.precision(.fractionLength(0...2))))\(hasHonors ? ", matrícula de honor" : "")")
     }
 }
 
