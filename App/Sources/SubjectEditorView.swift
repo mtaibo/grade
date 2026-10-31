@@ -1170,16 +1170,13 @@ private struct GradeDateSection: View {
     @Binding var grade: Grade
 
     var body: some View {
-        Section {
-            if grade.isFinalExam == true {
-                LabeledContent("Fecha", value: "En «Fechas»")
-            } else {
+        // The final exam's dates belong to its sittings (the subject's «Fechas»), not to the note.
+        if grade.isFinalExam != true {
+            Section {
                 DateRow(date: $grade.date)
+            } footer: {
+                Text("Si tiene fecha, aparece en el Calendario.")
             }
-        } footer: {
-            Text(grade.isFinalExam == true
-                 ? "El examen final tiene una fecha por convocatoria; se pone desde «Fechas» en la asignatura."
-                 : "Si tiene fecha, aparece en el Calendario.")
         }
     }
 }
