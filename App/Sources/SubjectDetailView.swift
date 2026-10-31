@@ -191,64 +191,111 @@ struct SubjectDetailView: View {
 }
 
 extension SubjectDetailView {
-    /// Reads the chosen PDF (it must really be one) and keeps a copy inside the app.
+    /// Reads the chosen PDF (it must really be one) and keeps a copy inside the app — read and
+    /// checked off the main thread, so a big guide doesn't freeze the screen.
     fileprivate func importGuide(_ result: Result<URL, Error>) {
         guard case .success(let url) = result else { return }
-        let scoped = url.startAccessingSecurityScopedResource()
-        defer { if scoped { url.stopAccessingSecurityScopedResource() } }
-        guard let data = try? Data(contentsOf: url), PDFDocument(data: data) != nil else {
-            guideError = "El archivo no es un PDF válido."
-            return
-        }
-        do {
-            try library.setGuide(data, for: recordID)
-        } catch {
-            guideError = error.localizedDescription
+        Task {
+            let data = await Task.detached(priority: .userInitiated) { () -> Data? in
+                let scoped = url.startAccessingSecurityScopedResource()
+                defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+                guard let data = try? Data(contentsOf: url), PDFDocument(data: data) != nil else { return nil }
+                return data
+            }.value
+            guard let data else {
+                guideError = "El archivo no es un PDF válido."
+                return
+            }
+            do {
+                try library.setGuide(data, for: recordID)
+            } catch {
+                guideError = error.localizedDescription
+            }
         }
     }
 }
 
-/// The stored guide, scrollable and zoomable.
+/// The stored guide, scrollable and zoomable. It's opened off the main thread (a long guide took
+/// a while and froze the sheet) and only shown once it's read.
 private struct GuideSheet: View {
     let url: URL
     let title: String
 
     @Environment(\.dismiss) private var dismiss
+    @State private var document: LoadedPDF?
+    @State private var failed = false
 
     var body: some View {
         NavigationStack {
-            PDFKitView(url: url)
-                .ignoresSafeArea(edges: .bottom)
-                .navigationTitle(title)
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    ToolbarItem(placement: .confirmationAction) {
-                        Button("Cerrar") { dismiss() }
-                    }
-                    ToolbarItem(placement: .secondaryAction) {
-                        ShareLink(item: url)
-                    }
+            Group {
+                if let document {
+                    PDFKitView(document: document.document)
+                        .ignoresSafeArea(edges: .bottom)
+                } else if failed {
+                    ContentUnavailableView("No se puede abrir la guía", systemImage: "doc.questionmark", description: Text("Bórrala desde «…» y súbela otra vez."))
+                } else {
+                    ProgressView()
                 }
+            }
+            .navigationTitle(title)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Cerrar") { dismiss() }
+                }
+                ToolbarItem(placement: .secondaryAction) {
+                    ShareLink(item: url)
+                }
+            }
+        }
+        .task {
+            let url = url
+            let loaded = await Task.detached(priority: .userInitiated) {
+                PDFDocument(url: url).map(LoadedPDF.init)
+            }.value
+            document = loaded
+            failed = loaded == nil
         }
     }
 }
 
-private struct PDFKitView: UIViewRepresentable {
-    let url: URL
+/// A read PDF handed from the loading task to the view; PDFKit's document isn't `Sendable`, but
+/// it's only touched again on the main thread once handed over.
+private final class LoadedPDF: @unchecked Sendable {
+    let document: PDFDocument
+    init(_ document: PDFDocument) { self.document = document }
+}
 
-    func makeUIView(context: Context) -> PDFView {
-        let view = PDFView()
-        view.autoScales = true
-        view.document = PDFDocument(url: url)
-        // PDFView scrolls with a UIKit scroll view inside, which SwiftUI's scrollIndicators doesn't reach.
-        for case let scrollView as UIScrollView in view.subviews {
-            scrollView.showsVerticalScrollIndicator = false
-            scrollView.showsHorizontalScrollIndicator = false
-        }
+private struct PDFKitView: UIViewRepresentable {
+    let document: PDFDocument
+
+    func makeUIView(context: Context) -> GuidePDFView {
+        let view = GuidePDFView()
+        view.displayMode = .singlePageContinuous
+        view.displayDirection = .vertical
+        view.document = document
         return view
     }
 
-    func updateUIView(_ view: PDFView, context: Context) {}
+    func updateUIView(_ view: GuidePDFView, context: Context) {}
+}
+
+/// Scales the pages to the width only once the view has a size: with `autoScales` on from the
+/// start, PDFKit worked out a scale from a zero-sized view and the app could crash opening a guide.
+private final class GuidePDFView: PDFView {
+    private var didScale = false
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        guard !didScale, bounds.width > 0, bounds.height > 0, document != nil else { return }
+        didScale = true
+        autoScales = true
+        // PDFView scrolls with a UIKit scroll view inside, which SwiftUI's scrollIndicators doesn't reach.
+        for case let scrollView as UIScrollView in subviews {
+            scrollView.showsVerticalScrollIndicator = false
+            scrollView.showsHorizontalScrollIndicator = false
+        }
+    }
 }
 
 private extension EnvironmentValues {
