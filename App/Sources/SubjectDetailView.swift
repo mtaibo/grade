@@ -131,7 +131,7 @@ struct SubjectDetailView: View {
             } else {
             ToolbarItem(placement: .primaryAction) {
                 Menu {
-                    Button("Editar", systemImage: "pencil") { isEditing = true }
+                    Button("Editar", systemImage: "slider.horizontal.3") { isEditing = true }
                     if !(library.record(id: recordID)?.isSingleGrade ?? false) {
                         Button("Fechas", systemImage: "calendar") { isEditingDates = true }
                     }
@@ -890,8 +890,8 @@ private struct DatesSheet: View {
                 .navigationTitle("Fechas")
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
-                    ToolbarItem(placement: .confirmationAction) {
-                        Button("Hecho") { dismiss() }
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button(role: .close) { dismiss() }
                     }
                 }
             }
@@ -1231,7 +1231,9 @@ private struct GradePopup: View {
                     .frame(height: min(max(contentHeight, 60), 300))
                 }
                 .padding(18)
-                .glassEffect(.regular, in: .rect(cornerRadius: 28))
+                // A solid card like the rest of the screen: the glass version felt heavy and slow.
+                .background(Color(.secondarySystemGroupedBackground), in: .rect(cornerRadius: 24))
+                .shadow(color: .black.opacity(0.12), radius: 24, y: 8)
                 .padding(.horizontal, 16)
                 .padding(.top, 8)
                 .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { cardHeight = $0 }
@@ -1241,7 +1243,7 @@ private struct GradePopup: View {
             .ignoresSafeArea(.keyboard)
             .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { containerFrame = $0 }
             .onAppear {
-                withAnimation(.spring(duration: 0.35, bounce: 0.15)) { shown = true }
+                withAnimation(.spring(duration: 0.25, bounce: 0)) { shown = true }
                 withAnimation(.easeOut(duration: 0.2)) { isBlurred = true }
             }
             .task {

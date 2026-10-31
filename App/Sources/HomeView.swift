@@ -330,6 +330,13 @@ struct HomeView: View {
         }
     }
 
+    /// The degree-wide term the title shows, if it shows one.
+    private var headingTerm: Int? {
+        guard let customSelection else { return period.term }
+        if case .period(_, let term) = customSelection.title { return term }
+        return nil
+    }
+
     /// The year and term as the screen's title, big enough to read at a glance.
     private var header: some View {
         let heading: (title: String, subtitle: String?) = customSelection.map(library.heading(for:))
@@ -338,9 +345,17 @@ struct HomeView: View {
             Text(heading.title)
                 .font(.system(size: yearSize, weight: .bold, design: .rounded))
             if let subtitle = heading.subtitle {
-                Text(subtitle)
-                    .font(.system(size: termSize, weight: .semibold, design: .rounded))
-                    .foregroundStyle(.secondary)
+                HStack(alignment: .firstTextBaseline) {
+                    Text(subtitle)
+                    Spacer(minLength: 8)
+                    // The term counted from the start of the degree: Q3 is the 2nd year's first.
+                    if let term = headingTerm {
+                        Text("Q\(term)")
+                            .accessibilityLabel("Cuatrimestre \(term) de la carrera")
+                    }
+                }
+                .font(.system(size: termSize, weight: .semibold, design: .rounded))
+                .foregroundStyle(.secondary)
             }
         }
         .padding(.leading, 4)
