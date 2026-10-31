@@ -15,7 +15,9 @@ struct SubjectDetailView: View {
     @State private var isEditing = false
     @State private var isEditingDates = false
     @State private var addingDateFor: Convocatoria?
-    @State private var gradeTarget: GradeTarget?
+    /// The part (and sitting) whose grades are open for typing, right inside its card.
+    @State private var editing: GradeTarget?
+    @FocusState private var focusedField: String?
     @State private var simulation: Library?
     @State private var isImportingGuide = false
     @State private var isShowingGuide = false
@@ -71,8 +73,13 @@ struct SubjectDetailView: View {
                     ExamCard(
                         record: record,
                         exam: exam,
+                        editingSession: editing?.isExam == true ? editing?.session : nil,
+                        editor: { session in
+                            PartItem.item(in: record, for: GradeTarget(partID: exam?.id ?? "", session: session, isExam: true))
+                                .map { (node: $0.node, context: context(record, session)) }
+                        },
                         onAddDate: { addingDateFor = $0 },
-                        onOpen: { session in gradeTarget = GradeTarget(partID: exam?.id ?? "", session: session, isExam: true) }
+                        onToggle: { session in toggle(GradeTarget(partID: exam?.id ?? "", session: session, isExam: true)) }
                     )
                     .tourTarget("subject.exam")
                 }
@@ -92,11 +99,13 @@ struct SubjectDetailView: View {
 
                     VStack(spacing: 12) {
                         ForEach(others) { item in
-                            PartCard(item: item, record: record, session: session, progress: progress)
-                                .onTapGesture {
-                                    gradeTarget = GradeTarget(partID: item.id, session: session)
-                                }
-                                .accessibilityAddTraits(.isButton)
+                            let isOpen = editing?.partID == item.id && editing?.isExam != true
+                            PartCard(
+                                item: item, record: record, session: session, progress: progress,
+                                editor: isOpen ? context(record, session) : nil,
+                                onToggle: { toggle(GradeTarget(partID: item.id, session: session)) }
+                            )
+                            .id(item.id)
                         }
                     }
                     .tourTarget("subject.parts")
@@ -105,13 +114,24 @@ struct SubjectDetailView: View {
             .padding(.horizontal)
             .padding(.bottom, 24)
         }
+        .scrollDismissesKeyboard(.interactively)
         .background(Color(.systemGroupedBackground))
-        // The system's own sheet: its animation, drag to close and keyboard handling stay smooth,
-        // which a hand-made overlay growing out of the tap never quite managed.
-        .sheet(item: $gradeTarget) { target in
-            GradeSheet(recordID: recordID, target: target)
-                .presentationDetents([.medium, .large])
-                .presentationDragIndicator(.visible)
+        // The decimal pad has no return key: «Listo» above it puts the keyboard away and folds the card.
+        .toolbar {
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button("Listo") { close() }
+                    .fontWeight(.semibold)
+            }
+        }
+        // Once the card has opened, the first empty note is ready to type in.
+        .task(id: editing?.id) {
+            guard let editing, let item = PartItem.item(in: record, for: editing) else { return }
+            try? await Task.sleep(for: .milliseconds(150))
+            let leaves = item.node.allLeafNames()
+            if let first = leaves.first(where: { record.entry(for: $0, in: editing.session) == nil }) ?? leaves.first {
+                focusedField = "\(editing.session.rawValue)/\(first)"
+            }
         }
 
         .navigationBarTitleDisplayMode(.inline)
@@ -229,6 +249,24 @@ struct SubjectDetailView: View {
 }
 
 extension SubjectDetailView {
+    /// Opens a part's grades in its card, or folds it if it's the one open.
+    fileprivate func toggle(_ target: GradeTarget) {
+        let isSame = editing?.partID == target.partID && editing?.session == target.session && editing?.isExam == target.isExam
+        focusedField = nil
+        withAnimation(.snappy(duration: 0.3)) { editing = isSame ? nil : target }
+    }
+
+    fileprivate func close() {
+        focusedField = nil
+        withAnimation(.snappy(duration: 0.3)) { editing = nil }
+    }
+
+    fileprivate func context(_ record: SubjectRecord, _ session: Convocatoria) -> PartContext {
+        PartContext(record: record, session: session, inputs: SubjectProgress.inputs(record, session: session), focus: $focusedField) { leaf, entry in
+            library.setEntry(entry, forLeaf: leaf, in: recordID, session: session)
+        }
+    }
+
     /// Reads the chosen PDF (it must really be one) and keeps a copy inside the app — read and
     /// checked off the main thread, so a big guide doesn't freeze the screen.
     fileprivate func importGuide(_ result: Result<URL, Error>) {
@@ -715,8 +753,12 @@ private struct ProgressPill: View {
 private struct ExamCard: View {
     let record: SubjectRecord
     let exam: PartItem?
+    /// The sitting open for typing, if any.
+    let editingSession: Convocatoria?
+    /// The exam's node in a sitting (the extraordinary may have its own) and how to write to it.
+    let editor: (Convocatoria) -> (node: Node, context: PartContext)?
     let onAddDate: (Convocatoria) -> Void
-    let onOpen: (Convocatoria) -> Void
+    let onToggle: (Convocatoria) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -736,8 +778,9 @@ private struct ExamCard: View {
                     session: session,
                     date: record.examDate(for: session),
                     summary: exam.map { PartSummary(node: $0.node, record: record, session: session) },
+                    editor: editingSession == session ? editor(session) : nil,
                     onAddDate: { onAddDate(session) },
-                    onOpen: { onOpen(session) }
+                    onToggle: { onToggle(session) }
                 )
             }
         }
@@ -749,33 +792,48 @@ private struct ExamSlot: View {
     let session: Convocatoria
     let date: Date?
     let summary: PartSummary?
+    /// Set while this sitting is open for typing.
+    let editor: (node: Node, context: PartContext)?
     let onAddDate: () -> Void
-    let onOpen: () -> Void
+    let onToggle: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .center) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(session.label)
-                        .font(.subheadline.weight(.semibold))
-                    dateLine
-                }
-                Spacer(minLength: 8)
-                if let summary {
-                    Text(summary.text)
-                        .font(.title3.weight(.semibold).monospacedDigit())
-                        .foregroundStyle(summary.hasAnyGrade ? .primary : .tertiary)
-                    Image(systemName: "chevron.right")
-                        .font(.footnote.weight(.semibold))
-                        .foregroundStyle(.tertiary)
-                }
-            }
+            row
             if let summary {
                 ProgressBar(fraction: summary.fraction, tint: summary.tint)
             }
+            if let editor {
+                PartContent(node: editor.node, context: editor.context)
+                    .padding(.top, 4)
+                    .transition(.opacity)
+            }
         }
         .contentShape(.rect)
-        .onTapGesture { if summary != nil { onOpen() } }
+        // Closed, the whole slot opens it; open, only its top row folds it.
+        .onTapGesture { if editor == nil, summary != nil { onToggle() } }
+    }
+
+    private var row: some View {
+        HStack(alignment: .center) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(session.label)
+                    .font(.subheadline.weight(.semibold))
+                dateLine
+            }
+            Spacer(minLength: 8)
+            if let summary {
+                Text(summary.text)
+                    .font(.title3.weight(.semibold).monospacedDigit())
+                    .foregroundStyle(summary.hasAnyGrade ? .primary : .tertiary)
+                Image(systemName: "chevron.right")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+                    .rotationEffect(.degrees(editor == nil ? 0 : 90))
+            }
+        }
+        .contentShape(.rect)
+        .onTapGesture { if editor != nil { onToggle() } }
     }
 
     @ViewBuilder
@@ -914,6 +972,13 @@ private struct DateToggleRow: View {
 
 /// One top-level part of the evaluation, with the share of the grade it carries.
 private struct PartItem: Identifiable {
+    /// The part a target points at, in its sitting; the exam's slot finds the exam even when the
+    /// extraordinary has a tree of its own.
+    static func item(in record: SubjectRecord, for target: GradeTarget) -> PartItem? {
+        let items = items(of: record, session: target.session)
+        return items.first { $0.id == target.partID } ?? (target.isExam ? items.first(where: \.isExam) : nil)
+    }
+
     let id: String
     let node: Node
     let weightPercent: Double?
@@ -1031,71 +1096,98 @@ private struct PartCard: View {
     let record: SubjectRecord
     let session: Convocatoria
     let progress: SubjectProgress
+    /// Set while the card is open for typing: its notes become fields, right here.
+    var editor: PartContext?
+    var onToggle: () -> Void = {}
+
+    private var isOpen: Bool { editor != nil }
 
     var body: some View {
         let summary = PartSummary(node: item.node, record: record, session: session)
         VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text(item.node.title)
-                    .font(.headline)
-                    .multilineTextAlignment(.leading)
-                if let weightPercent = item.weightPercent {
-                    WeightChip(percent: weightPercent, isMaximum: item.isMaximum)
-                }
-                Spacer(minLength: 8)
-                if let date = item.node.asGrade?.date {
-                    DueDateLabel(date: date)
-                }
-                Text(summary.text)
-                    .font(.title3.weight(.semibold).monospacedDigit())
-                    .foregroundStyle(summary.hasAnyGrade ? .primary : .tertiary)
-                Image(systemName: "chevron.right")
-                    .font(.footnote.weight(.semibold))
-                    .foregroundStyle(.tertiary)
-            }
+            header(summary)
             ProgressBar(fraction: summary.fraction, tint: summary.tint)
-            if let group = item.node.asGroup, group.children.allSatisfy({ $0.node.asGrade != nil }) {
-                // A grid, so the dates and the values line up in columns whatever their width
-                // ("8,3" above "0,83 / 2").
-                let hasDates = group.children.contains { $0.node.asGrade?.date != nil }
-                let shares = absoluteShares(of: group)
-                Grid(alignment: .trailing, horizontalSpacing: 12, verticalSpacing: 6) {
-                    ForEach(group.children) { child in
-                        if let grade = child.node.asGrade {
-                            GridRow {
-                                HStack(alignment: .firstTextBaseline, spacing: 6) {
-                                    Text(grade.name)
-                                        .foregroundStyle(.secondary)
-                                    if let share = shares[child.id] {
-                                        Text("\(share.formatted(.number.precision(.fractionLength(0...2))))\u{00A0}%")
-                                            .font(.caption.monospacedDigit())
-                                            .foregroundStyle(.tertiary)
-                                    }
-                                }
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                    .gridColumnAlignment(.leading)
-                                if hasDates {
-                                    if let date = grade.date {
-                                        DueDateLabel(date: date)
-                                    } else {
-                                        Color.clear.frame(width: 0, height: 0)
-                                    }
-                                }
-                                Text(PartSummary.display(of: grade, record: record, session: session))
-                                    .monospacedDigit()
-                            }
-                            .font(.subheadline)
-                        }
-                    }
-                }
+            if let editor {
+                PartContent(node: item.node, context: editor)
+                    .padding(.top, 4)
+                    .transition(.opacity)
+            } else {
+                notes
             }
         }
         .card()
         .contentShape(.rect)
-        // One element for VoiceOver: "Prácticas, 40 %, 7,5. Abre para poner sus notas."
-        .accessibilityElement(children: .ignore)
+        // Closed, the whole card opens it; open, only the header folds it, so taps on the fields
+        // stay on the fields.
+        .onTapGesture { if !isOpen { onToggle() } }
+        .accessibilityElement(children: isOpen ? .contain : .ignore)
         .accessibilityLabel(accessibilityText(summary))
-        .accessibilityHint("Abre sus notas")
+        .accessibilityHint(isOpen ? "" : "Abre sus notas para escribirlas")
+        .accessibilityAddTraits(isOpen ? [] : .isButton)
+    }
+
+    private func header(_ summary: PartSummary) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Text(item.node.title)
+                .font(.headline)
+                .multilineTextAlignment(.leading)
+            if let weightPercent = item.weightPercent {
+                WeightChip(percent: weightPercent, isMaximum: item.isMaximum)
+            }
+            Spacer(minLength: 8)
+            if let date = item.node.asGrade?.date {
+                DueDateLabel(date: date)
+            }
+            Text(summary.text)
+                .font(.title3.weight(.semibold).monospacedDigit())
+                .foregroundStyle(summary.hasAnyGrade ? .primary : .tertiary)
+            Image(systemName: "chevron.right")
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(.tertiary)
+                .rotationEffect(.degrees(isOpen ? 90 : 0))
+        }
+        .contentShape(.rect)
+        .onTapGesture { if isOpen { onToggle() } }
+    }
+
+    /// Closed: each note of a group of notes with its grade, read-only.
+    @ViewBuilder
+    private var notes: some View {
+        if let group = item.node.asGroup, group.children.allSatisfy({ $0.node.asGrade != nil }) {
+            // A grid, so the dates and the values line up in columns whatever their width
+            // ("8,3" above "0,83 / 2").
+            let hasDates = group.children.contains { $0.node.asGrade?.date != nil }
+            let shares = absoluteShares(of: group)
+            Grid(alignment: .trailing, horizontalSpacing: 12, verticalSpacing: 6) {
+                ForEach(group.children) { child in
+                    if let grade = child.node.asGrade {
+                        GridRow {
+                            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                                Text(grade.name)
+                                    .foregroundStyle(.secondary)
+                                if let share = shares[child.id] {
+                                    Text("\(share.formatted(.number.precision(.fractionLength(0...2))))\u{00A0}%")
+                                        .font(.caption.monospacedDigit())
+                                        .foregroundStyle(.tertiary)
+                                }
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                                .gridColumnAlignment(.leading)
+                            if hasDates {
+                                if let date = grade.date {
+                                    DueDateLabel(date: date)
+                                } else {
+                                    Color.clear.frame(width: 0, height: 0)
+                                }
+                            }
+                            Text(PartSummary.display(of: grade, record: record, session: session))
+                                .monospacedDigit()
+                        }
+                        .font(.subheadline)
+                    }
+                }
+            }
+        }
     }
 
     private func accessibilityText(_ summary: PartSummary) -> String {
@@ -1147,61 +1239,6 @@ private struct ProgressBar: View {
 /// Where a grade is typed: a card pinned to the top of the screen over a blurred background, so the
 /// keyboard rising from the bottom never pushes it around. It focuses the first empty field, and
 /// "Hecho" or a tap outside closes it.
-/// One part's grades for one sitting, in a sheet: every note of the part, the first empty one
-/// ready to type in. Each grade is saved as it's typed; ✓ or a drag down closes it.
-private struct GradeSheet: View {
-    let recordID: SubjectRecord.ID
-    let target: GradeTarget
-
-    @Environment(Library.self) private var library
-    @Environment(\.dismiss) private var dismiss
-    @FocusState private var focusedField: String?
-
-    /// The part tapped, in the sitting asked for; the exam's slot finds the exam even when the
-    /// extraordinary has a tree of its own.
-    static func item(in record: SubjectRecord, for target: GradeTarget) -> PartItem? {
-        let items = PartItem.items(of: record, session: target.session)
-        return items.first { $0.id == target.partID } ?? (target.isExam ? items.first(where: \.isExam) : nil)
-    }
-
-    var body: some View {
-        NavigationStack {
-            SwiftUI.Group {
-                if let record = library.record(id: recordID), let item = Self.item(in: record, for: target) {
-                    let session = target.session
-                    ScrollView {
-                        PartContent(node: item.node, context: PartContext(
-                            record: record, session: session, inputs: SubjectProgress.inputs(record, session: session), focus: $focusedField
-                        ) { leaf, entry in
-                            library.setEntry(entry, forLeaf: leaf, in: recordID, session: session)
-                        })
-                        .frame(maxWidth: .infinity)
-                        .padding(.horizontal)
-                        .padding(.top, 8)
-                    }
-                    .scrollBounceBehavior(.basedOnSize)
-                    .navigationTitle(item.isExam ? "\(item.node.title) · \(session.label)" : item.node.title)
-                    .task {
-                        let leaves = item.node.allLeafNames()
-                        if let first = leaves.first(where: { record.entry(for: $0, in: session) == nil }) ?? leaves.first {
-                            focusedField = "\(session.rawValue)/\(first)"
-                        }
-                    }
-                } else {
-                    ContentUnavailableView("Esta parte ya no existe", systemImage: "questionmark.folder")
-                }
-            }
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button(role: .confirm) { dismiss() }
-                        .accessibilityLabel("Hecho")
-                }
-            }
-        }
-    }
-}
-
 /// What every input needs to read and write grades for the sitting on screen.
 private struct PartContext {
     let record: SubjectRecord
