@@ -11,6 +11,7 @@ struct GradeApp: App {
     @AppStorage("tourOffered") private var tourOffered = false
     @State private var isOfferingTour = false
     @State private var tourWindow: TourWindow?
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some Scene {
         WindowGroup {
@@ -36,6 +37,9 @@ struct GradeApp: App {
             .environment(tour)
             .onChange(of: [tour.session.uuidString, String(tour.index)]) {
                 if let tab = tour.current?.tab { selectedTab = tab }
+            }
+            .onChange(of: scenePhase) { _, phase in
+                if phase == .active { library.reloadIfNeeded() }
             }
             .onChange(of: tour.isActive) { _, isActive in
                 tourWindow?.isHidden = !isActive

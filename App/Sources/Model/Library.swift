@@ -180,7 +180,7 @@ struct Course: Identifiable, Codable, Equatable {
 @MainActor
 @Observable
 final class Library {
-    private(set) var courses: [Course]
+    private(set) var courses: [Course] = []
     private(set) var degree = DegreeSettings()
     /// `false` once the current study has been archived and no other created yet: Cuenta offers to
     /// create one, and so does adding a subject. A fresh install starts with one (a university
@@ -194,6 +194,10 @@ final class Library {
     private(set) var archives: [ArchivedStudy] = []
     /// Subjects that have a teaching guide (PDF) stored next to the library file.
     private(set) var guideIDs: Set<SubjectRecord.ID> = []
+    /// The file is there but couldn't be read at all — iOS keeps it locked until the phone is
+    /// first unlocked after a restart, and can launch the app before that. Nothing is saved over
+    /// it until `reloadIfNeeded()` manages to read it.
+    @ObservationIgnored private var isWaitingForFile = false
 
     private struct Snapshot: Codable {
         var courses: [Course]
@@ -218,7 +222,23 @@ final class Library {
 
     init(fileURL: URL = URL.applicationSupportDirectory.appending(path: "library.json")) {
         self.fileURL = fileURL
+        load()
+        let files = (try? FileManager.default.contentsOfDirectory(at: guidesDirectory, includingPropertiesForKeys: nil)) ?? []
+        guideIDs = Set(files.filter { $0.pathExtension == "pdf" }.compactMap { UUID(uuidString: $0.deletingPathExtension().lastPathComponent) })
+        save()
+    }
+
+    /// Reads the file again if it couldn't be read at launch; call it when the app comes forward.
+    func reloadIfNeeded() {
+        guard isWaitingForFile else { return }
+        load()
+        if !isWaitingForFile { save() }
+    }
+
+    private func load() {
+        guard let fileURL else { return }
         let data = try? Data(contentsOf: fileURL)
+        isWaitingForFile = data == nil && FileManager.default.fileExists(atPath: fileURL.path(percentEncoded: false))
         if let data, let snapshot = try? Self.fileDecoder.decode(Snapshot.self, from: data) {
             courses = snapshot.courses
             degree = snapshot.degree ?? DegreeSettings()
@@ -235,13 +255,11 @@ final class Library {
             if data != nil {
                 let aside = fileURL.deletingLastPathComponent()
                     .appending(path: "library-unreadable-\(Int(Date.now.timeIntervalSince1970)).json")
-                try? FileManager.default.copyItem(at: fileURL, to: aside)
+                // And if even that fails, it's left alone rather than saved over.
+                if (try? FileManager.default.copyItem(at: fileURL, to: aside)) == nil { isWaitingForFile = true }
             }
         }
         normalize()
-        let files = (try? FileManager.default.contentsOfDirectory(at: guidesDirectory, includingPropertiesForKeys: nil)) ?? []
-        guideIDs = Set(files.filter { $0.pathExtension == "pdf" }.compactMap { UUID(uuidString: $0.deletingPathExtension().lastPathComponent) })
-        save()
     }
 
     /// A throwaway library holding a copy of one subject with its current grades, for the
@@ -732,7 +750,7 @@ final class Library {
     }
 
     private func save() {
-        guard let fileURL else { return }
+        guard let fileURL, !isWaitingForFile else { return }
         do {
             try FileManager.default.createDirectory(at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
             try Self.fileEncoder.encode(Snapshot(courses: courses, degree: degree, selections: selections, archives: archives, hasStudy: hasStudy))
