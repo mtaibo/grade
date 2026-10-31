@@ -7,7 +7,8 @@ import SwiftUI
 struct CustomSelection: Identifiable, Codable, Equatable {
     /// What the home screen shows as the big title.
     enum Title: Codable, Equatable, Hashable {
-        /// The year and term of the subject furthest along in the degree.
+        /// The year alone when the view holds exactly one whole year; otherwise the year and term
+        /// of the subject furthest along in the degree.
         case automatic
         /// A year and term picked by hand (`term` nil for "Todo el año").
         case period(year: Int, term: Int?)
@@ -32,9 +33,19 @@ extension Library {
             let period = Period(year: year, term: term)
             return (period.title(in: degree), period.subtitle(in: degree))
         case .automatic:
+            if let year = wholeYear(of: selection.subjectIDs) { return (degree.yearLabel(year), nil) }
             guard let period = furthestPeriod(of: selection.subjectIDs) else { return ("Mi vista", nil) }
             return (period.title(in: degree), period.subtitle(in: degree))
         }
+    }
+
+    /// The year these subjects are, when they're every one of its subjects and nothing else: one
+    /// missing, or one from another year, and it's `nil`.
+    func wholeYear(of ids: [SubjectRecord.ID]) -> Int? {
+        let picked = Set(ids)
+        return courses.first { course in
+            !course.subjects.isEmpty && Set(course.subjects.map(\.id)) == picked
+        }?.year
     }
 
     /// The latest year and term among these subjects; a year-long one counts as its year's last.
@@ -302,7 +313,7 @@ struct CustomSelectionEditor: View {
                     Text("Título en la pantalla principal")
                 } footer: {
                     switch mode.wrappedValue {
-                    case .automatic: Text("El año y el cuatrimestre de la asignatura más avanzada de las que elijas.")
+                    case .automatic: Text("Si eliges todas las asignaturas de un año y ninguna más, ese año. Si no, el año y el \(termName.lowercased()) de la más avanzada.")
                     case .period: Text("Cualquiera, aunque no coincida con el de las asignaturas: por ejemplo, el curso en el que estás aunque arrastres alguna de antes.")
                     case .name: Text("Lo que quieras que ponga arriba.")
                     }
