@@ -99,6 +99,16 @@ private struct FormulaParser {
     /// How many parentheses and calls are open, capped so a pasted wall of «(» can't overflow the stack.
     var depth = 0
     static let maxDepth = 40
+    /// How many operations (`+`, `*`, `min`…) the formula has so far. Even a flat «A + A + …» nests
+    /// one level per operation once read, and a few hundred overflow the stack when the subject is
+    /// saved or loaded; the guides' formulas need about ten.
+    var operations = 0
+    static let maxOperations = 60
+
+    mutating func countOperation() throws {
+        operations += 1
+        guard operations <= Self.maxOperations else { throw FormulaParseError(message: "La fórmula es demasiado larga.") }
+    }
 
     init(characters: [Character], variables: Set<String>) {
         self.characters = characters
@@ -126,6 +136,7 @@ private struct FormulaParser {
             skipSpaces()
             guard let c = peek, "+-−".contains(c) else { return result }
             index += 1
+            try countOperation()
             let rhs = try parseTerm()
             result = c == "+" ? .add(result, rhs) : .subtract(result, rhs)
         }
@@ -137,6 +148,7 @@ private struct FormulaParser {
             skipSpaces()
             guard let c = peek, "*/·×÷".contains(c) else { return result }
             index += 1
+            try countOperation()
             let rhs = try parseUnary()
             result = "*·×".contains(c) ? .multiply(result, rhs) : .divide(result, rhs)
         }
@@ -149,6 +161,7 @@ private struct FormulaParser {
             depth += 1
             defer { depth -= 1 }
             guard depth <= Self.maxDepth else { throw FormulaParseError(message: "La fórmula tiene demasiados signos seguidos.") }
+            try countOperation()
             return .subtract(.constant(0), try parseUnary())
         }
         return try parsePrimary()
@@ -236,6 +249,7 @@ private struct FormulaParser {
     }
 
     mutating func parseCall(_ name: String) throws -> Expression {
+        try countOperation()
         switch name.lowercased() {
         case "min", "mín":
             let args = try parseArguments()

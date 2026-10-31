@@ -94,3 +94,19 @@ struct RobustnessTests {
         }
     }
 }
+
+extension RobustnessTests {
+    /// Each operation nests one level deeper once read, and a few hundred overflow the stack when
+    /// the subject is saved or loaded: a long pasted formula is refused instead.
+    @Test func aFormulaTooLongToStoreIsRefused() throws {
+        let long = Array(repeating: "A", count: 200).joined(separator: " + ")
+        #expect(throws: FormulaParseError.self) { try Expression.parse(long, variables: ["A"]) }
+        let calls = String(repeating: "max(A; ", count: 61) + "A" + String(repeating: ")", count: 61)
+        #expect(throws: FormulaParseError.self) { try Expression.parse(calls, variables: ["A"]) }
+        // The longest a guide could reasonably need still reads, and stores.
+        let fine = Array(repeating: "0,1 * A", count: 30).joined(separator: " + ")
+        let expression = try Expression.parse(fine, variables: ["A"])
+        let decoded = try JSONDecoder().decode(Expression.self, from: JSONEncoder().encode(expression))
+        #expect(decoded == expression)
+    }
+}

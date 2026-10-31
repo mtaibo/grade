@@ -110,16 +110,26 @@ extension GradeBackup {
     /// Each export gets a folder of its own, and the previous ones are only cleared here, at the
     /// next export: writing over the same path while Files was still copying the last one (when
     /// it asks to replace an existing copy) left the save hanging or replaced with the wrong file.
+    ///
+    /// It runs on a thread of its own with a roomy stack: encoding recurses once per level of each
+    /// evaluation tree, and a task's thread has a fraction of the main thread's stack.
     func writeTemporaryFile(named name: String) async throws -> URL {
-        try await Task.detached(priority: .userInitiated) {
-            let data = try GradeBackup.encoder.encode(self)
-            let exports = URL.temporaryDirectory.appending(path: "Exports")
-            try? FileManager.default.removeItem(at: exports)
-            let folder = exports.appending(path: UUID().uuidString)
-            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-            let url = folder.appending(path: name)
-            try data.write(to: url)
-            return url
-        }.value
+        try await withCheckedThrowingContinuation { continuation in
+            let thread = Thread {
+                continuation.resume(with: Result {
+                    let data = try GradeBackup.encoder.encode(self)
+                    let exports = URL.temporaryDirectory.appending(path: "Exports")
+                    try? FileManager.default.removeItem(at: exports)
+                    let folder = exports.appending(path: UUID().uuidString)
+                    try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+                    let url = folder.appending(path: name)
+                    try data.write(to: url)
+                    return url
+                })
+            }
+            thread.stackSize = 16 << 20
+            thread.qualityOfService = .userInitiated
+            thread.start()
+        }
     }
 }
