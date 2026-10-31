@@ -16,8 +16,6 @@ struct SubjectDetailView: View {
     @State private var isEditingDates = false
     @State private var addingDateFor: Convocatoria?
     @State private var gradeTarget: GradeTarget?
-    /// Driven by the popup itself, so the blur leaves as soon as it starts closing.
-    @State private var isBlurred = false
     @State private var simulation: Library?
     @State private var isImportingGuide = false
     @State private var isShowingGuide = false
@@ -74,7 +72,7 @@ struct SubjectDetailView: View {
                         record: record,
                         exam: exam,
                         onAddDate: { addingDateFor = $0 },
-                        onOpen: { session, point in gradeTarget = GradeTarget(partID: exam?.id ?? "", session: session, origin: point, isExam: true) }
+                        onOpen: { session in gradeTarget = GradeTarget(partID: exam?.id ?? "", session: session, isExam: true) }
                     )
                     .tourTarget("subject.exam")
                 }
@@ -95,8 +93,8 @@ struct SubjectDetailView: View {
                     VStack(spacing: 12) {
                         ForEach(others) { item in
                             PartCard(item: item, record: record, session: session, progress: progress)
-                                .onTapGesture(coordinateSpace: .global) { point in
-                                    gradeTarget = GradeTarget(partID: item.id, session: session, origin: point)
+                                .onTapGesture {
+                                    gradeTarget = GradeTarget(partID: item.id, session: session)
                                 }
                                 .accessibilityAddTraits(.isButton)
                         }
@@ -107,17 +105,13 @@ struct SubjectDetailView: View {
             .padding(.horizontal)
             .padding(.bottom, 24)
         }
-        .blur(radius: isBlurred ? 3 : 0)
         .background(Color(.systemGroupedBackground))
-        .overlay {
-            if let target = gradeTarget {
-                // A fresh popup per opening, and closing only clears its own: one closed and
-                // another opened within the close animation must not dismiss the new one.
-                GradePopup(recordID: recordID, target: target, isBlurred: $isBlurred) {
-                    if gradeTarget?.id == target.id { gradeTarget = nil }
-                }
-                .id(target.id)
-            }
+        // The system's own sheet: its animation, drag to close and keyboard handling stay smooth,
+        // which a hand-made overlay growing out of the tap never quite managed.
+        .sheet(item: $gradeTarget) { target in
+            GradeSheet(recordID: recordID, target: target)
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
         }
 
         .navigationBarTitleDisplayMode(.inline)
@@ -351,8 +345,6 @@ private extension EnvironmentValues {
 private struct GradeTarget: Identifiable {
     let partID: String
     let session: Convocatoria
-    /// Where on screen it was tapped: the popup grows out of that point.
-    var origin: CGPoint = .zero
     /// Opened from the exam card.
     var isExam = false
     let id = UUID()
@@ -724,7 +716,7 @@ private struct ExamCard: View {
     let record: SubjectRecord
     let exam: PartItem?
     let onAddDate: (Convocatoria) -> Void
-    let onOpen: (Convocatoria, CGPoint) -> Void
+    let onOpen: (Convocatoria) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -745,7 +737,7 @@ private struct ExamCard: View {
                     date: record.examDate(for: session),
                     summary: exam.map { PartSummary(node: $0.node, record: record, session: session) },
                     onAddDate: { onAddDate(session) },
-                    onOpen: { onOpen(session, $0) }
+                    onOpen: { onOpen(session) }
                 )
             }
         }
@@ -758,7 +750,7 @@ private struct ExamSlot: View {
     let date: Date?
     let summary: PartSummary?
     let onAddDate: () -> Void
-    let onOpen: (CGPoint) -> Void
+    let onOpen: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -783,7 +775,7 @@ private struct ExamSlot: View {
             }
         }
         .contentShape(.rect)
-        .onTapGesture(coordinateSpace: .global) { point in if summary != nil { onOpen(point) } }
+        .onTapGesture { if summary != nil { onOpen() } }
     }
 
     @ViewBuilder
@@ -1155,33 +1147,15 @@ private struct ProgressBar: View {
 /// Where a grade is typed: a card pinned to the top of the screen over a blurred background, so the
 /// keyboard rising from the bottom never pushes it around. It focuses the first empty field, and
 /// "Hecho" or a tap outside closes it.
-private struct GradePopup: View {
+/// One part's grades for one sitting, in a sheet: every note of the part, the first empty one
+/// ready to type in. Each grade is saved as it's typed; ✓ or a drag down closes it.
+private struct GradeSheet: View {
     let recordID: SubjectRecord.ID
     let target: GradeTarget
-    @Binding var isBlurred: Bool
-    let onClose: () -> Void
 
     @Environment(Library.self) private var library
+    @Environment(\.dismiss) private var dismiss
     @FocusState private var focusedField: String?
-    @State private var contentHeight: CGFloat = 0
-    @State private var shown = false
-    /// Measured on the unscaled container and the card's own size — never on the scaled card, or
-    /// the scale animation would keep changing what it's measuring.
-    @State private var containerFrame: CGRect = .zero
-    @State private var cardHeight: CGFloat = 0
-
-    private var cardFrame: CGRect {
-        CGRect(x: containerFrame.minX + 16, y: containerFrame.minY + 8, width: containerFrame.width - 32, height: cardHeight)
-    }
-
-    /// Where the card grows from: the point that was tapped, in the card's own unit space.
-    private var anchor: UnitPoint {
-        guard cardFrame.width > 0, cardFrame.height > 0, target.origin != .zero else { return .top }
-        return UnitPoint(
-            x: (target.origin.x - cardFrame.minX) / cardFrame.width,
-            y: (target.origin.y - cardFrame.minY) / cardFrame.height
-        )
-    }
 
     /// The part tapped, in the sitting asked for; the exam's slot finds the exam even when the
     /// extraordinary has a tree of its own.
@@ -1190,67 +1164,39 @@ private struct GradePopup: View {
         return items.first { $0.id == target.partID } ?? (target.isExam ? items.first(where: \.isExam) : nil)
     }
 
-    private func close() {
-        guard shown else { return }
-        withAnimation(.spring(duration: 0.25, bounce: 0)) { shown = false }
-        withAnimation(.easeOut(duration: 0.15)) { isBlurred = false }
-        focusedField = nil
-        Task {
-            try? await Task.sleep(for: .milliseconds(200))
-            onClose()
-        }
-    }
-
     var body: some View {
-        if let record = library.record(id: recordID), let item = Self.item(in: record, for: target) {
-            let session = target.session
-            let inputs = SubjectProgress.inputs(record, session: session)
-            ZStack(alignment: .top) {
-                Color.black.opacity(shown ? 0.16 : 0)
-                    .ignoresSafeArea()
-                    .onTapGesture(perform: close)
-                VStack(spacing: 14) {
-                    HStack {
-                        Text(item.isExam ? "\(item.node.title) · \(session.label)" : item.node.title)
-                            .font(.headline)
-                            .lineLimit(2)
-                        Spacer(minLength: 12)
-                        Button("Hecho", action: close)
-                            .fontWeight(.semibold)
-                    }
+        NavigationStack {
+            SwiftUI.Group {
+                if let record = library.record(id: recordID), let item = Self.item(in: record, for: target) {
+                    let session = target.session
                     ScrollView {
                         PartContent(node: item.node, context: PartContext(
-                            record: record, session: session, inputs: inputs, focus: $focusedField
+                            record: record, session: session, inputs: SubjectProgress.inputs(record, session: session), focus: $focusedField
                         ) { leaf, entry in
                             library.setEntry(entry, forLeaf: leaf, in: recordID, session: session)
                         })
                         .frame(maxWidth: .infinity)
-                        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { contentHeight = $0 }
+                        .padding(.horizontal)
+                        .padding(.top, 8)
                     }
                     .scrollBounceBehavior(.basedOnSize)
-                    .frame(height: min(max(contentHeight, 60), 300))
+                    .navigationTitle(item.isExam ? "\(item.node.title) · \(session.label)" : item.node.title)
+                    .task {
+                        let leaves = item.node.allLeafNames()
+                        if let first = leaves.first(where: { record.entry(for: $0, in: session) == nil }) ?? leaves.first {
+                            focusedField = "\(session.rawValue)/\(first)"
+                        }
+                    }
+                } else {
+                    ContentUnavailableView("Esta parte ya no existe", systemImage: "questionmark.folder")
                 }
-                .padding(18)
-                // A solid card like the rest of the screen: the glass version felt heavy and slow.
-                .background(Color(.secondarySystemGroupedBackground), in: .rect(cornerRadius: 24))
-                .shadow(color: .black.opacity(0.12), radius: 24, y: 8)
-                .padding(.horizontal, 16)
-                .padding(.top, 8)
-                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { cardHeight = $0 }
-                .scaleEffect(shown ? 1 : 0.2, anchor: anchor)
-                .opacity(shown ? 1 : 0)
             }
-            .ignoresSafeArea(.keyboard)
-            .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { containerFrame = $0 }
-            .onAppear {
-                withAnimation(.spring(duration: 0.25, bounce: 0)) { shown = true }
-                withAnimation(.easeOut(duration: 0.2)) { isBlurred = true }
-            }
-            .task {
-                let leaves = item.node.allLeafNames()
-                let first = leaves.first { record.entry(for: $0, in: session) == nil } ?? leaves.first
-                try? await Task.sleep(for: .milliseconds(250))
-                if let first { focusedField = "\(session.rawValue)/\(first)" }
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(role: .confirm) { dismiss() }
+                        .accessibilityLabel("Hecho")
+                }
             }
         }
     }
