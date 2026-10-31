@@ -401,7 +401,9 @@ struct HomeView: View {
                 Button("Listo") { isEditing = false }
                     .fontWeight(.semibold)
             }
-        } else {
+        } else if !periods.isEmpty {
+            // With no subjects the screen is just the empty state and its button: nothing to sort,
+            // lay out or switch between.
             if periods.count + library.selections.count > 1 {
                 ToolbarItem(placement: .topBarTrailing) {
                     Menu {

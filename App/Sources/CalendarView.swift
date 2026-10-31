@@ -167,18 +167,21 @@ struct CalendarView: View {
         return NavigationStack {
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 20) {
-                    VStack(alignment: .leading, spacing: 0) {
-                        FoldingHeader(title: "Calendario", isExpanded: showsMonth) { showList(isMonthShown) }
-                            .font(.system(size: titleSize, weight: .bold, design: .rounded))
-                            .padding(.leading, 4)
+                    // Nothing dated yet: only the empty state, with no title, month, list or filter.
+                    if !allDeadlines.isEmpty {
+                        VStack(alignment: .leading, spacing: 0) {
+                            FoldingHeader(title: "Calendario", isExpanded: showsMonth) { showList(isMonthShown) }
+                                .font(.system(size: titleSize, weight: .bold, design: .rounded))
+                                .padding(.leading, 4)
 
-                        MonthCalendar(dayKinds: dayKinds(deadlines), selection: $selectedDay)
-                            .frame(maxWidth: 320)
-                            .frame(maxWidth: .infinity)
-                            .card(padding: 4)
-                            .tourTarget("calendar.month")
-                            .padding(.top, 28)
-                            .folded(!showsMonth)
+                            MonthCalendar(dayKinds: dayKinds(deadlines), selection: $selectedDay)
+                                .frame(maxWidth: 320)
+                                .frame(maxWidth: .infinity)
+                                .card(padding: 4)
+                                .tourTarget("calendar.month")
+                                .padding(.top, 28)
+                                .folded(!showsMonth)
+                        }
                     }
 
                     if let day = selectedDay {
@@ -216,45 +219,44 @@ struct CalendarView: View {
                         .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .top)))
                     }
 
-                    VStack(alignment: .leading, spacing: 10) {
-                        FoldingHeader(title: "Próximas fechas", isExpanded: showsList) { showList(!isListShown) }
-                            .font(.title3.bold())
-                            .padding(.horizontal, 4)
-
+                    if !allDeadlines.isEmpty {
                         VStack(alignment: .leading, spacing: 10) {
-                            if allDeadlines.isEmpty {
-                                // Said once, in the middle of the screen, below.
-                                EmptyView()
-                            } else if visible.isEmpty {
-                                Text(isFiltered && deadlines.isEmpty ? "Nada con estos filtros." : "No queda nada pendiente. 🎉")
-                                    .foregroundStyle(.secondary)
-                                    .padding(.horizontal, 4)
-                            } else {
-                                ForEach(visible) { deadline in
-                                    NavigationLink(value: deadline.recordID) {
-                                        DeadlineRow(deadline: deadline)
+                            FoldingHeader(title: "Próximas fechas", isExpanded: showsList) { showList(!isListShown) }
+                                .font(.title3.bold())
+                                .padding(.horizontal, 4)
+
+                            VStack(alignment: .leading, spacing: 10) {
+                                if visible.isEmpty {
+                                    Text(isFiltered && deadlines.isEmpty ? "Nada con estos filtros." : "No queda nada pendiente. 🎉")
+                                        .foregroundStyle(.secondary)
+                                        .padding(.horizontal, 4)
+                                } else {
+                                    ForEach(visible) { deadline in
+                                        NavigationLink(value: deadline.recordID) {
+                                            DeadlineRow(deadline: deadline)
+                                        }
+                                        .buttonStyle(.plain)
                                     }
-                                    .buttonStyle(.plain)
-                                }
-                                if hasMore {
-                                    Button {
-                                        withAnimation { upcomingCount += Self.pageSize }
-                                    } label: {
-                                        Label("Ver más", systemImage: "chevron.down")
-                                            .labelStyle(TrailingIconLabelStyle())
-                                            .font(.subheadline.weight(.medium))
-                                            .frame(maxWidth: .infinity)
-                                            .padding(.vertical, 6)
-                                            .contentShape(.rect)
+                                    if hasMore {
+                                        Button {
+                                            withAnimation { upcomingCount += Self.pageSize }
+                                        } label: {
+                                            Label("Ver más", systemImage: "chevron.down")
+                                                .labelStyle(TrailingIconLabelStyle())
+                                                .font(.subheadline.weight(.medium))
+                                                .frame(maxWidth: .infinity)
+                                                .padding(.vertical, 6)
+                                                .contentShape(.rect)
+                                        }
+                                        .buttonStyle(.plain)
+                                        .foregroundStyle(.tint)
                                     }
-                                    .buttonStyle(.plain)
-                                    .foregroundStyle(.tint)
                                 }
                             }
+                            .folded(!showsList)
                         }
-                        .folded(!showsList)
+                        .tourTarget("calendar.list")
                     }
-                    .tourTarget("calendar.list")
 
                     if allDeadlines.isEmpty {
                         ContentUnavailableView(
@@ -278,16 +280,18 @@ struct CalendarView: View {
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        isFiltering = true
-                    } label: {
-                        Image(systemName: isFiltered ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease")
-                    }
-                    .accessibilityLabel("Filtrar")
-                    .popover(isPresented: $isFiltering) {
-                        KindFilter(shown: shownKinds, toggle: toggle)
-                            .presentationCompactAdaptation(.popover)
+                if !allDeadlines.isEmpty {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button {
+                            isFiltering = true
+                        } label: {
+                            Image(systemName: isFiltered ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease")
+                        }
+                        .accessibilityLabel("Filtrar")
+                        .popover(isPresented: $isFiltering) {
+                            KindFilter(shown: shownKinds, toggle: toggle)
+                                .presentationCompactAdaptation(.popover)
+                        }
                     }
                 }
             }
