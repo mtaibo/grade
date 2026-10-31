@@ -221,7 +221,7 @@ private struct AdvancedSubjectView: View {
                         LabeledContent("Créditos ECTS", value: subject.ectsCredits.formatted())
                     }
                 } footer: {
-                    Text("Insertar texto")
+                    Text("Los créditos de la asignatura: pesan en la media del expediente y cuentan en los créditos superados.")
                 }
             }
             Section {
@@ -229,7 +229,7 @@ private struct AdvancedSubjectView: View {
                     LabeledContent("Nota para aprobar", value: subject.root.passThreshold.formatted())
                 }
             } footer: {
-                Text("Insertar texto")
+                Text("La nota final con la que se aprueba, sobre 10. Casi siempre un 5.")
             }
         }
         .navigationTitle("Avanzado")
@@ -593,7 +593,7 @@ private struct FormulaSections: View {
         } header: {
             Text("Fórmula")
         } footer: {
-            Text("Insertar texto")
+            Text("Escríbela como en la guía, con las letras de las variables de abajo: por ejemplo «0,4 * P + 0,6 * E». Los decimales llevan coma y los argumentos se separan con «;»: «min(a; b)», «max(a; b)» y «si(E >= 4; entonces; si no)».")
         }
         .onAppear { text = formula.expression.source }
 
