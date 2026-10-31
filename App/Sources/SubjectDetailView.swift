@@ -1161,7 +1161,7 @@ private struct ProgressBar: View {
 /// tap on the dim closes it.
 ///
 /// Its height comes from how many notes the part has, never measured while it animates, and the
-/// keyboard only rises once the card is in place, so opening and closing stay one smooth motion.
+/// keyboard rises along with it, so opening and closing stay one smooth motion.
 private struct GradePopup: View {
     let recordID: SubjectRecord.ID
     let target: GradeTarget?
@@ -1190,8 +1190,10 @@ private struct GradePopup: View {
                     .padding(.top, 6)
                     .transition(.move(edge: .top).combined(with: .opacity))
                     .task(id: target.id) {
-                        // After the card has arrived, so the keyboard doesn't rise mid-slide.
-                        try? await Task.sleep(for: .milliseconds(380))
+                        // Together with the slide: the card has a fixed height and ignores the
+                        // keyboard, so both can move at once. A beat first, so the field is on
+                        // screen before it's focused.
+                        try? await Task.sleep(for: .milliseconds(50))
                         let leaves = item.node.allLeafNames()
                         if let first = leaves.first(where: { record.entry(for: $0, in: target.session) == nil }) ?? leaves.first {
                             focusedField = "\(target.session.rawValue)/\(first)"
