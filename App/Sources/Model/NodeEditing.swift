@@ -127,6 +127,58 @@ extension Node {
         }
     }
 
+    /// What happens to this node in the extraordinary sitting, on whichever node can carry it.
+    var recovery: Recovery? {
+        get {
+            switch self {
+            case .grade(let grade): grade.recovery
+            case .group(let group): group.recovery
+            case .formula(let formula): formula.recovery
+            default: nil
+            }
+        }
+        set {
+            switch self {
+            case .grade(var grade): grade.recovery = newValue; self = .grade(grade)
+            case .group(var group): group.recovery = newValue; self = .group(group)
+            case .formula(var formula): formula.recovery = newValue; self = .formula(formula)
+            default: break
+            }
+        }
+    }
+
+    /// The innermost rule on the way to `leaf` (the note's own, else its section's, and so on up),
+    /// with the node that carries it.
+    func recoveryRule(for leaf: String) -> (recovery: Recovery, node: Node)? {
+        guard let path = path(to: leaf) else { return nil }
+        for node in path.reversed() {
+            if let recovery = node.recovery { return (recovery, node) }
+        }
+        return nil
+    }
+
+    /// The nodes from this one down to the grade named `leaf`, both included.
+    func path(to leaf: String) -> [Node]? {
+        switch self {
+        case .grade(let grade):
+            return grade.name == leaf ? [self] : nil
+        case .group(let group):
+            for child in group.children { if let path = child.node.path(to: leaf) { return [self] + path } }
+        case .formula(let formula):
+            for key in formula.variables.keys.sorted() { if let path = formula.variables[key]?.path(to: leaf) { return [self] + path } }
+        case .alternatives(let alternatives):
+            for branch in alternatives.branches { if let path = branch.node.path(to: leaf) { return [self] + path } }
+        case .bonus, .requirement:
+            break
+        }
+        return nil
+    }
+
+    var asAlternatives: Alternatives? {
+        get { if case .alternatives(let alternatives) = self { alternatives } else { nil } }
+        set { if let newValue { self = .alternatives(newValue) } }
+    }
+
     /// Gives every note an id of its own: one without (an older file, a template) or repeating
     /// an earlier one's (a copied section) gets a new one. In tree order, so the first copy keeps it.
     mutating func identifyGrades() {
@@ -261,6 +313,7 @@ extension Node {
             case .group(var group): group.minimum = newValue; self = .group(group)
             case .formula(var formula): formula.minimum = newValue; self = .formula(formula)
             case .grade(var grade): grade.minimum = newValue; self = .grade(grade)
+            case .alternatives(var alternatives): alternatives.minimum = newValue; self = .alternatives(alternatives)
             default: break
             }
         }
@@ -280,6 +333,9 @@ extension Node {
             case .grade(var grade):
                 grade.minimum = Minimum(threshold: newValue, consequence: grade.minimum?.consequence ?? .fails)
                 self = .grade(grade)
+            case .alternatives(var alternatives):
+                alternatives.minimum = Minimum(threshold: newValue, consequence: alternatives.minimum?.consequence ?? .fails)
+                self = .alternatives(alternatives)
             default:
                 break
             }

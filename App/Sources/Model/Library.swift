@@ -12,7 +12,7 @@ struct GradeEntry: Codable, Equatable {
 }
 
 /// The two exam sittings of an academic year.
-enum Convocatoria: String, CaseIterable, Identifiable {
+enum Convocatoria: String, CaseIterable, Identifiable, Codable {
     case ordinary, extraordinary
 
     var id: Self { self }
@@ -28,8 +28,9 @@ enum Convocatoria: String, CaseIterable, Identifiable {
 /// One subject in a course: its (editable) evaluation tree plus the grades entered for it, keyed
 /// by leaf name, for each sitting.
 ///
-/// The extraordinary sitting reuses the same tree: every part carries its ordinary grade over unless
-/// re-entered, except the final exam, which is retaken and starts empty.
+/// The extraordinary sitting reuses the same tree unless it has its own (`extraordinaryRoot`). A
+/// part carries its ordinary grade over as its "En la extraordinaria" rule says: by default
+/// everything does except the final exam, which is retaken and starts empty.
 struct SubjectRecord: Identifiable, Codable, Equatable {
     var id: UUID
     var subject: Subject
@@ -48,6 +49,17 @@ struct SubjectRecord: Identifiable, Codable, Equatable {
     /// ones derived from the subject (see `SubjectStyle`).
     var symbol: String?
     var colorName: String?
+    /// The extraordinary sitting's own evaluation, when the guide weighs it differently (the exam
+    /// worth 100 %, say). `nil` reuses the ordinary one. A note with the same name in both is the
+    /// same note.
+    var extraordinaryRoot: Node?
+    /// "No presentado" in each sitting: no grade, not a fail, out of the averages.
+    var ordinaryNotPresented = false
+    var extraordinaryNotPresented = false
+    /// "Matrícula de honor" on the final grade.
+    var hasHonors = false
+    /// Conditions with no grade, like compulsory attendance: one not met fails the subject.
+    var requirements: [SubjectRequirement] = []
 
     init(id: UUID = UUID(), subject: Subject, entries: [String: GradeEntry] = [:], term: Int? = nil) {
         self.id = id
@@ -70,6 +82,23 @@ struct SubjectRecord: Identifiable, Codable, Equatable {
         isPerTerm = try container.decodeIfPresent(Bool.self, forKey: .isPerTerm) ?? false
         symbol = try container.decodeIfPresent(String.self, forKey: .symbol)
         colorName = try container.decodeIfPresent(String.self, forKey: .colorName)
+        extraordinaryRoot = try container.decodeIfPresent(Node.self, forKey: .extraordinaryRoot)
+        ordinaryNotPresented = try container.decodeIfPresent(Bool.self, forKey: .ordinaryNotPresented) ?? false
+        extraordinaryNotPresented = try container.decodeIfPresent(Bool.self, forKey: .extraordinaryNotPresented) ?? false
+        hasHonors = try container.decodeIfPresent(Bool.self, forKey: .hasHonors) ?? false
+        requirements = try container.decodeIfPresent([SubjectRequirement].self, forKey: .requirements) ?? []
+    }
+
+    func isNotPresented(in session: Convocatoria) -> Bool {
+        session == .ordinary ? ordinaryNotPresented : extraordinaryNotPresented
+    }
+
+    /// Whether a requirement is marked as not met.
+    var missesARequirement: Bool { requirements.contains { $0.isMet == false } }
+
+    /// Evaluated with continuous or single-exam schemes.
+    var hasSchemes: Bool {
+        if case .alternatives = subject.root { true } else { false }
     }
 
     /// Evaluated as "Nota única": just its final grade, with no sittings or dates.
@@ -81,7 +110,8 @@ struct SubjectRecord: Identifiable, Codable, Equatable {
     /// The sitting worth showing by default: the extraordinary one once anything's been entered
     /// there. A single-grade subject has only one.
     var activeSession: Convocatoria {
-        isSingleGrade || extraordinaryEntries.isEmpty ? .ordinary : .extraordinary
+        if isSingleGrade { return .ordinary }
+        return extraordinaryEntries.isEmpty && !extraordinaryNotPresented ? .ordinary : .extraordinary
     }
 
     func examDate(for session: Convocatoria) -> Date? {
@@ -106,38 +136,59 @@ struct SubjectRecord: Identifiable, Codable, Equatable {
     /// except a section that missed a minimum sending it to the extraordinary — that one is
     /// taken again.
     func keepsForExtraordinary(_ leaf: String) -> Bool {
-        guard let grade = subject.root.leaf(named: leaf)?.asGrade, grade.isFinalExam != true else { return false }
-        return !subject.root.leavesSentToExtraordinary(SubjectProgress.inputs(self, session: .ordinary)).contains(leaf)
+        let root = subject.root
+        guard let grade = root.leaf(named: leaf)?.asGrade else { return false }
+        let inputs = SubjectProgress.inputs(self, session: .ordinary)
+        if root.leavesSentToExtraordinary(inputs).contains(leaf) { return false }
+        guard let (recovery, node) = root.recoveryRule(for: leaf) else { return grade.isFinalExam != true }
+        switch recovery {
+        case .recoverableInExtraordinary: return false
+        case .notRecoverable, .savedForExtraordinary, .savedForNextYear, .partiallyRecoverableInFinal: return true
+        case .savedIfAtLeast(let threshold): return node.evaluate(inputs, pendingFraction: 0) >= threshold - 1e-9
+        }
+    }
+
+    /// A note that can't be taken again: in the extraordinary it shows the ordinary grade, fixed.
+    func isLockedInExtraordinary(_ leaf: String) -> Bool {
+        subject.root.recoveryRule(for: leaf)?.recovery == .notRecoverable && keepsForExtraordinary(leaf)
     }
 
     /// After an edit: moves each stored grade to its note, found by the id it had when the editor
     /// opened (`openingIDs`, by the name it had then), under whatever name it has now. A copied
     /// section repeats its notes' ids and the first copy keeps them, with their grades; grades of
     /// notes that are gone are dropped.
-    mutating func reassignGrades(openingIDs: [String: UUID]) {
+    ///
+    /// The extraordinary sitting's grades follow its own tree when it has one, by the ids it had
+    /// when the editor opened (`openingExtraordinaryIDs`); a tree made during the edit is a copy of
+    /// the ordinary one, ids included, so they follow `openingIDs` into it.
+    mutating func reassignGrades(openingIDs: [String: UUID], openingExtraordinaryIDs: [String: UUID] = [:]) {
         subject.root.identifyGrades()
-        let names = subject.root.gradeNamesByID
-        let gradeNames = Set(subject.root.grades.map(\.name))
-        let otherLeaves = Set(subject.root.allLeafNames()).subtracting(gradeNames)
-        func moved(_ entries: [String: GradeEntry]) -> [String: GradeEntry] {
+        extraordinaryRoot?.identifyGrades()
+        func moved(_ entries: [String: GradeEntry], in root: Node, from ids: [String: UUID]) -> [String: GradeEntry] {
+            let names = root.gradeNamesByID
+            let otherLeaves = Set(root.allLeafNames()).subtracting(root.grades.map(\.name))
             var moved: [String: GradeEntry] = [:]
             // Leaves that aren't notes (a bonus) have no id and keep their name.
             for (name, entry) in entries where otherLeaves.contains(name) {
                 moved[name] = entry
             }
             for (name, entry) in entries {
-                if let id = openingIDs[name], let new = names[id] { moved[new] = entry }
+                if let id = ids[name], let new = names[id] { moved[new] = entry }
             }
             return moved
         }
-        entries = moved(entries)
-        extraordinaryEntries = moved(extraordinaryEntries)
+        entries = moved(entries, in: subject.root, from: openingIDs)
+        extraordinaryEntries = moved(
+            extraordinaryEntries,
+            in: extraordinaryRoot ?? subject.root,
+            from: extraordinaryRoot != nil && !openingExtraordinaryIDs.isEmpty ? openingExtraordinaryIDs : openingIDs
+        )
     }
 
     /// The tree a sitting is worked out with: the extraordinary one drops the minimums that only
     /// sent you there.
     func root(for session: Convocatoria) -> Node {
-        session == .extraordinary ? subject.root.forExtraordinary : subject.root
+        session == .extraordinary ? (extraordinaryRoot ?? subject.root).forExtraordinary : subject.root
     }
 
     func entry(for leaf: String, in session: Convocatoria) -> GradeEntry? {
@@ -155,7 +206,7 @@ struct SubjectRecord: Identifiable, Codable, Equatable {
     }
 
     func entries(for session: Convocatoria) -> [String: GradeEntry] {
-        let leaves = subject.root.allLeafNames()
+        let leaves = root(for: session).allLeafNames()
         // Not `uniqueKeysWithValues`: a tree from an old or hand-edited file can repeat a leaf name.
         return Dictionary(leaves.compactMap { leaf in entry(for: leaf, in: session).map { (leaf, $0) } }) { first, _ in first }
     }
@@ -810,34 +861,49 @@ struct SubjectProgress {
     let inputs: [String: Double]
     /// "Por definir": nothing is worked out, so it never has a final grade, however many are in.
     let isUndecided: Bool
+    /// "No presentado" in this sitting: no grade, not a fail.
+    let isNotPresented: Bool
+    /// A requirement (attendance…) marked as not met: failed whatever the grades.
+    let missesARequirement: Bool
+    /// "Matrícula de honor", only once the final grade is in.
+    let hasHonors: Bool
+    /// What the engine aims at: the pass mark, lowered to what rounds up to it when the
+    /// transcript rounds (4,95 for a 5).
+    let target: Double
 
-    var isComplete: Bool { !isUndecided && leafCount > 0 && enteredCount == leafCount }
+    var isComplete: Bool { !isUndecided && !isNotPresented && leafCount > 0 && enteredCount == leafCount }
 
     let session: Convocatoria
 
-    init(_ record: SubjectRecord, session: Convocatoria? = nil) {
+    init(_ record: SubjectRecord, session: Convocatoria? = nil, rounding: GradeRounding = .none) {
         let session = session ?? record.activeSession
         let root = record.root(for: session)
         let inputs = Self.inputs(record, session: session)
         self.session = session
         let threshold = root.minimumThreshold ?? 5
-        let status = root.status(inputs)
+        let target = rounding.lowestPassing(threshold)
+        var status = root.status(inputs, threshold: target)
+        if record.missesARequirement { status = .impossible }
 
         self.inputs = inputs
-        self.worst = root.evaluate(inputs, pendingFraction: 0)
-        self.best = root.evaluate(inputs, pendingFraction: 1)
+        self.worst = rounding.apply(root.evaluate(inputs, pendingFraction: 0))
+        self.best = rounding.apply(root.evaluate(inputs, pendingFraction: 1))
         self.threshold = threshold
+        self.target = target
         self.status = status
-        self.neededAverage = status == .possible ? root.neededFraction(inputs, target: threshold).map { $0 * 10 } : nil
+        self.neededAverage = status == .possible ? root.neededFraction(inputs, target: target).map { $0 * 10 } : nil
         self.enteredCount = inputs.count
         self.leafCount = root.allLeafNames().count
         self.isUndecided = record.isUndecided
+        self.isNotPresented = record.isNotPresented(in: session)
+        self.missesARequirement = record.missesARequirement
+        self.hasHonors = record.hasHonors && leafCount > 0 && enteredCount == leafCount
     }
 
     /// What the engine reads for one sitting — without the status and needed-grade search, for
     /// views that only need the values.
     static func inputs(_ record: SubjectRecord, session: Convocatoria) -> [String: Double] {
-        inputs(for: record.subject.root, entries: record.entries(for: session))
+        inputs(for: record.root(for: session), entries: record.entries(for: session))
     }
 
     /// Entries converted from whatever scale the user typed them on to each leaf's own scale.
@@ -849,4 +915,12 @@ struct SubjectProgress {
             result[name] = min(Swift.max(entry.value / entry.outOf * max, 0), max)
         }
     }
+}
+
+/// A condition with no grade (compulsory attendance, handing in every lab…): failing one fails the
+/// subject. `isMet` is `nil` until it's known.
+struct SubjectRequirement: Identifiable, Codable, Equatable {
+    var id = UUID()
+    var name: String
+    var isMet: Bool?
 }

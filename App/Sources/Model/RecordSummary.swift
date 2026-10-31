@@ -8,15 +8,17 @@ struct RecordSummary {
     let progress: [SubjectRecord.ID: SubjectProgress]
     let subjects: [SubjectRecord]
     let usesCredits: Bool
+    let rounding: GradeRounding
 
     init(_ courses: [Course], degree: DegreeSettings) {
         subjects = courses.flatMap(\.subjects)
         usesCredits = degree.usesCredits
-        progress = Dictionary(subjects.map { ($0.id, SubjectProgress($0)) }) { first, _ in first }
+        rounding = degree.rounding
+        progress = Dictionary(subjects.map { ($0.id, SubjectProgress($0, rounding: degree.rounding)) }) { first, _ in first }
     }
 
     func progress(of record: SubjectRecord) -> SubjectProgress {
-        progress[record.id] ?? SubjectProgress(record)
+        progress[record.id] ?? SubjectProgress(record, rounding: rounding)
     }
 
     private func completed(_ records: [SubjectRecord]) -> [SubjectRecord] {

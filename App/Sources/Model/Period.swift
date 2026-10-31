@@ -46,6 +46,37 @@ enum StudyType: String, Codable, CaseIterable, Identifiable {
     }
 }
 
+/// How the transcript turns the worked-out grade into the final one: as it is, or to one decimal
+/// rounding (4,95 → 5,0) or cutting (4,99 → 4,9) — it decides a pass right at the line.
+enum GradeRounding: String, Codable, CaseIterable, Identifiable {
+    case none, round, truncate
+
+    var id: Self { self }
+
+    var label: String {
+        switch self {
+        case .none: "Sin redondear"
+        case .round: "A una décima, redondeando"
+        case .truncate: "A una décima, truncando"
+        }
+    }
+
+    func apply(_ value: Double) -> Double {
+        guard value.isFinite else { return value }
+        switch self {
+        case .none: return value
+        // A hair added first, so a 4,95 that's 4,9499999… in binary still goes up.
+        case .round: return (value * 10 + 1e-9).rounded(.toNearestOrAwayFromZero) / 10
+        case .truncate: return (value * 10 + 1e-9).rounded(.towardZero) / 10
+        }
+    }
+
+    /// The lowest worked-out grade that ends up at `threshold` or above.
+    func lowestPassing(_ threshold: Double) -> Double {
+        self == .round ? threshold - 0.05 - 1e-9 : threshold
+    }
+}
+
 /// How the user's degree is divided, set in the account tab: what they study, how many years it
 /// has and what its terms are (cuatrimestres, semestres, trimestres…). Stored term numbers are
 /// degree-wide, so this is also what turns them into "1º Cuatrimestre" on screen. Years and
@@ -67,6 +98,7 @@ struct DegreeSettings: Codable, Equatable {
     var yearName = defaultYearName
     /// Off: no credits anywhere (record, editor) and averages count every subject the same.
     var usesCredits = true
+    var rounding = GradeRounding.none
 
     /// The name given to the study, or its type when it has none.
     var displayName: String {
@@ -138,7 +170,7 @@ struct DegreeSettings: Codable, Equatable {
 }
 
 extension DegreeSettings {
-    private enum CodingKeys: String, CodingKey { case studyType, name, institution, years, termsPerYear, termName, yearName, usesCredits }
+    private enum CodingKeys: String, CodingKey { case studyType, name, institution, years, termsPerYear, termName, yearName, usesCredits, rounding }
 
     /// Clamped to what the settings screen allows, so a hand-edited backup can't hand the app zero
     /// terms a year (which it divides by) or a hundred years.
@@ -156,7 +188,8 @@ extension DegreeSettings {
             termName: try container.decodeIfPresent(String.self, forKey: .termName) ?? Self.defaultTermName,
             yearName: try container.decodeIfPresent(String.self, forKey: .yearName) ?? Self.defaultYearName,
             // Studies saved before the setting existed get their type's usual one.
-            usesCredits: try container.decodeIfPresent(Bool.self, forKey: .usesCredits) ?? studyType.usesCredits
+            usesCredits: try container.decodeIfPresent(Bool.self, forKey: .usesCredits) ?? studyType.usesCredits,
+            rounding: (try? container.decodeIfPresent(GradeRounding.self, forKey: .rounding)) ?? .none
         )
     }
 }
