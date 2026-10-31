@@ -51,7 +51,8 @@ extension Node {
                 guard max > 0 else { return (child.weight, 0) }
                 let value = child.node.rawValue(inputs, pendingFraction: pendingFraction)
                 switch child.node.standing(value) {
-                case .counts: return (child.weight, value / max)
+                // A value no scale can hold (a hand-edited file) counts as a 0, never as a NaN.
+                case .counts: return (child.weight, (value / max).isFinite ? value / max : 0)
                 case .voided: return (child.weight, 0)
                 case .left: return nil
                 }
