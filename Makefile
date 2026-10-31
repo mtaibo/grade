@@ -1,4 +1,4 @@
-.PHONY: build test generate open clean todo device
+.PHONY: build test generate open clean todo device web
 
 build:
 	swift build
@@ -34,3 +34,8 @@ device: generate
 	xcrun devicectl device install app --device $(DEVICE) $(DEVICE_BUILD)/Build/Products/Debug-iphoneos/Grade-iOS.app \
 		|| (sleep 2 && xcrun devicectl device install app --device $(DEVICE) $(DEVICE_BUILD)/Build/Products/Debug-iphoneos/Grade-iOS.app)
 	xcrun devicectl device process launch --device $(DEVICE) com.migueltaibo.grade
+
+# The site at grade.migueltaibo.com, run on the Pi: tpcloud must be up first (its gateway network
+# and Caddy, which proxies the subdomain to this container).
+web:
+	docker compose -f web/docker-compose.yml up -d --build

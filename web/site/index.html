@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Grade</title>
+  <meta name="description" content="Grade sabe cómo te evalúa cada asignatura y te dice qué nota necesitas en el examen para aprobar.">
+  <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
+  <link rel="icon" href="/favicon.png" type="image/png">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <meta property="og:title" content="Grade">
+  <meta property="og:description" content="Qué nota necesitas en el examen, según cómo te evalúa cada asignatura.">
+  <meta property="og:image" content="https://grade.migueltaibo.com/icon.png">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <main class="page">
+    <a class="brand" href="/"><img src="/icon.png" alt="" width="32" height="32">Grade</a>
+
+    <h1>¿Qué necesitas en el final?</h1>
+    <p class="lede">Grade sabe cómo te evalúa cada asignatura y te lo dice con la nota que ya llevas.</p>
+
+    <section class="try" aria-labelledby="try-title">
+      <div class="subject">
+        <strong id="try-title">Física</strong>
+        <span>Prácticas 40 %, examen 60 % con un 4 como mínimo</span>
+      </div>
+
+      <div class="slider">
+        <label for="labs">Tu nota de prácticas <output id="labs-out" for="labs">7</output></label>
+        <input id="labs" type="range" min="0" max="10" step="0.1" value="7">
+      </div>
+
+      <div class="answer" aria-live="polite">
+        <span class="grade" id="needed">4,0</span>
+        <p id="explain">es lo que necesitas en el examen para aprobar.</p>
+        <div class="bar" aria-hidden="true"><i id="mark"></i></div>
+      </div>
+    </section>
+    <p class="note">Un ejemplo. En la app pones las secciones de tu guía docente, o cargas la de tu grado, y apuntas las notas según te las dan.</p>
+
+    <h2>Cada asignatura, a su manera</h2>
+    <p>Las agendas tratan todas las asignaturas igual. Las guías docentes no: Grade se adapta a cada una.</p>
+
+    <h3>Mínimos que cambian la nota</h3>
+    <p>Un 4 en el examen para hacer media, prácticas que se anulan si no llegas, una nota que no pasa de 4,5 o una sección que te manda a la extraordinaria.</p>
+
+    <h3>Fórmulas de verdad</h3>
+    <p>Cuando el peso del examen depende de otra nota, escribes la fórmula de la guía tal cual y Grade la calcula.</p>
+
+    <h3>Ordinaria y extraordinaria</h3>
+    <p>Lo que se guarda pasa solo a la extraordinaria; lo que repites empieza de cero. Las fechas de cada convocatoria van al calendario.</p>
+
+    <h3>Tu expediente</h3>
+    <p>La media de cada periodo, de cada año y de toda la carrera, ponderada por créditos.</p>
+
+    <h2>Tus notas son tuyas</h2>
+    <p>Todo se queda en tu iPhone: sin cuentas, sin anuncios y sin analítica. Las copias de seguridad son un archivo que guardas donde quieras. <a href="/privacidad/">Política de privacidad</a></p>
+
+    <span class="store" role="link" aria-disabled="true">Próximamente en el App Store</span>
+
+    <footer>
+      <span>Grade, de <a href="https://www.migueltaibo.com">Miguel Taibo</a></span>
+      <a href="/privacidad/">Privacidad</a>
+      <a href="/soporte/">Soporte</a>
+    </footer>
+  </main>
+
+  <script src="/calculator.js"></script>
+</body>
+</html>

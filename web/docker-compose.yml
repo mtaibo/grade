@@ -1,0 +1,14 @@
+# grade.migueltaibo.com: tpcloud's gateway proxies it to this container by name over its network,
+# so tpcloud has to be up first (it creates tpcloud_gateway).
+services:
+  web:
+    build: .
+    container_name: grade-web
+    networks:
+      - gateway
+    restart: unless-stopped
+
+networks:
+  gateway:
+    external: true
+    name: tpcloud_gateway
