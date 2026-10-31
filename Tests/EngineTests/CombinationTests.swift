@@ -129,6 +129,26 @@ struct CombinationTests {
             ))
         }
 
+        /// "Evaluación continua" or "examen único", sharing the final exam: chosen, or the best.
+        mutating func alternatives() -> Node {
+            let exam = Grade(name: name("Examen final"), isFinalExam: true, scaleMax: 10, minimum: Bool.random(using: &random) ? Minimum(threshold: 4, consequence: .fails) : nil)
+            var continuous = group(.weightedAverage, depth: 2, isRoot: false)
+            if case .group(var g) = continuous {
+                g.children = g.children.map { WeightedChild(weight: $0.weight * 0.6, node: $0.node) } + [WeightedChild(weight: 0.4, node: .grade(exam))]
+                g.minimum = nil
+                continuous = .group(g)
+            }
+            let single = Node.group(Group(name: name("Único"), combination: .weightedAverage, children: [WeightedChild(weight: 1, node: .grade(exam))]))
+            let pickBest = Bool.random(using: &random)
+            return .alternatives(Alternatives(
+                name: name("Modalidad"),
+                branches: [.init(node: continuous), .init(node: single)],
+                pickBest: pickBest,
+                selected: pickBest ? nil : Int.random(in: 0...1, using: &random),
+                minimum: Minimum(threshold: 5, consequence: .fails)
+            ))
+        }
+
         /// "Nota única": the root is one grade.
         mutating func single() -> Node {
             let scale = [10.0, 100, 4].randomElement(using: &random)!
@@ -144,6 +164,7 @@ struct CombinationTests {
             switch index % 10 {
             case 0: trees.append(builder.perTerm(terms: Int.random(in: 2...3, using: &builder.random)))
             case 1: trees.append(builder.single())
+            case 2: trees.append(builder.alternatives())
             default: trees.append(builder.node(depth: Int.random(in: 1...4, using: &builder.random), isRoot: true))
             }
         }
@@ -171,6 +192,7 @@ struct CombinationTests {
         switch node {
         case .group(let group): return group.children.allSatisfy { isMonotonic($0.node) }
         case .formula(let formula): return formula.variables.values.allSatisfy(isMonotonic)
+        case .alternatives(let alternatives): return alternatives.branches.allSatisfy { isMonotonic($0.node) }
         default: return true
         }
     }
@@ -249,6 +271,8 @@ struct CombinationTests {
                 case .guaranteed:
                     #expect(worst >= threshold && root.meetsMinimums(inputs, pendingFraction: 0))
                 case .impossible:
+                    // With several schemes, each has to pass on its own: the best grade alone says little.
+                    if case .alternatives = root { break }
                     #expect(best < threshold || !root.meetsMinimums(inputs, pendingFraction: 1))
                 case .possible:
                     #expect(best >= threshold || !Self.isMonotonic(root))
@@ -262,7 +286,9 @@ struct CombinationTests {
         for root in Self.trees {
             for share in [0, 0.4, 0.8] {
                 let inputs = Self.inputs(for: root, using: &random, filling: share)
-                for target in [5.0, 7, 9] {
+                for asked in [5.0, 7, 9] {
+                    // The subject's own pass mark stands in for its own minimum, so a target is never below it.
+                    let target = Swift.max(asked, root.minimumThreshold ?? 0)
                     guard let fraction = root.neededFraction(inputs, target: target) else {
                         // Out of reach: even full marks on everything pending don't make it.
                         if Self.isMonotonic(root) {
@@ -274,7 +300,7 @@ struct CombinationTests {
                     #expect(root.evaluate(inputs, pendingFraction: fraction) >= target - 1e-9)
                     #expect(root.meetsMinimums(inputs, pendingFraction: fraction))
                     // And it's the lowest that does, give or take the search's tolerance.
-                    if Self.isMonotonic(root), fraction > 0.001 {
+                    if Self.isMonotonic(root), fraction > 0.001, root.asAlternatives == nil {
                         let lower = fraction - 0.001
                         #expect(root.evaluate(inputs, pendingFraction: lower) < target || !root.meetsMinimums(inputs, pendingFraction: lower))
                     }
@@ -334,7 +360,8 @@ struct CombinationTests {
             let names = root.allLeafNames()
             #expect(Set(names).count == names.count)
             for name in names { #expect(root.leaf(named: name) != nil) }
-            #expect(root.grades.count == names.count)
+            // Two schemes share their exam, so a note can appear twice among the grades.
+            #expect(Set(root.grades.map(\.name)).isSuperset(of: names))
         }
     }
 
@@ -604,6 +631,8 @@ struct CombinationTests {
 }
 
 extension Node {
+    var asAlternatives: Alternatives? { if case .alternatives(let a) = self { a } else { nil } }
+
     /// The nodes right below this one, in the tests' own words (the engine's are internal).
     var childNodes: [Node] {
         switch self {

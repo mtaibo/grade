@@ -20,7 +20,7 @@ extension Node {
                 return 10
             }
         case .alternatives(let alternatives):
-            return Self.defaultBranch(alternatives)?.node.scaleMax ?? 10
+            return Self.activeBranches(alternatives).map(\.node.scaleMax).max() ?? 10
         case .bonus(let bonus):
             return bonus.parentCap
         case .requirement:
@@ -77,7 +77,7 @@ extension Node {
                 return fractions.isEmpty ? 0 : (fractions.reduce(0, +) / Double(fractions.count)) * 10
             }
         case .alternatives(let alternatives):
-            return Self.defaultBranch(alternatives)?.node.rawValue(inputs, pendingFraction: pendingFraction) ?? 0
+            return Self.alternativesValue(alternatives, inputs, pendingFraction)
         case .bonus(let bonus):
             let value = inputs[bonus.name] ?? pendingFraction * bonus.scaleMax
             return Swift.min(value, bonus.parentCap)
@@ -114,7 +114,7 @@ extension Node {
         switch self {
         case .group(let group): group.children.map(\.node)
         case .formula(let formula): Array(formula.variables.values)
-        case .alternatives(let alternatives): Self.defaultBranch(alternatives).map { [$0.node] } ?? []
+        case .alternatives(let alternatives): Self.activeBranches(alternatives).map(\.node)
         case .grade, .bonus, .requirement: []
         }
     }
@@ -123,7 +123,9 @@ extension Node {
     /// whatever contains it) — "si no llegas a un 4 en el examen, la nota final no pasa de 4,5".
     /// Monotonic: raising a part past its threshold only ever lifts its cap.
     private func caps(_ inputs: [String: Double], _ pendingFraction: Double) -> [Double] {
-        children.flatMap { child -> [Double] in
+        // A scheme's value already comes capped (`evaluate`), and only the one that counts may cap.
+        if case .alternatives = self { return [] }
+        return children.flatMap { child -> [Double] in
             var caps = child.caps(inputs, pendingFraction)
             if let minimum = child.ownMinimum, case .capAt(let cap) = minimum.consequence,
                child.rawValue(inputs, pendingFraction: pendingFraction) < minimum.threshold {
@@ -141,7 +143,9 @@ extension Node {
         case .group(let group):
             return group.children.flatMap { $0.node.allLeafNames() }
         case .alternatives(let alternatives):
-            return Self.defaultBranch(alternatives)?.node.allLeafNames() ?? []
+            // A note two schemes share is one note.
+            var seen: Set<String> = []
+            return Self.activeBranches(alternatives).flatMap { $0.node.allLeafNames() }.filter { seen.insert($0).inserted }
         case .bonus(let bonus):
             return [bonus.name]
         case .requirement:
@@ -164,7 +168,7 @@ extension Node {
         case .group(let group):
             return group.children.lazy.compactMap { $0.node.leaf(named: name) }.first
         case .alternatives(let alternatives):
-            return Self.defaultBranch(alternatives)?.node.leaf(named: name)
+            return alternatives.branches.lazy.compactMap { $0.node.leaf(named: name) }.first
         case .bonus(let bonus):
             return bonus.name == name ? self : nil
         case .requirement:
@@ -185,6 +189,7 @@ extension Node {
         case .group(let group): group.minimum
         case .formula(let formula): formula.minimum
         case .grade(let grade): grade.minimum
+        case .alternatives(let alternatives): alternatives.minimum
         default: nil
         }
     }
@@ -195,7 +200,11 @@ extension Node {
     /// binary search. `.capAt`, `.voids` and `.doesNotAverage` change the number instead, in
     /// `evaluate`.
     public func meetsMinimums(_ inputs: [String: Double], pendingFraction: Double) -> Bool {
-        if let minimum = ownMinimum, minimum.consequence == .fails || minimum.consequence == .sendsToExtraordinary,
+        meetsMinimums(inputs, pendingFraction: pendingFraction, includingOwn: true)
+    }
+
+    func meetsMinimums(_ inputs: [String: Double], pendingFraction: Double, includingOwn: Bool) -> Bool {
+        if includingOwn, let minimum = ownMinimum, minimum.consequence == .fails || minimum.consequence == .sendsToExtraordinary,
            rawValue(inputs, pendingFraction: pendingFraction) < minimum.threshold {
             return false
         }
@@ -205,7 +214,9 @@ extension Node {
         case .formula(let formula):
             return formula.variables.values.allSatisfy { $0.meetsMinimums(inputs, pendingFraction: pendingFraction) }
         case .alternatives(let alternatives):
-            return Self.defaultBranch(alternatives)?.node.meetsMinimums(inputs, pendingFraction: pendingFraction) ?? true
+            // With the best of several, it's enough that one of them is passed cleanly.
+            let branches = Self.activeBranches(alternatives)
+            return branches.isEmpty || branches.contains { $0.node.meetsMinimums(inputs, pendingFraction: pendingFraction) }
         case .grade, .bonus, .requirement:
             return true
         }
@@ -217,7 +228,7 @@ extension Node {
     /// simulator could fix some and solve only the rest, but that's not needed yet.
     public func neededFraction(_ inputs: [String: Double], target: Double, tolerance: Double = 0.0001) -> Double? {
         func reaches(_ fraction: Double) -> Bool {
-            evaluate(inputs, pendingFraction: fraction) >= target && meetsMinimums(inputs, pendingFraction: fraction)
+            passes(inputs, pendingFraction: fraction, target: target)
         }
         guard reaches(1) else { return nil }
         guard !reaches(0) else { return 0 }
@@ -234,12 +245,42 @@ extension Node {
         return high
     }
 
-    /// `Alternatives` picks a branch "by condition or the best" per the brief — but a branch's
-    /// `condition` is still a free, unevaluated string (see docs/modelo.md), so until that's
-    /// resolved this can only pick the explicit default branch (no condition) or fall back to
-    /// the first one. Not exercised by any of the reference guides yet.
-    private static func defaultBranch(_ alternatives: Alternatives) -> Alternatives.Branch? {
-        alternatives.branches.first(where: { $0.condition == nil }) ?? alternatives.branches.first
+    /// The schemes that count: all of them when the best is taken, else the one chosen (the first
+    /// when none is, or the choice points past the end).
+    static func activeBranches(_ alternatives: Alternatives) -> [Alternatives.Branch] {
+        if alternatives.pickBest { return alternatives.branches }
+        let index = alternatives.selected ?? 0
+        let branch = alternatives.branches.indices.contains(index) ? alternatives.branches[index] : alternatives.branches.first
+        return branch.map { [$0] } ?? []
+    }
+
+    /// The chosen scheme's grade, or the best of them. Whether it passes is a matter for `passes`:
+    /// a scheme that misses a failing minimum can't be the one that passes, however high it is.
+    private static func alternativesValue(_ alternatives: Alternatives, _ inputs: [String: Double], _ fraction: Double) -> Double {
+        activeBranches(alternatives).map { $0.node.evaluate(inputs, pendingFraction: fraction) }.max() ?? 0
+    }
+
+    /// Whether this reaches `target` with every failing minimum below it met, assuming `fraction`
+    /// on what's pending — or, with several schemes, whether one of them does on its own. Its own
+    /// minimum (a subject's pass mark) is left out: `target` stands in for it, so a transcript that
+    /// rounds can ask for 4,95. Monotonic in `fraction`, so it can be binary-searched.
+    func passes(_ inputs: [String: Double], pendingFraction fraction: Double, target: Double) -> Bool {
+        if case .alternatives(let alternatives) = self {
+            let branches = Self.activeBranches(alternatives)
+            return branches.contains { $0.node.passes(inputs, pendingFraction: fraction, target: target) }
+        }
+        return evaluate(inputs, pendingFraction: fraction) >= target && meetsMinimums(inputs, pendingFraction: fraction, includingOwn: false)
+    }
+
+    /// The scheme a student would go for: the chosen one, or the one needing the least on what's
+    /// left (ties to the first).
+    func bestBranch(_ inputs: [String: Double], target: Double) -> Node? {
+        guard case .alternatives(let alternatives) = self else { return nil }
+        let branches = Self.activeBranches(alternatives).map(\.node)
+        guard alternatives.pickBest else { return branches.first }
+        return branches.min { lhs, rhs in
+            (lhs.neededFraction(inputs, target: target) ?? 2) < (rhs.neededFraction(inputs, target: target) ?? 2)
+        }
     }
 }
 
@@ -257,13 +298,10 @@ extension Node {
     /// Status against this node's own `minimumThreshold`, or 5 (out of 10) if it doesn't declare
     /// one — the universal default for the Spanish grading scale the brief targets.
     /// A failed minimum anywhere (e.g. under 4 on an exam that needs it) also counts.
-    public func status(_ inputs: [String: Double]) -> PassStatus {
-        let threshold = minimumThreshold ?? 5
-        func passes(_ fraction: Double) -> Bool {
-            evaluate(inputs, pendingFraction: fraction) >= threshold && meetsMinimums(inputs, pendingFraction: fraction)
-        }
-        if passes(0) { return .guaranteed }
-        if !passes(1) { return .impossible }
+    public func status(_ inputs: [String: Double], threshold: Double? = nil) -> PassStatus {
+        let threshold = threshold ?? minimumThreshold ?? 5
+        if passes(inputs, pendingFraction: 0, target: threshold) { return .guaranteed }
+        if !passes(inputs, pendingFraction: 1, target: threshold) { return .impossible }
         return .possible
     }
 }
@@ -301,6 +339,7 @@ extension Node {
             for key in formula.variables.keys { formula.variables[key]?.removeMinimums(where: shouldRemove) }
             self = .formula(formula)
         case .alternatives(var alternatives):
+            if let minimum = alternatives.minimum, shouldRemove(minimum) { alternatives.minimum = nil }
             for index in alternatives.branches.indices { alternatives.branches[index].node.removeMinimums(where: shouldRemove) }
             self = .alternatives(alternatives)
         case .bonus, .requirement:
@@ -320,6 +359,12 @@ extension Node {
         let pending = Set(pendingLeaves(inputs))
         guard !pending.isEmpty else { return [:] }
         guard neededFraction(inputs, target: target) != nil else { return nil }
+        // Several schemes: the plan of the one to go for; what only the others ask for needs nothing.
+        if let branch = bestBranch(inputs, target: target) {
+            guard var plan = branch.passPlan(inputs, target: target) else { return nil }
+            for leaf in pending where plan[leaf] == nil { plan[leaf] = 0 }
+            return plan
+        }
 
         let parts = children.isEmpty ? [self] : children
         let isExam = { (part: Node) in part.grades.contains { $0.isFinalExam == true } }

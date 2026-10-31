@@ -92,12 +92,16 @@ public struct Group: Sendable, Equatable, Codable {
     public var combination: Combination
     public var children: [WeightedChild]
     public var minimum: Minimum?
+    /// What happens to the whole section in the extraordinary sitting; `nil` leaves it to the
+    /// section above, or to its notes.
+    public var recovery: Recovery?
 
-    public init(name: String, combination: Combination, children: [WeightedChild], minimum: Minimum? = nil) {
+    public init(name: String, combination: Combination, children: [WeightedChild], minimum: Minimum? = nil, recovery: Recovery? = nil) {
         self.name = name
         self.combination = combination
         self.children = children
         self.minimum = minimum
+        self.recovery = recovery
     }
 }
 
@@ -115,10 +119,11 @@ public struct WeightedChild: Sendable, Equatable, Codable, Identifiable {
     }
 }
 
-/// Several evaluation schemes for the same node; one is picked by condition, or the best of all.
+/// Several evaluation schemes for the same subject — "evaluación continua" or "examen único":
+/// the student picks one (`selected`), or the guide gives whichever comes out best (`pickBest`).
+/// A note with the same name in two schemes is the same note (the final exam both share).
 ///
-/// `condition` is a free-form description for now (e.g. "Controles >= 4"), not yet a structured
-/// expression — the 3 reference guides don't need more than picking a branch to validate the shape.
+/// `condition` is a free-form description (e.g. "Controles >= 4"), not evaluated.
 public struct Alternatives: Sendable, Equatable, Codable {
     public struct Branch: Sendable, Equatable, Codable {
         public var condition: String?
@@ -133,11 +138,17 @@ public struct Alternatives: Sendable, Equatable, Codable {
     public var name: String
     public var branches: [Branch]
     public var pickBest: Bool
+    /// The scheme the student goes for, when they choose (`pickBest` off). `nil` is the first.
+    public var selected: Int?
+    /// The pass threshold on the subject's result, like a group's.
+    public var minimum: Minimum?
 
-    public init(name: String, branches: [Branch], pickBest: Bool = false) {
+    public init(name: String, branches: [Branch], pickBest: Bool = false, selected: Int? = nil, minimum: Minimum? = nil) {
         self.name = name
         self.branches = branches
         self.pickBest = pickBest
+        self.selected = selected
+        self.minimum = minimum
     }
 }
 
@@ -177,12 +188,14 @@ public struct Formula: Sendable, Equatable, Codable {
     public var expression: Expression
     public var variables: [String: Node]
     public var minimum: Minimum?
+    public var recovery: Recovery?
 
-    public init(name: String, expression: Expression, variables: [String: Node], minimum: Minimum? = nil) {
+    public init(name: String, expression: Expression, variables: [String: Node], minimum: Minimum? = nil, recovery: Recovery? = nil) {
         self.name = name
         self.expression = expression
         self.variables = variables
         self.minimum = minimum
+        self.recovery = recovery
     }
 }
 

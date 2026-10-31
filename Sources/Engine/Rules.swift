@@ -29,9 +29,14 @@ public struct Minimum: Sendable, Equatable, Codable {
 
 /// How a node's grade carries over to the extraordinary session or beyond.
 public enum Recovery: Sendable, Equatable, Codable {
+    /// Taken again in the extraordinary: it starts empty there.
     case recoverableInExtraordinary
+    /// Can't be taken again: the ordinary grade stays, and can't be changed in the extraordinary.
     case notRecoverable
     case partiallyRecoverableInFinal
+    /// Kept for the extraordinary, where it can still be taken again to raise it.
     case savedForExtraordinary
     case savedForNextYear
+    /// Kept only if the ordinary grade reached this (on the node's own scale); otherwise taken again.
+    case savedIfAtLeast(Double)
 }
