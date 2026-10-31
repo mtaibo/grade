@@ -10,6 +10,8 @@ struct GradeApp: App {
     /// The guided tour is offered once, on the first launch; after that it's in Cuenta → Tutoriales.
     @AppStorage("tourOffered") private var tourOffered = false
     @State private var isOfferingTour = false
+    /// A fresh install: the welcome, what you study and your template, then the tour.
+    @State private var isOnboarding = false
     @State private var tourWindow: TourWindow?
     @Environment(\.scenePhase) private var scenePhase
 
@@ -50,7 +52,18 @@ struct GradeApp: App {
                 if tourWindow == nil, let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene {
                     tourWindow = TourWindow(scene: scene, tour: tour)
                 }
-                if !tourOffered { isOfferingTour = true }
+                if !tourOffered {
+                    let isEmpty = library.courses.allSatisfy(\.subjects.isEmpty) && library.archives.isEmpty
+                    if isEmpty { isOnboarding = true } else { isOfferingTour = true }
+                }
+            }
+            .fullScreenCover(isPresented: $isOnboarding) {
+                OnboardingView { startsTour in
+                    tourOffered = true
+                    isOnboarding = false
+                    if startsTour { tour.startGeneral(returningTo: .subjects) }
+                }
+                .environment(library)
             }
             .alert("¿Te enseño cómo funciona?", isPresented: $isOfferingTour) {
                 Button("Empezar el tour") {
