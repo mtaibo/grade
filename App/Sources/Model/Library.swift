@@ -478,7 +478,7 @@ final class Library {
     func deleteSubject(id: SubjectRecord.ID) {
         removeSubject(id)
         for index in selections.indices { selections[index].subjectIDs.removeAll { $0 == id } }
-        removeGuide(for: id)
+        if !subjectIDsInUse.contains(id) { removeGuide(for: id) }
         save()
     }
 
@@ -551,7 +551,7 @@ final class Library {
         for course in courses.indices { courses[course].subjects.removeAll { ids.contains($0.id) } }
         for index in selections.indices { selections[index].subjectIDs.removeAll { ids.contains($0) } }
         selections.removeAll { $0.subjectIDs.isEmpty }
-        for id in guideIDs.intersection(ids) { removeGuide(for: id) }
+        for id in guideIDs.intersection(ids).subtracting(subjectIDsInUse) { removeGuide(for: id) }
         save()
     }
 
@@ -600,15 +600,23 @@ final class Library {
     /// Replaces the current study with a backup's. Archived studies are never dropped: the
     /// copy's are added next to them.
     func restore(_ backup: GradeBackup) {
-        for id in guideIDs.intersection(courses.flatMap(\.subjects).map(\.id)) { removeGuide(for: id) }
+        let replaced = Set(courses.flatMap(\.subjects).map(\.id))
         courses = backup.courses
         degree = backup.degree
         hasStudy = true
         selections = backup.selections ?? []
         normalize()
         addArchives(of: backup)
+        // The guides of subjects that are gone go too; one the copy still has keeps its guide
+        // even if the copy was made without guides.
+        for id in guideIDs.intersection(replaced).subtracting(subjectIDsInUse) { removeGuide(for: id) }
         restoreGuides(of: backup)
         save()
+    }
+
+    /// Every subject id in the current study or an archived one: what a guide can belong to.
+    private var subjectIDsInUse: Set<SubjectRecord.ID> {
+        Set(courses.flatMap(\.subjects).map(\.id) + archives.flatMap(\.subjectIDs))
     }
 
     /// Adds a backup's subjects to what's already here: one with the same id is replaced (keeping
@@ -712,7 +720,10 @@ final class Library {
 
     func deleteArchivedStudy(id: ArchivedStudy.ID) {
         guard let index = archives.firstIndex(where: { $0.id == id }) else { return }
-        for subject in archives.remove(at: index).subjectIDs { removeGuide(for: subject) }
+        let removed = archives.remove(at: index).subjectIDs
+        // A subject can be in two places (a copy imported after archiving it): its guide stays
+        // while either still has it.
+        for subject in Set(removed).subtracting(subjectIDsInUse) { removeGuide(for: subject) }
         save()
     }
 
