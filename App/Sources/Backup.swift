@@ -108,11 +108,19 @@ extension GradeBackup {
 extension GradeBackup {
     /// Encodes the copy and writes it to a temporary `.grade`, off the main thread: with every
     /// guide PDF inside it can take a few seconds, and the screen keeps a spinner going meanwhile.
+    ///
+    /// Each export gets a folder of its own, and the previous ones are only cleared here, at the
+    /// next export: writing over the same path while Files was still copying the last one (when
+    /// it asks to replace an existing copy) left the save hanging or replaced with the wrong file.
     func writeTemporaryFile(named name: String) async throws -> URL {
         try await Task.detached(priority: .userInitiated) {
             let data = try GradeBackup.encoder.encode(self)
-            let url = URL.temporaryDirectory.appending(path: name)
-            try data.write(to: url, options: .atomic)
+            let exports = URL.temporaryDirectory.appending(path: "Exports")
+            try? FileManager.default.removeItem(at: exports)
+            let folder = exports.appending(path: UUID().uuidString)
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            let url = folder.appending(path: name)
+            try data.write(to: url)
             return url
         }.value
     }
