@@ -105,6 +105,9 @@ struct SubjectDetailView: View {
             .padding(.horizontal)
             .padding(.bottom, 24)
         }
+        // Just enough blur to set the card apart, animated together with it; the content only, so
+        // the background stays solid out to the screen's edges.
+        .blur(radius: gradeTarget == nil ? 0 : 2.5)
         .background(Color(.systemGroupedBackground))
         .overlay {
             GradePopup(recordID: recordID, target: gradeTarget) { close() }
@@ -225,8 +228,8 @@ struct SubjectDetailView: View {
 }
 
 extension SubjectDetailView {
-    /// One animation in and one out: the card slides from the top and the blur fades, nothing else
-    /// moves (the screen behind isn't redrawn: the blur is a layer over it).
+    /// One animation in and one out: the card slides from the top while the screen behind blurs
+    /// slightly and dims.
     fileprivate func open(_ target: GradeTarget) {
         withAnimation(.snappy(duration: 0.36)) { gradeTarget = target }
     }
@@ -1177,11 +1180,8 @@ private struct GradePopup: View {
     var body: some View {
         ZStack(alignment: .top) {
             if let target, let record = library.record(id: recordID), let item = Self.item(in: record, for: target) {
-                // A soft blur and a light dim over the screen, as a layer of its own: blurring the
-                // screen itself redrew it all at the start of the animation.
-                Rectangle()
-                    .fill(.ultraThinMaterial)
-                    .overlay(Color.black.opacity(0.12))
+                // A light dim; the screen itself is softly blurred behind it (see `content`).
+                Color.black.opacity(0.14)
                     .ignoresSafeArea()
                     .onTapGesture(perform: close)
                     .transition(.opacity)
