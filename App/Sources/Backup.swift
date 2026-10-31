@@ -58,8 +58,8 @@ final class BackupImportCenter {
 /// Attached once at the root so a file chosen in Cuenta and a `.grade` opened from Files or AirDrop
 /// go through the same confirmation.
 struct BackupImportHost: ViewModifier {
-    @Environment(Library.self) private var library
     @Bindable var center: BackupImportCenter
+    let library: Library
 
     func body(content: Content) -> some View {
         content

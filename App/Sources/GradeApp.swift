@@ -30,7 +30,8 @@ struct GradeApp: App {
             .id(tour.session)
             // No scroll bars anywhere: every list, form and scroll view below (sheets included) inherits it.
             .scrollIndicators(.hidden)
-            .modifier(BackupImportHost(center: backupCenter))
+            // Imports always go into the real library, even if a file is opened mid-tour.
+            .modifier(BackupImportHost(center: backupCenter, library: library))
             // During a tour the app shows a throwaway study instead of the real one.
             .environment(tour.sandbox ?? library)
             .environment(backupCenter)
