@@ -140,10 +140,10 @@ Each subject keeps both sittings' grades. In the extraordinary one, parts the sy
 | Layer | Technology |
 |---|---|
 | **Engine** | Swift Package, no SwiftUI/SwiftData dependency, value types |
-| **UI** | SwiftUI, UIKit's `UICalendarView` for the month view |
+| **UI** | SwiftUI |
 | **Persistence** | Local JSON for now; SwiftData with iCloud sync via CloudKit planned |
 | **Project** | XcodeGen (`App/project.yml`), the `.xcodeproj` is generated |
-| **Tests** | Swift Testing, one suite per syllabus plus engine tests |
+| **Tests** | Swift Testing: one suite per syllabus, every mix of evaluations against the engine's invariants, and the app's model (saving, backups, studies) run on the Mac |
 
 ## How to run
 
@@ -152,7 +152,7 @@ Requires Xcode and [XcodeGen](https://github.com/yonaskolb/XcodeGen).
 ```bash
 git clone https://github.com/mtaibo/grade.git
 cd grade
-make test                                              # engine tests
+make test                                              # engine and app model tests
 cp App/Config/Local.xcconfig.example App/Config/Local.xcconfig
 # set DEVELOPMENT_TEAM in Local.xcconfig to your Apple team ID
 make open                                              # generates and opens the Xcode project
