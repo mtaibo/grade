@@ -126,7 +126,8 @@ struct HomeView: View {
     @State private var hintTask: Task<Void, Never>?
 
     /// Every period that has subjects, oldest first. A year-long subject belongs to every term of
-    /// its year, so a year with one has all its terms, even if it's the only subject.
+    /// its year, so a year with one has all its terms, even if it's the only subject; one graded
+    /// per term also adds the year's "Final" (term nil), after its terms, for the whole-year grade.
     private var periods: [Period] {
         let degree = library.degree
         var result: [Period] = []
@@ -136,8 +137,11 @@ struct HomeView: View {
                 terms.formUnion((1...max(degree.termsPerYear, 1)).map { degree.absoluteTerm(year: course.year, relative: $0) })
             }
             result += terms.sorted().map { Period(year: course.year, term: $0) }
+            if course.subjects.contains(where: { $0.term == nil && $0.isPerTerm }) {
+                result.append(Period(year: course.year))
+            }
         }
-        return result.sorted { ($0.year, $0.term ?? 0) < ($1.year, $1.term ?? 0) }
+        return result.sorted { ($0.year, $0.term ?? .max) < ($1.year, $1.term ?? .max) }
     }
 
     /// Adding a subject with no current study (just archived one) sets the study up first.
@@ -167,7 +171,12 @@ struct HomeView: View {
 
     private var period: Period {
         let stored = Period(year: selectedYear, term: selectedTerm == 0 ? nil : selectedTerm)
-        return periods.contains(stored) ? stored : periods.first ?? Period(year: 1, term: 1)
+        if periods.contains(stored) { return stored }
+        // No subjects yet: the year picked in the first-launch questions, so the first one goes there.
+        if periods.isEmpty, (1...max(library.degree.years, 1)).contains(selectedYear) {
+            return Period(year: selectedYear, term: library.degree.absoluteTerm(year: selectedYear, relative: 1))
+        }
+        return periods.first ?? Period(year: 1, term: 1)
     }
 
     /// The custom view on screen, if one is selected and still exists.
@@ -196,9 +205,11 @@ struct HomeView: View {
         library.courses.first { $0.year == period.year }?.subjects ?? []
     }
 
-    /// The term's subjects, with the year-long ones graded per term among them.
+    /// The term's subjects, with the year-long ones graded per term among them; in "Final", just
+    /// those, opened whole.
     private var termSubjects: [SubjectRecord] {
-        yearSubjects.filter { $0.term == period.term || (period.term != nil && $0.term == nil && $0.isPerTerm) }
+        guard period.term != nil else { return yearSubjects.filter { $0.term == nil && $0.isPerTerm } }
+        return yearSubjects.filter { $0.term == period.term || ($0.term == nil && $0.isPerTerm) }
     }
 
     /// Year-long subjects with one evaluation, listed under the term's own when one is selected.
@@ -336,7 +347,7 @@ struct HomeView: View {
     /// The year and term as the screen's title, big enough to read at a glance.
     private var header: some View {
         let heading: (title: String, subtitle: String?) = customSelection.map(library.heading(for:))
-            ?? (period.title(in: library.degree), period.subtitle(in: library.degree))
+            ?? (period.title(in: library.degree), period.subtitle(in: library.degree) ?? "Final")
         return VStack(alignment: .leading, spacing: 0) {
             Text(heading.title)
                 .font(.system(size: yearSize, weight: .bold, design: .rounded))
@@ -456,7 +467,7 @@ struct HomeView: View {
         ForEach(Dictionary(grouping: periods, by: \.year).sorted { $0.key < $1.key }, id: \.key) { year, options in
             Section(library.degree.yearLabel(year)) {
                 ForEach(options, id: \.self) { option in
-                    switcherButton(option.term.map(library.degree.termLabel) ?? "Todo el año", isCurrent: currentSelection == .period(option)) {
+                    switcherButton(option.term.map(library.degree.termLabel) ?? "Final", isCurrent: currentSelection == .period(option)) {
                         select(option)
                     }
                 }

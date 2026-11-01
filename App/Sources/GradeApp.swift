@@ -13,6 +13,8 @@ struct GradeApp: App {
     /// A fresh install: the welcome, what you study and your template, then the tour.
     @State private var isOnboarding = false
     @State private var tourWindow: TourWindow?
+    /// Changed after "Borrar todos los datos" so every tab starts over, Cuenta's pushed screens too.
+    @State private var appSession = UUID()
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some Scene {
@@ -29,7 +31,7 @@ struct GradeApp: App {
                 }
             }
             // Rebuilt when a tour starts or ends, so no screen keeps the other library's state.
-            .id(tour.session)
+            .id([tour.session, appSession])
             // No scroll bars anywhere: every list, form and scroll view below (sheets included) inherits it.
             .scrollIndicators(.hidden)
             // Imports always go into the real library, even if a file is opened mid-tour.
@@ -43,6 +45,19 @@ struct GradeApp: App {
             }
             .onChange(of: scenePhase) { _, phase in
                 if phase == .active { library.reloadIfNeeded() }
+            }
+            // "Borrar todos los datos" is a fresh install: per-device preferences go too, and the
+            // first-launch questions come back.
+            .onChange(of: library.needsOnboarding) { _, needs in
+                guard needs else { return }
+                if let domain = Bundle.main.bundleIdentifier { UserDefaults.standard.removePersistentDomain(forName: domain) }
+                selectedTab = .subjects
+                appSession = UUID()
+                Task {
+                    // Once the confirmation and the rebuilt tabs have settled.
+                    try? await Task.sleep(for: .milliseconds(400))
+                    isOnboarding = true
+                }
             }
             .onChange(of: tour.isActive) { _, isActive in
                 tourWindow?.isHidden = !isActive
@@ -60,15 +75,16 @@ struct GradeApp: App {
             .fullScreenCover(isPresented: $isOnboarding) {
                 OnboardingView { startsTour in
                     tourOffered = true
+                    library.needsOnboarding = false
                     isOnboarding = false
-                    if startsTour { tour.startGeneral(returningTo: .subjects) }
+                    if startsTour { tour.startGeneral(degree: library.degree, returningTo: .subjects) }
                 }
                 .environment(library)
             }
             .alert("¿Te enseño cómo funciona?", isPresented: $isOfferingTour) {
                 Button("Empezar el tour") {
                     tourOffered = true
-                    tour.startGeneral(returningTo: .subjects)
+                    tour.startGeneral(degree: library.degree, returningTo: .subjects)
                 }
                 Button("Ahora no", role: .cancel) { tourOffered = true }
             } message: {

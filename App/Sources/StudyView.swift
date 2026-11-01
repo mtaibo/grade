@@ -76,7 +76,7 @@ struct StudySettingsSections: View {
                     .textInputAutocapitalization(.words)
             }
         } footer: {
-            Text("Por ahora Grade está pensada para la universidad. Al cambiar el tipo se ponen sus años y periodos habituales.")
+            Text("Al cambiar el tipo se ponen sus años, periodos y créditos habituales. En Bachillerato, las asignaturas nuevas duran todo el curso con nota por trimestre.")
         }
 
         Section {

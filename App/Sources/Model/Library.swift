@@ -483,7 +483,7 @@ final class Library {
             WeightedChild(weight: 1, node: .grade(Grade(name: "Examen", isFinalExam: true))),
         ]))
         var record = SubjectRecord(subject: Subject(name: name, ectsCredits: ects, root: root), term: term)
-        // Bachillerato and ESO: a year-long subject starts with a grade per term.
+        // Bachillerato: a year-long subject starts with a grade per term.
         if term == nil, degree.studyType.gradesPerTerm, degree.termsPerYear > 1 {
             record.splitByTerm(degree.termLabels)
         }
@@ -787,7 +787,12 @@ final class Library {
 
     /// Everything gone, as on a fresh install: the current study and its settings, the archived
     /// ones and every guide. Per-device preferences (sort, calendar filter…) stay.
+    /// Set by `eraseAll()`: the app goes back to how it was on a fresh install, first-launch
+    /// questions included. Not saved; the app clears it once those are answered.
+    var needsOnboarding = false
+
     func eraseAll() {
+        needsOnboarding = true
         for id in guideIDs { removeGuide(for: id) }
         courses = []
         degree = DegreeSettings()

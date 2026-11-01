@@ -111,10 +111,6 @@ struct SubjectDetailView: View {
                     }
                     .tourTarget("subject.parts")
                 }
-
-                if let earlier = scope?.earlier, !earlier.isEmpty {
-                    EarlierTermsCard(terms: earlier, record: record, session: session, title: "\(library.degree.pluralTermName) anteriores")
-                }
             }
             .padding(.horizontal)
             .padding(.bottom, 24)
@@ -212,7 +208,8 @@ struct SubjectDetailView: View {
             }
         }
         .sheet(isPresented: $isEditing) {
-            SubjectEditorView(record: record)
+            // Opened from a term, the editor starts on that term's evaluation.
+            SubjectEditorView(record: record, term: scope == nil ? nil : term)
         }
         .sheet(isPresented: $isEditingDates) {
             DatesSheet(recordID: recordID)
@@ -960,15 +957,15 @@ private struct PartItem: Identifiable {
         }
     }
 
-    /// A subject graded per term, opened from one of its terms: that term's parts, plus the terms
-    /// before it when it's the year's last. Nil — show the whole subject — when no term is given or
-    /// the general evaluation no longer has one part per term.
-    static func termScope(of record: SubjectRecord, session: Convocatoria, term: Int?, termsPerYear: Int) -> (node: Node, items: [PartItem], earlier: [PartItem])? {
+    /// A subject graded per term, opened from one of its terms: that term's parts. Nil — show the
+    /// whole subject — when no term is given or the general evaluation no longer has one part per
+    /// term.
+    static func termScope(of record: SubjectRecord, session: Convocatoria, term: Int?, termsPerYear: Int) -> (node: Node, items: [PartItem])? {
         guard record.isPerTerm, let term else { return nil }
         let terms = items(of: record, session: session)
         guard terms.count == termsPerYear, terms.indices.contains(term - 1) else { return nil }
         let node = terms[term - 1].node
-        return (node, items(of: node), term == terms.count ? Array(terms.prefix(term - 1)) : [])
+        return (node, items(of: node))
     }
 
     static func items(of root: Node) -> [PartItem] {
@@ -1158,54 +1155,6 @@ private struct PartCard: View {
         let total = group.children.reduce(0) { $0 + $1.weight }
         guard total > 0 else { return [:] }
         return Dictionary(uniqueKeysWithValues: group.children.map { ($0.id, $0.weight / total * partPercent) })
-    }
-}
-
-/// In the last term of a subject graded per term: how the earlier ones went, a row each, and the
-/// whole year's grade below them.
-private struct EarlierTermsCard: View {
-    let terms: [PartItem]
-    let record: SubjectRecord
-    let session: Convocatoria
-    let title: String
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text(title)
-                .font(.headline)
-            ForEach(terms) { term in
-                let summary = PartSummary(node: term.node, record: record, session: session)
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack(alignment: .firstTextBaseline, spacing: 8) {
-                        Text(term.node.title)
-                            .font(.subheadline.weight(.medium))
-                        if let weightPercent = term.weightPercent {
-                            WeightChip(percent: weightPercent, isMaximum: term.isMaximum)
-                        }
-                        Spacer(minLength: 8)
-                        Text(summary.text)
-                            .font(.headline.monospacedDigit())
-                            .foregroundStyle(summary.hasAnyGrade ? .primary : .tertiary)
-                    }
-                    ProgressBar(fraction: summary.fraction, tint: summary.tint)
-                }
-                .accessibilityElement(children: .ignore)
-                .accessibilityLabel("\(term.node.title), \(summary.hasAnyGrade ? summary.text : "sin notas")")
-            }
-            Divider()
-            let year = PartSummary(node: record.root(for: session), record: record, session: session)
-            HStack(alignment: .firstTextBaseline) {
-                Text("Nota del curso")
-                    .font(.subheadline.weight(.semibold))
-                Spacer(minLength: 8)
-                Text(year.text)
-                    .font(.headline.monospacedDigit())
-                    .foregroundStyle(year.hasAnyGrade ? .primary : .tertiary)
-            }
-            .accessibilityElement(children: .combine)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .card()
     }
 }
 

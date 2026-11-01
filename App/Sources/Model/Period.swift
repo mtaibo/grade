@@ -1,50 +1,44 @@
 import Foundation
 
-/// What the user is studying. Only a university degree shapes the app today (credits, templates);
-/// the rest are there so the choice exists, and pick sensible years and terms.
+/// What the user is studying: a university degree or Bachillerato for now. It picks the usual
+/// years and terms, whether there are credits, and how subjects and the tutorial are set up.
 enum StudyType: String, Codable, CaseIterable, Identifiable {
-    case university, master, vocational, highSchool, secondary, other
+    case university, highSchool
 
     var id: Self { self }
 
+    /// Studies saved when there were more types: ESO goes with Bachillerato (graded per term), the
+    /// rest (máster, FP, otros) with university.
+    init(from decoder: Decoder) throws {
+        let raw = try decoder.singleValueContainer().decode(String.self)
+        self = Self(rawValue: raw) ?? (raw == "secondary" ? .highSchool : .university)
+    }
+
     var label: String {
         switch self {
-        case .university: "Grado universitario"
-        case .master: "Máster"
-        case .vocational: "Formación Profesional"
+        case .university: "Universidad"
         case .highSchool: "Bachillerato"
-        case .secondary: "ESO"
-        case .other: "Otros estudios"
         }
     }
 
     var symbol: String {
         switch self {
         case .university: "graduationcap"
-        case .master: "building.columns"
-        case .vocational: "wrench.and.screwdriver"
         case .highSchool: "books.vertical"
-        case .secondary: "backpack"
-        case .other: "square.grid.2x2"
         }
     }
 
-    /// Whether its subjects usually carry credits (ECTS): university degrees and masters do.
-    var usesCredits: Bool { self == .university || self == .master }
+    /// Whether its subjects usually carry credits (ECTS).
+    var usesCredits: Bool { self == .university }
 
-    /// Whether its subjects usually last the whole year with a grade per term: Bachillerato and ESO.
-    var gradesPerTerm: Bool { self == .highSchool || self == .secondary }
+    /// Whether its subjects usually last the whole year with a grade per term.
+    var gradesPerTerm: Bool { self == .highSchool }
 
-    /// The usual years, terms per year and term name, applied when the type is picked. `nil` for
-    /// `.other`, which keeps whatever was set.
-    var defaults: (years: Int, termsPerYear: Int, termName: String)? {
+    /// The usual years, terms per year and term name, applied when the type is picked.
+    var defaults: (years: Int, termsPerYear: Int, termName: String) {
         switch self {
         case .university: (4, 2, "Cuatrimestre")
-        case .master: (1, 2, "Cuatrimestre")
-        case .vocational: (2, 3, "Trimestre")
         case .highSchool: (2, 3, "Trimestre")
-        case .secondary: (4, 3, "Trimestre")
-        case .other: nil
         }
     }
 }
@@ -113,12 +107,12 @@ struct DegreeSettings: Codable, Equatable {
     func switching(to type: StudyType) -> DegreeSettings {
         var new = self
         new.studyType = type
-        if type != .other { new.usesCredits = type.usesCredits }
-        if let defaults = type.defaults {
-            new.years = defaults.years
-            new.termsPerYear = defaults.termsPerYear
-            new.termName = defaults.termName
-        }
+        new.usesCredits = type.usesCredits
+        new.years = type.defaults.years
+        new.termsPerYear = type.defaults.termsPerYear
+        new.termName = type.defaults.termName
+        // "1º Bachillerato", "2º Año".
+        new.yearName = type == .highSchool ? "Bachillerato" : Self.defaultYearName
         return new
     }
 

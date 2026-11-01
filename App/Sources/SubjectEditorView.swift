@@ -15,8 +15,13 @@ struct SubjectEditorView: View {
     @State private var openingExtraordinaryIDs: [String: UUID] = [:]
     /// The term it had before being made year-long, to go back to if switched off again.
     @State private var lastTerm: Int?
+    /// For a subject graded per term opened from one of its terms (1-based within the year): the
+    /// editor starts on that term's evaluation, with the whole year's folded below.
+    let term: Int?
+    @State private var showsWholeYear = false
 
-    init(record: SubjectRecord) {
+    init(record: SubjectRecord, term: Int? = nil) {
+        self.term = term
         // Grades from before the type was required show the type they were already guessed as, so
         // only sections added from now on start without one.
         var record = record
@@ -46,7 +51,7 @@ struct SubjectEditorView: View {
                 if yearLong {
                     lastTerm = draft.term
                     draft.term = nil
-                    // Bachillerato and ESO grade their year-long subjects per term.
+                    // Bachillerato grades its year-long subjects per term.
                     if degree.studyType.gradesPerTerm, degree.termsPerYear > 1, !draft.isPerTerm { splitByTerm() }
                 } else {
                     if draft.isPerTerm { mergeTerms() }
@@ -106,6 +111,24 @@ struct SubjectEditorView: View {
         draft.subject.root.grades.filter { GradeType($0) == nil }.map(\.name)
     }
 
+    /// The evaluation of the term it was opened from, while the subject is still graded per term
+    /// with one part per term; nil otherwise, and the editor shows the whole subject.
+    private var termNode: Binding<Node>? {
+        guard let term, draft.isPerTerm, let group = draft.subject.root.asGroup,
+              group.children.count == degree.termsPerYear, group.children.indices.contains(term - 1) else { return nil }
+        let index = term - 1
+        return Binding(
+            get: {
+                guard let children = draft.subject.root.asGroup?.children, children.indices.contains(index) else { return .grade(Grade(name: "")) }
+                return children[index].node
+            },
+            set: { node in
+                guard let count = draft.subject.root.asGroup?.children.count, index < count else { return }
+                draft.subject.root.asGroup?.children[index].node = node
+            }
+        )
+    }
+
     private var canSave: Bool {
         !draft.subject.name.trimmingCharacters(in: .whitespaces).isEmpty && duplicateLeafNames.isEmpty && untypedLeafNames.isEmpty
     }
@@ -124,28 +147,34 @@ struct SubjectEditorView: View {
                     Text("Nombre de la asignatura. Toca para cambiarlo.")
                 }
 
-                Section {
-                    Toggle("Anual", isOn: isYearLong.animation())
-                    if draft.term == nil {
-                        Toggle("Nota por periodo", isOn: isPerTerm.animation())
-                    }
-                    if draft.term != nil {
-                        Picker(degree.termName.isEmpty ? DegreeSettings.defaultTermName : degree.termName, selection: $draft.term) {
-                            ForEach(1...max(degree.termsPerYear, 1), id: \.self) { n in
-                                let term = degree.absoluteTerm(year: year, relative: n)
-                                Text(degree.termLabel(term)).tag(Int?.some(term))
+                if let termNode, let term {
+                    NodeContentsSections(node: termNode, isSubtree: true, header: termLabel(term), marksTour: true)
+
+                    Section {
+                        Button {
+                            withAnimation(.snappy) { showsWholeYear.toggle() }
+                        } label: {
+                            HStack {
+                                Label("Todo el curso", systemImage: "calendar")
+                                    .foregroundStyle(.primary)
+                                Spacer()
+                                Image(systemName: "chevron.down")
+                                    .font(.footnote.weight(.semibold))
+                                    .foregroundStyle(.tertiary)
+                                    .rotationEffect(.degrees(showsWholeYear ? 0 : -90))
                             }
+                            .contentShape(.rect)
                         }
-                    }
-                } footer: {
-                    if draft.isPerTerm {
-                        Text("Cada periodo tiene su propia evaluación, y la de abajo es la general: cómo se juntan las notas de los periodos en la final. Aparece en todos los periodos del año.")
-                    } else {
-                        Text("Una asignatura anual aparece en todos los periodos de su año. Si no, solo en el que elijas. Con «Nota por periodo», cada periodo se evalúa por separado.")
+                        .buttonStyle(.plain)
+                    } footer: {
+                        let termName = degree.termName.isEmpty ? "periodo" : degree.termName.lowercased()
+                        Text("Si es anual y con nota por \(termName), cuánto pesa cada \(termName) en la nota final y la evaluación de los demás.")
                     }
                 }
 
-                NodeContentsSections(node: $draft.subject.root, isRoot: true, isPerTerm: draft.isPerTerm)
+                if termNode == nil || showsWholeYear {
+                    wholeYearSections
+                }
 
                 if !duplicateLeafNames.isEmpty {
                     Section {
@@ -207,6 +236,34 @@ struct SubjectEditorView: View {
         .environment(\.isUndecidedEvaluation, draft.subject.root.asGroup?.combination == .undecided)
         .tourPerforms(.editorOpened)
         .tourPerforms(.editorClosed, onAppear: false)
+    }
+
+    /// "Anual", "Nota por periodo" and the subject's own evaluation: for a subject graded per term,
+    /// how the terms make up the final grade.
+    @ViewBuilder
+    private var wholeYearSections: some View {
+                Section {
+                    Toggle("Anual", isOn: isYearLong.animation())
+                    if draft.term == nil {
+                        Toggle("Nota por periodo", isOn: isPerTerm.animation())
+                    }
+                    if draft.term != nil {
+                        Picker(degree.termName.isEmpty ? DegreeSettings.defaultTermName : degree.termName, selection: $draft.term) {
+                            ForEach(1...max(degree.termsPerYear, 1), id: \.self) { n in
+                                let term = degree.absoluteTerm(year: year, relative: n)
+                                Text(degree.termLabel(term)).tag(Int?.some(term))
+                            }
+                        }
+                    }
+                } footer: {
+                    if draft.isPerTerm {
+                        Text("Cada periodo tiene su propia evaluación, y la de abajo es la general: cómo se juntan las notas de los periodos en la final. Aparece en todos los periodos del año.")
+                    } else {
+                        Text("Una asignatura anual aparece en todos los periodos de su año. Si no, solo en el que elijas. Con «Nota por periodo», cada periodo se evalúa por separado.")
+                    }
+                }
+
+                NodeContentsSections(node: $draft.subject.root, isRoot: true, isPerTerm: draft.isPerTerm)
     }
 
     private func save() {
@@ -271,23 +328,29 @@ private struct NodeContentsSections: View {
     var isPerTerm = false
     /// The root of a scheme or of the extraordinary's evaluation (see `CalculationSection`).
     var isSubtree = false
+    /// Above the evaluation picker, e.g. the term a subject graded per term was opened from.
+    var header: String?
+    /// Whether the tour points at these (the subject's own, or the term opened from).
+    var marksTour = false
 
     @Environment(\.isUndecidedEvaluation) private var isUndecided
 
+    private var isTourTarget: Bool { isRoot || marksTour }
+
     var body: some View {
         if isRoot || isSubtree || (!isUndecided && (node.asGroup != nil || node.asFormula != nil)) {
-            CalculationSection(node: $node, isRoot: isRoot || isSubtree, isSubtree: isSubtree)
-                .tourTarget(isRoot ? "editor.evaluation" : nil)
+            CalculationSection(node: $node, isRoot: isRoot || isSubtree, isSubtree: isSubtree, header: header)
+                .tourTarget(isTourTarget ? "editor.evaluation" : nil)
         }
         if let alternatives = Binding(unwrapping: $node.asAlternatives) {
             SchemesSections(alternatives: alternatives)
-                .tourTarget(isRoot ? "editor.sections" : nil)
+                .tourTarget(isTourTarget ? "editor.sections" : nil)
         } else if let group = Binding(unwrapping: $node.asGroup) {
             GroupSections(group: group, isRoot: isRoot || isSubtree, isPerTerm: isPerTerm)
-                .tourTarget(isRoot ? "editor.sections" : nil)
+                .tourTarget(isTourTarget ? "editor.sections" : nil)
         } else if let formula = Binding(unwrapping: $node.asFormula) {
             FormulaSections(formula: formula)
-                .tourTarget(isRoot ? "editor.sections" : nil)
+                .tourTarget(isTourTarget ? "editor.sections" : nil)
         } else if let grade = Binding(unwrapping: $node.asGrade) {
             if isRoot {
                 // "Nota única": just the final grade, typed in the exam card of each sitting.
@@ -317,6 +380,7 @@ private struct CalculationSection: View {
     /// The root of one scheme or of the extraordinary's own evaluation: a whole grade, but only
     /// Media ponderada / Fórmula / Suma.
     var isSubtree = false
+    var header: String?
 
     private enum Method: Hashable {
         case group(CombinationKind)
@@ -382,6 +446,8 @@ private struct CalculationSection: View {
                     LabeledContent("Cuántas cuentan", value: count.formatted())
                 }
             }
+        } header: {
+            if let header { Text(header) }
         } footer: {
             Text(current == .single
                  ? "Solo la nota final, sin partes, pesos ni fechas: para llevar el expediente sin guardar todo lo que hiciste."
@@ -598,13 +664,13 @@ private struct GroupSections: View {
         value.formatted(.number.precision(.fractionLength(0...1)))
     }
 
-    /// A single note called "Nueva sección", taking whatever weight (or points) is still
+    /// A single unnamed note (the name is required before it's added), taking whatever weight (or points) is still
     /// unassigned so adding one rarely leaves the total off.
     private func newChild() -> WeightedChild {
         let fills = group.combination == .weightedAverage || group.combination == .sum
         return WeightedChild(
             weight: fills ? max(0, 1 - totalWeight) : 0,
-            node: asExamIfNeeded(.grade(Grade(name: uniqueName("Nueva sección"))))
+            node: asExamIfNeeded(.grade(Grade(name: "")))
         )
     }
 
@@ -614,12 +680,6 @@ private struct GroupSections: View {
         var node = node
         node.updateGrades { $0.isFinalExam = true }
         return node
-    }
-
-    private func uniqueName(_ base: String) -> String {
-        let taken = Set(group.children.map(\.node.title))
-        guard taken.contains(base) else { return base }
-        return (2...).lazy.map { "\(base) \($0)" }.first { !taken.contains($0) }!
     }
 }
 
@@ -865,9 +925,11 @@ private struct ComponentEditorView: View {
     var body: some View {
         Form {
             Section {
-                NameField(node: $child.node)
+                NameField(node: $child.node, prompt: onAdd == nil ? "Nombre" : "Obligatorio")
             } footer: {
-                Text("Nombre de la sección. Toca para cambiarlo.")
+                Text(onAdd != nil && child.node.title.trimmingCharacters(in: .whitespaces).isEmpty
+                     ? "Ponle un nombre para poder añadirla, por ejemplo «Examen» o «Trabajos»."
+                     : "Nombre de la sección. Toca para cambiarlo.")
             }
 
             if let grade = Binding(unwrapping: $child.node.asGrade) {
@@ -924,7 +986,7 @@ private struct ComponentEditorView: View {
                 }
             }
         }
-        .navigationTitle(child.node.title)
+        .navigationTitle(child.node.title.isEmpty && onAdd != nil ? "Nueva sección" : child.node.title)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             if let onAdd {
@@ -1180,10 +1242,11 @@ private struct RequirementsSection: View {
 
 private struct NameField: View {
     @Binding var node: Node
+    var prompt = "Nombre"
 
     var body: some View {
         InlineField("Nombre") {
-            TextField("Nombre", text: $node.title)
+            TextField(prompt, text: $node.title)
             .multilineTextAlignment(.trailing)
             .foregroundStyle(.secondary)
         }
@@ -1255,7 +1318,7 @@ private struct GradeTypeSection: View {
 }
 
 enum GradeType: CaseIterable, Identifiable {
-    case work, quiz, partialExam, finalExam
+    case work, quiz, partialExam, finalExam, other
 
     var id: Self { self }
 
@@ -1265,6 +1328,7 @@ enum GradeType: CaseIterable, Identifiable {
         case .quiz: "Control"
         case .partialExam: "Examen parcial"
         case .finalExam: "Examen final"
+        case .other: "Otro"
         }
     }
 
@@ -1275,6 +1339,7 @@ enum GradeType: CaseIterable, Identifiable {
         case .work: self = .work
         case .quiz: self = .quiz
         case .exam: self = .partialExam
+        case .other: self = .other
         case nil: return nil
         }
     }
@@ -1284,6 +1349,7 @@ enum GradeType: CaseIterable, Identifiable {
         case .work: grade.category = .work
         case .quiz: grade.category = .quiz
         case .partialExam, .finalExam: grade.category = .exam
+        case .other: grade.category = .other
         }
         grade.isFinalExam = self == .finalExam ? true : nil
     }

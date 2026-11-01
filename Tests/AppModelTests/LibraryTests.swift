@@ -242,10 +242,20 @@ struct LibraryTests {
         #expect(library.record(id: last)?.term == 4)
     }
 
+    /// Studies saved when there were more types still open: ESO as Bachillerato, the rest as university.
+    @Test func removedStudyTypesDecode() throws {
+        let decode = { (raw: String) in try JSONDecoder().decode(DegreeSettings.self, from: Data(#"{"studyType":"\#(raw)"}"#.utf8)).studyType }
+        #expect(try decode("secondary") == .highSchool)
+        #expect(try decode("master") == .university)
+        #expect(try decode("vocational") == .university)
+        #expect(try decode("other") == .university)
+        #expect(try decode("highSchool") == .highSchool)
+    }
+
     @Test func schoolSubjectsLastingTheYearStartWithAGradePerTerm() throws {
         let library = Sandbox().open()
         var degree = library.degree
-        degree.studyType = .secondary
+        degree.studyType = .highSchool
         degree.termsPerYear = 3
         degree.termName = "Trimestre"
         library.updateDegree(degree)
@@ -448,7 +458,7 @@ struct LibraryTests {
         library.resumeArchivedStudy(id: archive.id)
         #expect(library.hasStudy && library.record(id: id) != nil && library.archives.isEmpty)
         library.archiveCurrentStudy()
-        library.startStudy(DegreeSettings().switching(to: .master))
+        library.startStudy(DegreeSettings().switching(to: .highSchool))
         let other = library.addSubject(Self.subject("Máster"), year: 1, term: 1)
         library.resumeArchivedStudy(id: library.archives[0].id)
         #expect(library.record(id: id) != nil)

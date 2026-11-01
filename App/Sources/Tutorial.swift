@@ -40,7 +40,7 @@ enum TourSection: String, CaseIterable, Identifiable {
 
     var detail: String {
         switch self {
-        case .home: "Tarjetas, cuatrimestres, vistas y orden"
+        case .home: "Tarjetas, periodos, vistas y orden"
         case .subject: "Tu nota, el examen final y cada parte"
         case .editor: "Cómo se calcula la nota de una asignatura"
         case .calendar: "Exámenes y entregas con fecha"
@@ -99,15 +99,31 @@ final class Tour {
     private static let rememberedKeys = ["selectedYear", "selectedTerm", "selectedCustomView"]
     @ObservationIgnored private var remembered: [String: Any] = [:]
 
-    func startGeneral(returningTo tab: AppTab) {
-        start(Self.generalSteps, sandbox: Library(inMemory: DegreeSettings()), returningTo: tab)
+    /// The general tour, on an empty study set up like the user's (so it talks about their terms).
+    func startGeneral(degree: DegreeSettings, returningTo tab: AppTab) {
+        start(Self.generalSteps(for: degree), sandbox: Library(inMemory: Self.sandboxDegree(degree)), returningTo: tab)
     }
 
+    /// A section's tour, on sample subjects: the first degree template at university, a few
+    /// year-long subjects graded per term in Bachillerato.
     func start(_ section: TourSection, degree: DegreeSettings, returningTo tab: AppTab) {
+        let degree = Self.sandboxDegree(degree)
         let library = Library(inMemory: degree)
-        if let template = DegreeTemplate.all.first { library.apply(template) }
+        if degree.studyType.gradesPerTerm {
+            for name in ["Matemáticas", "Lengua", "Filosofía"] { _ = library.addSubject(name: name, year: 1, term: nil) }
+        } else if let template = DegreeTemplate.all.first {
+            library.apply(template)
+        }
         library.addSampleDates()
-        start(Self.steps(for: section), sandbox: library, returningTo: tab)
+        start(Self.steps(for: section, degree: degree), sandbox: library, returningTo: tab)
+    }
+
+    /// The user's study without its name, or a fresh one if they have none yet.
+    private static func sandboxDegree(_ degree: DegreeSettings) -> DegreeSettings {
+        var sandbox = degree
+        sandbox.name = ""
+        sandbox.institution = ""
+        return sandbox
     }
 
     private func start(_ steps: [TourStep], sandbox: Library, returningTo tab: AppTab) {
@@ -204,62 +220,130 @@ final class Tour {
 // MARK: - Steps
 
 extension Tour {
-    static let generalSteps: [TourStep] = [
-        TourStep(title: "Bienvenido a Grade", text: "Te enseño cómo funciona con un estudio de prueba. Tus asignaturas y notas no se tocan: al terminar vuelve todo como estaba.", tab: .subjects),
-        TourStep(target: "home.add", title: "Tu primera asignatura", text: "Aquí verás las asignaturas del cuatrimestre. Toca «Añadir asignatura» para crear la primera.", action: .newSubjectOpened),
-        TourStep(target: "new.name", title: "Ponle nombre", text: "Escribe cómo se llama, por ejemplo «Cálculo»."),
-        TourStep(target: "new.period", title: "¿Cuándo es?", text: "Elige el año y el cuatrimestre. Si dura todo el curso, elige «Todo el año»."),
-        TourStep(target: "new.save", title: "Créala", text: "Toca ✓ para añadirla. Si está gris, falta el nombre.", action: .subjectCreated),
-        TourStep(target: "home.firstTile", title: "Tu asignatura", text: "Cada asignatura es una tarjeta. Si la mantienes pulsada puedes cambiar su icono y color, moverla de cuatrimestre, editar su evaluación o borrarla."),
-        TourStep(target: "home.firstTile", title: "Ábrela", text: "Toca la tarjeta para entrar.", action: .subjectOpened),
-        TourStep(target: "subject.summary", title: "Cómo vas", text: "La nota que llevas, lo que aún puedes sacar y lo que necesitas para aprobar. Tócala para ver el detalle."),
-        TourStep(target: "subject.exam", title: "El examen final", text: "Toca una convocatoria para poner tu nota, y añade su fecha para verla en el Calendario."),
-        TourStep(target: "subject.more", title: "La evaluación", text: "Cada asignatura se evalúa a su manera. Toca «…» y luego «Editar» para configurar la suya.", action: .editorOpened, opensMenu: true),
-        TourStep(target: "editor.evaluation", title: "Cómo se calcula", text: "Elige si la nota final es una media ponderada, una suma de puntos o una fórmula."),
-        TourStep(target: "editor.sections", title: "Las partes de la nota", text: "Añade cada parte de tu guía docente (exámenes, prácticas, trabajos) con su peso. El ✓ verde indica que todo cuadra."),
-        TourStep(target: "editor.save", title: "Guarda", text: "Cuando acabes, toca ✓ para guardar los cambios.", action: .editorClosed),
-        TourStep(target: "calendar.month", title: "Calendario", text: "Aquí aparecen tus exámenes y entregas con fecha. Toca un día para ver lo que tienes.", tab: .calendar),
-        TourStep(target: "calendar.list", title: "Lo próximo", text: "Debajo, lo que viene. Toca una fecha para ir a su asignatura.", tab: .calendar),
-        TourStep(target: "account.study", title: "Tu estudio", text: "En «Estudio actual» dices qué estudias (años y cuatrimestres) o lo archivas para empezar otro. En «Plantillas» tienes cursos completos y asignaturas sueltas ya preparadas.", tab: .account),
-        TourStep(target: "account.record", title: "Expediente", text: "Tus medias por año, por cuatrimestre y de todo el estudio.", tab: .account),
-        TourStep(target: "account.data", title: "Tus datos", text: "Haz copias de seguridad y recupéralas cuando quieras.", tab: .account),
-        TourStep(target: "account.tutorials", title: "Cuando quieras", text: "Este tour y la explicación de cada sección están siempre aquí. ¡Listo!", tab: .account),
-    ]
+    /// The words that change with the study: what a term and the year are called, where the grading
+    /// comes from, and whether subjects are graded per term (Bachillerato) or once (university).
+    private struct Vocabulary {
+        let isSchool: Bool
+        /// "cuatrimestre", "trimestre"…
+        let term: String
+        let terms: String
+        /// "año" at university, "curso" in Bachillerato.
+        let year: String
+        /// Where the grading rules come from.
+        let guide: String
 
-    static func steps(for section: TourSection) -> [TourStep] {
+        init(_ degree: DegreeSettings) {
+            isSchool = degree.studyType.gradesPerTerm
+            term = (degree.termName.trimmingCharacters(in: .whitespaces).isEmpty ? DegreeSettings.defaultTermName : degree.termName).lowercased()
+            terms = degree.pluralTermName.lowercased()
+            year = isSchool ? "curso" : "año"
+            guide = isSchool ? "los criterios de evaluación de tu profesor" : "tu guía docente"
+        }
+    }
+
+    static func generalSteps(for degree: DegreeSettings) -> [TourStep] {
+        let v = Vocabulary(degree)
+        var steps = [
+            TourStep(title: "Bienvenido a Grade", text: "Te enseño cómo funciona con asignaturas de prueba. Tus asignaturas y notas no se tocan: al terminar vuelve todo como estaba.", tab: .subjects),
+            TourStep(target: "home.add", title: "Tu primera asignatura", text: "Aquí verás las asignaturas del \(v.term). Toca «Añadir asignatura» para crear la primera.", action: .newSubjectOpened),
+            TourStep(target: "new.name", title: "Ponle nombre", text: v.isSchool ? "Escribe cómo se llama, por ejemplo «Matemáticas»." : "Escribe cómo se llama, por ejemplo «Cálculo»."),
+            TourStep(target: "new.period", title: "¿Cuándo es?", text: v.isSchool
+                ? "Elige el curso. Las asignaturas duran todo el año y tienen una nota en cada \(v.term)."
+                : "Elige el año y el \(v.term). Si dura todo el curso, elige «Todo el año»."),
+            TourStep(target: "new.save", title: "Créala", text: "Toca ✓ para añadirla. Si está gris, falta el nombre.", action: .subjectCreated),
+            TourStep(target: "home.firstTile", title: "Tu asignatura", text: v.isSchool
+                ? "Cada asignatura es una tarjeta, y sale en todos los \(v.terms) del curso. Si la mantienes pulsada puedes cambiar su icono y color, editar su evaluación o borrarla."
+                : "Cada asignatura es una tarjeta. Si la mantienes pulsada puedes cambiar su icono y color, moverla de \(v.term), editar su evaluación o borrarla."),
+            TourStep(target: "home.firstTile", title: "Ábrela", text: "Toca la tarjeta para entrar.", action: .subjectOpened),
+        ]
+        if v.isSchool {
+            steps += [
+                TourStep(target: "subject.summary", title: "Tu nota del \(v.term)", text: "La nota que llevas en este \(v.term), lo que aún puedes sacar y lo que necesitas para aprobarlo."),
+                TourStep(target: "subject.parts", title: "Tus notas", text: "Los exámenes y trabajos de este \(v.term), con lo que pesa cada uno."),
+            ]
+        } else {
+            steps += [
+                TourStep(target: "subject.summary", title: "Cómo vas", text: "La nota que llevas, lo que aún puedes sacar y lo que necesitas para aprobar. Tócala para ver el detalle."),
+                TourStep(target: "subject.exam", title: "El examen final", text: "Toca una convocatoria para poner tu nota, y añade su fecha para verla en el Calendario."),
+            ]
+        }
+        steps += [
+            TourStep(target: "subject.more", title: "La evaluación", text: "Cada asignatura se evalúa a su manera. Toca «…» y luego «Editar» para configurar la suya.", action: .editorOpened, opensMenu: true),
+            TourStep(target: "editor.evaluation", title: "Cómo se calcula", text: v.isSchool
+                ? "Cómo se calcula la nota de este \(v.term): una media ponderada, una suma de puntos o una fórmula."
+                : "Elige si la nota final es una media ponderada, una suma de puntos o una fórmula."),
+            TourStep(target: "editor.sections", title: "Las partes de la nota", text: v.isSchool
+                ? "Los exámenes y trabajos de este \(v.term), con su peso, como en \(v.guide). El ✓ verde indica que todo cuadra. Cómo se juntan los \(v.terms) en la nota final está más abajo, en «Todo el curso»."
+                : "Añade cada parte de \(v.guide) (exámenes, prácticas, trabajos) con su peso. El ✓ verde indica que todo cuadra."),
+            TourStep(target: "editor.save", title: "Guarda", text: "Cuando acabes, toca ✓ para guardar los cambios.", action: .editorClosed),
+            TourStep(target: "calendar.month", title: "Calendario", text: "Aquí aparecen tus exámenes y entregas con fecha. Toca un día para ver lo que tienes.", tab: .calendar),
+            TourStep(target: "calendar.list", title: "Lo próximo", text: "Debajo, lo que viene. Toca una fecha para ir a su asignatura.", tab: .calendar),
+            TourStep(target: "account.study", title: "Tu estudio", text: v.isSchool
+                ? "En «Estudio actual» cambias el curso y cómo se divide, o lo archivas al pasar a otro estudio."
+                : "En «Estudio actual» dices qué estudias (años y \(v.terms)) o lo archivas para empezar otro. En «Plantillas» tienes cursos completos y asignaturas sueltas ya preparadas.", tab: .account),
+            TourStep(target: "account.record", title: "Expediente", text: "Tus medias por \(v.year), por \(v.term) y de todo el estudio.", tab: .account),
+            TourStep(target: "account.data", title: "Tus datos", text: "Haz copias de seguridad y recupéralas cuando quieras.", tab: .account),
+            TourStep(target: "account.tutorials", title: "Cuando quieras", text: "Este tutorial y la explicación de cada sección están siempre aquí. ¡Listo!", tab: .account),
+        ]
+        return steps
+    }
+
+    static func steps(for section: TourSection, degree: DegreeSettings) -> [TourStep] {
+        let v = Vocabulary(degree)
         switch section {
-        case .home: [
-            TourStep(target: "home.header", title: "Qué estás viendo", text: "El año y el cuatrimestre que tienes en pantalla, con sus asignaturas debajo.", tab: .subjects),
-            TourStep(target: "home.views", title: "Cambiar de cuatrimestre", text: "Salta a otro año o cuatrimestre, o a una de tus vistas personalizadas."),
+        case .home: return [
+            TourStep(target: "home.header", title: "Qué estás viendo", text: "El \(v.year) y el \(v.term) que tienes en pantalla, con sus asignaturas debajo.", tab: .subjects),
+            TourStep(target: "home.views", title: "Cambiar de \(v.term)", text: v.isSchool
+                ? "Salta a otro \(v.term), a «Final» para ver la nota de todo el curso con cada \(v.term), o a una de tus vistas personalizadas."
+                : "Salta a otro año o \(v.term), o a una de tus vistas personalizadas."),
             TourStep(target: "home.more", title: "Más opciones", text: "Ver en cuadrícula o en lista, añadir una asignatura y crear vistas propias para juntar asignaturas de distintos periodos (una repetida, una adelantada…)."),
             TourStep(target: "home.firstTile", title: "Cada asignatura", text: "Tócala para abrirla. Mantenla pulsada para personalizar su icono y color, moverla, editar su evaluación o eliminarla. El círculo se llena según pones notas."),
             TourStep(title: "Ordenarlas", text: "Mantén pulsado el fondo para entrar en modo edición: arrastra las tarjetas para ordenarlas, la − borra una y el + añade otra."),
         ]
-        case .subject: [
-            TourStep(target: "home.firstTile", title: "Abre una asignatura", text: "Toca la tarjeta.", action: .subjectOpened, tab: .subjects),
-            TourStep(target: "subject.summary", title: "Cómo vas", text: "La nota que llevas, lo que aún puedes sacar y la media que necesitas en lo que queda para aprobar. Tócala para ver el detalle."),
-            TourStep(target: "subject.exam", title: "El examen final", text: "Sus dos convocatorias, ordinaria y extraordinaria. Toca una para poner la nota y añade la fecha para verla en el Calendario."),
-            TourStep(target: "subject.parts", title: "El resto de notas", text: "Cada parte de la evaluación con su peso. Toca una para poner sus notas."),
-            TourStep(target: "subject.more", title: "Más opciones", text: "Editar la evaluación, poner las fechas, el simulador para probar notas sin guardarlas y la guía docente en PDF."),
-        ]
-        case .editor: [
+        case .subject:
+            let open = TourStep(target: "home.firstTile", title: "Abre una asignatura", text: "Toca la tarjeta.", action: .subjectOpened, tab: .subjects)
+            let more = TourStep(target: "subject.more", title: "Más opciones", text: v.isSchool
+                ? "Editar la evaluación, poner las fechas y el simulador para probar notas sin guardarlas."
+                : "Editar la evaluación, poner las fechas, el simulador para probar notas sin guardarlas y la guía docente en PDF.")
+            if v.isSchool {
+                return [
+                    open,
+                    TourStep(target: "subject.summary", title: "Tu nota del \(v.term)", text: "La nota que llevas en este \(v.term), lo que aún puedes sacar y la media que necesitas en lo que queda para aprobarlo."),
+                    TourStep(target: "subject.parts", title: "Tus notas", text: "Los exámenes y trabajos de este \(v.term), con su peso. Toca uno para poner su nota."),
+                    more,
+                ]
+            }
+            return [
+                open,
+                TourStep(target: "subject.summary", title: "Cómo vas", text: "La nota que llevas, lo que aún puedes sacar y la media que necesitas en lo que queda para aprobar. Tócala para ver el detalle."),
+                TourStep(target: "subject.exam", title: "El examen final", text: "Sus dos convocatorias, ordinaria y extraordinaria. Toca una para poner la nota y añade la fecha para verla en el Calendario."),
+                TourStep(target: "subject.parts", title: "El resto de notas", text: "Cada parte de la evaluación con su peso. Toca una para poner sus notas."),
+                more,
+            ]
+        case .editor: return [
             TourStep(target: "home.firstTile", title: "Abre una asignatura", text: "Toca la tarjeta.", action: .subjectOpened, tab: .subjects),
             TourStep(target: "subject.more", title: "Abre el editor", text: "Toca «…» y luego «Editar».", action: .editorOpened, opensMenu: true),
             TourStep(target: "editor.name", title: "Nombre", text: "Cámbialo cuando quieras."),
-            TourStep(target: "editor.evaluation", title: "Cómo se calcula", text: "Media ponderada (cada parte pesa un %), suma de puntos o una fórmula para las guías más raras."),
-            TourStep(target: "editor.sections", title: "Secciones", text: "Cada parte de la nota con su peso. Toca una para cambiar su tipo, sus notas, su nota máxima o una nota mínima con su consecuencia. El ✓ verde indica que los pesos suman 100 %."),
+            TourStep(target: "editor.evaluation", title: "Cómo se calcula", text: v.isSchool
+                ? "Cómo se calcula la nota de este \(v.term): una media ponderada (cada parte pesa un %), una suma de puntos o una fórmula."
+                : "Media ponderada (cada parte pesa un %), suma de puntos o una fórmula para las guías más raras."),
+            TourStep(target: "editor.sections", title: "Secciones", text: v.isSchool
+                ? "Los exámenes y trabajos de este \(v.term), con su peso. En cada uno puedes cambiar su tipo, su nota máxima o ponerle una nota mínima. El ✓ verde indica que los pesos suman 100 %. Cómo pesa cada \(v.term) en la nota final está en «Todo el curso»."
+                : "Cada parte de la nota con su peso. Toca una para cambiar su tipo, sus notas, su nota máxima o una nota mínima con su consecuencia. El ✓ verde indica que los pesos suman 100 %."),
             TourStep(target: "editor.save", title: "Guardar", text: "✓ guarda los cambios; ✗ sale sin guardar. Nada cambia hasta que guardas."),
         ]
-        case .calendar: [
+        case .calendar: return [
             TourStep(target: "calendar.month", title: "El mes", text: "Los puntos marcan los días con exámenes o entregas. Toca uno para ver solo lo de ese día.", tab: .calendar),
             TourStep(target: "calendar.list", title: "Lo próximo", text: "Las fechas que vienen, de la más cercana a la más lejana. Toca una para ir a su asignatura."),
             TourStep(target: "calendar.filter", title: "Filtrar", text: "Elige qué tipos de fechas ver: exámenes, entregas, controles…"),
         ]
-        case .account: [
-            TourStep(target: "account.study", title: "Estudios", text: "«Estudio actual»: qué estudias, cómo se divide y archivarlo para empezar otro sin perder nada. «Plantillas»: un curso entero o una asignatura suelta con la evaluación de su guía ya puesta.", tab: .account),
-            TourStep(target: "account.record", title: "Expediente", text: "Tus medias por año, por cuatrimestre y de todo el estudio, contando solo las asignaturas terminadas."),
+        case .account: return [
+            TourStep(target: "account.study", title: "Estudios", text: v.isSchool
+                ? "«Estudio actual»: qué estudias, en qué curso estás, cómo se divide, y archivarlo al pasar a otro estudio sin perder nada."
+                : "«Estudio actual»: qué estudias, cómo se divide y archivarlo para empezar otro sin perder nada. «Plantillas»: un curso entero o una asignatura suelta con la evaluación de su guía ya puesta.", tab: .account),
+            TourStep(target: "account.record", title: "Expediente", text: "Tus medias por \(v.year), por \(v.term) y de todo el estudio, contando solo las asignaturas terminadas."),
             TourStep(target: "account.data", title: "Datos", text: "Copias de seguridad (de todo o de una parte, con o sin notas) y borrar notas o asignaturas."),
-            TourStep(target: "account.tutorials", title: "Tutoriales", text: "El tour completo y esta explicación de cada sección."),
+            TourStep(target: "account.tutorials", title: "Tutoriales", text: "El tutorial completo y esta explicación de cada sección."),
         ]
         }
     }
@@ -399,24 +483,32 @@ private struct TourOverlay: View {
     let size: CGSize
     let safeArea: EdgeInsets
 
-    private var paddedHole: CGRect? { hole }
+    /// A little air around the element, so the outline doesn't hug it.
+    private var paddedHole: CGRect? { hole?.insetBy(dx: -6, dy: -6) }
 
     var body: some View {
         let shape = DimShape(hole: paddedHole)
         ZStack(alignment: .top) {
             shape
-                .fill(.black.opacity(tour.isMenuOpen ? 0 : 0.55), style: FillStyle(eoFill: true))
+                .fill(.black.opacity(tour.isMenuOpen ? 0 : 0.45), style: FillStyle(eoFill: true))
                 // Taps on the dimmed part go nowhere (`TourWindow` lets the ones in the hole through
                 // when the step waits for the user).
                 .contentShape(Rectangle())
                 .onTapGesture {}
 
             if let paddedHole, !tour.isMenuOpen {
-                RoundedRectangle(cornerRadius: 16)
-                    .stroke(.white, lineWidth: 2)
+                RoundedRectangle(cornerRadius: 18)
+                    .stroke(.white.opacity(0.9), lineWidth: 1.5)
                     .frame(width: paddedHole.width, height: paddedHole.height)
                     .position(x: paddedHole.midX, y: paddedHole.midY)
                     .allowsHitTesting(false)
+                // A step that waits for a tap shows where, instead of saying it.
+                if step.action != nil {
+                    TapPulse(size: paddedHole.size)
+                        .position(x: paddedHole.midX, y: paddedHole.midY)
+                        .allowsHitTesting(false)
+                        .id(tour.index)
+                }
             }
 
             bubble
@@ -427,62 +519,90 @@ private struct TourOverlay: View {
     private var bubble: some View {
         let card = TourBubble(tour: tour, step: step)
             .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { tour.currentBubble = $0 }
-            .padding(.horizontal, 16)
-        if tour.isMenuOpen {
-            // Out of the menu's way.
+            .padding(.horizontal, 20)
+            .animation(.snappy, value: tour.index)
+        if let paddedHole, !tour.isMenuOpen, paddedHole.midY <= size.height / 2 {
+            // Below a highlight in the top half.
+            card
+                .frame(maxHeight: .infinity, alignment: .top)
+                .padding(.top, max(paddedHole.maxY + 16, safeArea.top))
+        } else if let paddedHole, !tour.isMenuOpen {
+            // Above a highlight in the bottom half.
             card
                 .frame(maxHeight: .infinity, alignment: .bottom)
-                .padding(.bottom, safeArea.bottom + 90)
-        } else if let paddedHole {
-            if paddedHole.midY > size.height / 2 {
-                // Above the highlight.
-                card
-                    .frame(maxHeight: .infinity, alignment: .bottom)
-                    .padding(.bottom, max(size.height - paddedHole.minY + 12, safeArea.bottom))
-            } else {
-                card
-                    .frame(maxHeight: .infinity, alignment: .top)
-                    .padding(.top, max(paddedHole.maxY + 12, safeArea.top))
-            }
+                .padding(.bottom, max(size.height - paddedHole.minY + 16, safeArea.bottom))
         } else {
-            card.frame(maxHeight: .infinity)
+            // Nothing highlighted, or a menu open: just above the tab bar, out of the way.
+            card
+                .frame(maxHeight: .infinity, alignment: .bottom)
+                .padding(.bottom, safeArea.bottom + 84)
         }
     }
 }
 
+/// The step's pop-up, in Liquid Glass like the rest of the app's chrome.
 private struct TourBubble: View {
     let tour: Tour
     let step: TourStep
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("\(tour.index + 1) de \(tour.steps.count)")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-            Text(step.title)
-                .font(.headline)
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(step.title)
+                    .font(.headline)
+                Spacer(minLength: 8)
+                Text("\(tour.index + 1)/\(tour.steps.count)")
+                    .font(.caption.weight(.medium).monospacedDigit())
+                    .foregroundStyle(.secondary)
+                Button("Salir del tutorial", systemImage: "xmark") { tour.end() }
+                    .labelStyle(.iconOnly)
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 28, height: 28)
+                    .contentShape(.circle)
+                    .buttonStyle(.plain)
+            }
             Text(step.text)
                 .font(.subheadline)
+                .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
-            HStack {
-                Button("Salir") { tour.end() }
-                    .foregroundStyle(.secondary)
-                Spacer()
-                if step.action == nil {
-                    Button(tour.isLast ? "Terminar" : "Siguiente") { tour.next() }
-                        .buttonStyle(.borderedProminent)
-                } else {
-                    Label("Toca lo resaltado", systemImage: "hand.tap")
-                        .font(.footnote.weight(.semibold))
-                        .foregroundStyle(.tint)
+            if step.action == nil {
+                Button {
+                    tour.next()
+                } label: {
+                    Text(tour.isLast ? "Terminar" : "Siguiente")
+                        .font(.subheadline.weight(.semibold))
+                        .padding(.horizontal, 6)
                 }
+                .buttonStyle(.glassProminent)
+                .frame(maxWidth: .infinity, alignment: .trailing)
+                .padding(.top, 6)
             }
-            .padding(.top, 4)
         }
-        .padding(16)
+        .padding(.leading, 18)
+        .padding(.trailing, 12)
+        .padding(.vertical, 14)
         .frame(maxWidth: 500, alignment: .leading)
-        .background(Color(.secondarySystemGroupedBackground), in: .rect(cornerRadius: 20))
-        .shadow(color: .black.opacity(0.2), radius: 12, y: 4)
+        .glassEffect(.regular, in: .rect(cornerRadius: 26))
+    }
+}
+
+/// Where to tap: a soft outline that slowly opens out from the highlight and fades, over and over.
+private struct TapPulse: View {
+    let size: CGSize
+
+    @State private var isExpanded = false
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: 18)
+            .stroke(.white, lineWidth: 1.5)
+            .frame(width: size.width, height: size.height)
+            .padding(isExpanded ? -8 : 0)
+            .opacity(isExpanded ? 0 : 0.6)
+            .onAppear {
+                withAnimation(.easeOut(duration: 1.6).repeatForever(autoreverses: false)) { isExpanded = true }
+            }
+            .accessibilityHidden(true)
     }
 }
 
@@ -492,7 +612,7 @@ private struct DimShape: Shape {
 
     func path(in rect: CGRect) -> Path {
         var path = Path(rect)
-        if let hole { path.addRoundedRect(in: hole, cornerSize: CGSize(width: 16, height: 16)) }
+        if let hole { path.addRoundedRect(in: hole, cornerSize: CGSize(width: 18, height: 18)) }
         return path
     }
 }

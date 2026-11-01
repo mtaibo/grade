@@ -100,7 +100,7 @@ struct AccountView: View {
 
                 Section {
                     Button {
-                        tour?.startGeneral(returningTo: .account)
+                        tour?.startGeneral(degree: library.degree, returningTo: .account)
                     } label: {
                         AccountRow(title: "Tutorial general", detail: "Un recorrido guiado por toda la app", symbol: "figure.walk")
                     }

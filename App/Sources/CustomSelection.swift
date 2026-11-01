@@ -20,7 +20,7 @@ struct HomeViewsScreen: View {
                 Section(library.degree.yearLabel(year)) {
                     ForEach(options, id: \.self) { option in
                         SelectableRow(
-                            title: option.term.map(library.degree.termLabel) ?? "Todo el año",
+                            title: option.term.map(library.degree.termLabel) ?? "Final",
                             detail: count(in: option),
                             isSelected: current == .period(option)
                         ) {
@@ -78,8 +78,12 @@ struct HomeViewsScreen: View {
         dismiss()
     }
 
+    /// A term counts its year-long subjects too; "Final" (term nil) only the ones graded per term.
     private func count(in period: Period) -> String {
-        let count = library.courses.first { $0.year == period.year }?.subjects.count { $0.term == period.term } ?? 0
+        let subjects = library.courses.first { $0.year == period.year }?.subjects ?? []
+        let count = period.term == nil
+            ? subjects.count { $0.term == nil && $0.isPerTerm }
+            : subjects.count { $0.term == period.term || $0.term == nil }
         return subjectsLabel(count)
     }
 
