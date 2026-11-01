@@ -24,6 +24,7 @@ extension GradeCategory {
         case .work: "Trabajos"
         case .quiz: "Controles"
         case .exam: "Exámenes"
+        case .other: "Otros"
         }
     }
 
@@ -32,6 +33,7 @@ extension GradeCategory {
         case .work: "Trabajo"
         case .quiz: "Control"
         case .exam: "Examen"
+        case .other: "Otro"
         }
     }
 
@@ -40,6 +42,7 @@ extension GradeCategory {
         case .work: .blue
         case .quiz: .orange
         case .exam: .red
+        case .other: .gray
         }
     }
 
@@ -49,6 +52,7 @@ extension GradeCategory {
         case .exam: 2
         case .quiz: 1
         case .work: 0
+        case .other: -1
         }
     }
 }
@@ -106,8 +110,8 @@ struct CalendarView: View {
     @State private var isMonthShown = false
     @State private var isListShown = true
     @ScaledMetric(relativeTo: .largeTitle) private var titleSize = 40
-    /// Per-device: which kinds are shown, stored as their raw values.
-    @AppStorage("calendarKinds") private var storedKinds = GradeCategory.allCases.map(\.rawValue).joined(separator: ",")
+    /// Per-device: which kinds are hidden, as their raw values — so a kind added later starts shown.
+    @AppStorage("calendarHiddenKinds") private var hiddenKinds = ""
 
     private static let initialCount = 6
     private static let pageSize = 3
@@ -124,18 +128,26 @@ struct CalendarView: View {
     }
 
     private var shownKinds: Set<GradeCategory> {
-        Set(storedKinds.split(separator: ",").compactMap { GradeCategory(rawValue: String($0)) })
+        let hidden = Set(hiddenKinds.split(separator: ",").compactMap { GradeCategory(rawValue: String($0)) })
+        return Set(GradeCategory.allCases).subtracting(hidden)
+    }
+
+    /// The filter used to store the shown kinds ("calendarKinds"); what it left out is what's hidden.
+    private func migrateKindFilter() {
+        guard let shown = UserDefaults.standard.string(forKey: "calendarKinds") else { return }
+        let old: [GradeCategory] = [.work, .quiz, .exam]
+        hiddenKinds = old.filter { !shown.split(separator: ",").contains(Substring($0.rawValue)) }.map(\.rawValue).joined(separator: ",")
+        UserDefaults.standard.removeObject(forKey: "calendarKinds")
     }
 
     private var isFiltered: Bool { shownKinds.count < GradeCategory.allCases.count }
 
-    /// The kind whose colour each marked day's dot takes.
-    private func dayKinds(_ deadlines: [Deadline]) -> [CalendarDay: GradeCategory] {
-        deadlines.reduce(into: [:]) { result, deadline in
-            let day = CalendarDay(deadline.date, calendar: calendar)
-            if let current = result[day], current.priority >= deadline.kind.priority { return }
-            result[day] = deadline.kind
+    /// Each marked day's dates by kind, one dot each, the most important first.
+    private func dayKinds(_ deadlines: [Deadline]) -> [CalendarDay: [GradeCategory]] {
+        deadlines.reduce(into: [CalendarDay: [GradeCategory]]()) { result, deadline in
+            result[CalendarDay(deadline.date, calendar: calendar), default: []].append(deadline.kind)
         }
+        .mapValues { $0.sorted { $0.priority > $1.priority } }
     }
 
     private func title(of day: CalendarDay) -> String {
@@ -158,7 +170,7 @@ struct CalendarView: View {
     private func toggle(_ kind: GradeCategory) {
         var kinds = shownKinds
         if kinds.contains(kind) { kinds.remove(kind) } else { kinds.insert(kind) }
-        storedKinds = GradeCategory.allCases.filter(kinds.contains).map(\.rawValue).joined(separator: ",")
+        hiddenKinds = GradeCategory.allCases.filter { !kinds.contains($0) }.map(\.rawValue).joined(separator: ",")
     }
 
     var body: some View {
@@ -306,6 +318,7 @@ struct CalendarView: View {
             .onChange(of: isCurrentTab) {
                 if !isCurrentTab { upcomingCount = Self.initialCount }
             }
+            .onAppear(perform: migrateKindFilter)
         }
     }
 }
@@ -506,10 +519,10 @@ struct CalendarDay: Hashable {
 
 /// The month, drawn here rather than with `UICalendarView`, which can't show the days of the months
 /// either side: they fill the first and last weeks, in a dim grey. A dot marks every day in
-/// `dayKinds`, in its kind's colour; tapping a day picks it into `selection` and tapping it again
+/// `dayKinds` (a dot, or a line split by colour for up to three dates); tapping a day picks it into `selection` and tapping it again
 /// unpicks it (a dimmed day moves to its own month first). Swipe or the arrows change month.
 private struct MonthCalendar: View {
-    let dayKinds: [CalendarDay: GradeCategory]
+    let dayKinds: [CalendarDay: [GradeCategory]]
     @Binding var selection: CalendarDay?
     @State private var month = Calendar.current.dateInterval(of: .month, for: .now)?.start ?? .now
     /// Which way the last change went, so the new month slides in from that side.
@@ -589,7 +602,7 @@ private struct MonthCalendar: View {
                     let key = CalendarDay(day, calendar: calendar)
                     DayCell(
                         date: day,
-                        kind: dayKinds[key],
+                        kinds: dayKinds[key] ?? [],
                         isInMonth: calendar.isDate(day, equalTo: month, toGranularity: .month),
                         isSelected: selection == key,
                         isToday: calendar.isDateInToday(day)
@@ -617,8 +630,11 @@ private struct MonthCalendar: View {
 }
 
 private struct DayCell: View {
+    /// The most dates a day's mark shows; more still fit, they just don't lengthen it.
+    static let maxDots = 3
+
     let date: Date
-    let kind: GradeCategory?
+    let kinds: [GradeCategory]
     let isInMonth: Bool
     let isSelected: Bool
     let isToday: Bool
@@ -643,17 +659,25 @@ private struct DayCell: View {
                     .background {
                         if isSelected { Circle().fill(isToday ? AnyShapeStyle(.tint) : AnyShapeStyle(.primary)) }
                     }
-                Circle()
-                    .fill(kind?.color ?? .clear)
-                    .frame(width: 6, height: 6)
-                    .opacity(isInMonth ? 1 : 0.3)
+                // One date is a dot; more stretch it into a line, one equal stretch of colour each.
+                let shown = Array(kinds.prefix(Self.maxDots))
+                HStack(spacing: 0) {
+                    ForEach(Array(shown.enumerated()), id: \.offset) { _, kind in
+                        Rectangle().fill(kind.color)
+                    }
+                }
+                .frame(width: shown.isEmpty ? 0 : 6 + CGFloat(shown.count - 1) * 8, height: 6)
+                .clipShape(.capsule)
+                // Keeps the row's height on days with no dates.
+                .frame(height: 6)
+                .opacity(isInMonth ? 1 : 0.3)
             }
             .frame(maxWidth: .infinity)
             .contentShape(.rect)
         }
         .buttonStyle(.plain)
         .accessibilityLabel(date.formatted(.dateTime.weekday(.wide).day().month(.wide)))
-        .accessibilityValue(kind.map(\.singular) ?? "")
+        .accessibilityValue(kinds.count > 1 ? "\(kinds.count) fechas" : kinds.first?.singular ?? "")
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 }

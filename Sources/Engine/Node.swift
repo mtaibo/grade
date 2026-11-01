@@ -214,7 +214,8 @@ public struct Subject: Sendable, Equatable, Codable {
 
 /// A colour-coded classification for anything with a date: an assignment, a quiz-style control or an exam.
 public enum GradeCategory: String, Sendable, Codable, CaseIterable, Equatable {
-    case work, quiz, exam
+    /// `other`: anything that isn't a hand-in, a control or an exam (participation, attendance…).
+    case work, quiz, exam, other
 }
 
 extension Grade {
