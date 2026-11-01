@@ -157,6 +157,7 @@ cp App/Config/Local.xcconfig.example App/Config/Local.xcconfig
 # set DEVELOPMENT_TEAM in Local.xcconfig to your Apple team ID
 make open                                              # generates and opens the Xcode project
 make device                                            # builds, installs and opens it on a paired iPhone
+make testflight                                        # archives and uploads a build to App Store Connect
 ```
 
 ### Website

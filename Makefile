@@ -1,4 +1,4 @@
-.PHONY: build test generate open clean todo device web
+.PHONY: build test generate open clean todo device testflight web
 
 build:
 	swift build
@@ -34,6 +34,31 @@ device: generate
 	xcrun devicectl device install app --device $(DEVICE) $(DEVICE_BUILD)/Build/Products/Debug-iphoneos/Grade-iOS.app \
 		|| (sleep 2 && xcrun devicectl device install app --device $(DEVICE) $(DEVICE_BUILD)/Build/Products/Debug-iphoneos/Grade-iOS.app)
 	xcrun devicectl device process launch --device $(DEVICE) com.migueltaibo.grade
+
+# Archives the app and uploads it to App Store Connect (TestFlight). Needs DEVELOPMENT_TEAM in
+# App/Config/Local.xcconfig, Xcode signed in with the developer account and the app created in App Store
+# Connect with bundle id com.migueltaibo.grade. Every upload needs a build number higher than the last:
+# it defaults to the current date and time, BUILD=<n> overrides it. The marketing version is in Shared.xcconfig.
+BUILD ?= $(shell date +%y%m%d%H%M)
+TEAM = $(shell awk -F= '/^DEVELOPMENT_TEAM/ {gsub(/ /, "", $$2); print $$2}' App/Config/Local.xcconfig 2>/dev/null)
+ARCHIVE = build/Grade.xcarchive
+
+testflight: generate
+	@test -n "$(TEAM)" || (echo "Falta DEVELOPMENT_TEAM en App/Config/Local.xcconfig." && exit 1)
+	@mkdir -p build
+	@printf '%s\n' '<?xml version="1.0" encoding="UTF-8"?>' \
+		'<plist version="1.0"><dict>' \
+		'<key>method</key><string>app-store-connect</string>' \
+		'<key>destination</key><string>upload</string>' \
+		'<key>teamID</key><string>$(TEAM)</string>' \
+		'<key>signingStyle</key><string>automatic</string>' \
+		'</dict></plist>' > build/ExportOptions.plist
+	rm -rf $(ARCHIVE)
+	xcodebuild -project App/Grade.xcodeproj -scheme Grade-iOS -configuration Release \
+		-destination 'generic/platform=iOS' -archivePath $(ARCHIVE) -allowProvisioningUpdates \
+		CURRENT_PROJECT_VERSION=$(BUILD) -quiet archive
+	xcodebuild -exportArchive -archivePath $(ARCHIVE) -exportOptionsPlist build/ExportOptions.plist \
+		-allowProvisioningUpdates
 
 # The site at grade.migueltaibo.com, run on the Pi: tpcloud must be up first (its gateway network
 # and Caddy, which proxies the subdomain to this container).
