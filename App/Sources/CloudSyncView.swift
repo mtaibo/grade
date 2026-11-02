@@ -54,7 +54,7 @@ struct CloudSyncView: View {
                     }
                     .disabled(isSyncing || cloud.status == .noAccount)
                 } footer: {
-                    Text("Los cambios suben 10 minutos después de hacerlos. Si cambias muchas cosas seguidas, esperan a que termines y unos minutos más. iOS puede retrasarlo si cierras la app antes.")
+                    Text("Los cambios suben en cuanto terminas de hacerlos y llegan a tus otros dispositivos en unos segundos. Si el sistema no deja a la app funcionar en ese momento, pueden tardar más.")
                 }
             }
         }

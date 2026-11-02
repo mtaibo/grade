@@ -21,6 +21,7 @@ struct GradeApp: App {
     @State private var tourWindow: TourWindow?
     #else
     @State private var menuActions = MenuActions()
+    @NSApplicationDelegateAdaptor private var appDelegate: MacAppDelegate
     #endif
     /// Changed after "Borrar todos los datos" so every tab starts over, Cuenta's pushed screens too.
     @State private var appSession = UUID()
@@ -49,6 +50,7 @@ struct GradeApp: App {
         Window("Grade", id: "main") {
             root
                 .frame(minWidth: 820, minHeight: 560)
+                .onAppear { appDelegate.cloud = cloud }
         }
         .defaultSize(width: 1120, height: 780)
         .windowResizability(.contentMinSize)
@@ -102,13 +104,23 @@ struct GradeApp: App {
         .onChange(of: [tour.session.uuidString, String(tour.index)]) {
             if let tab = tour.current?.tab { selectedTab = tab }
         }
+        // iCloud announces changes with a push, which can come late or not at all: while the app is
+        // on screen it also asks, so what's done on another device shows up on its own.
+        .task(id: scenePhase) {
+            guard scenePhase == .active else { return }
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(15))
+                guard !Task.isCancelled else { return }
+                await cloud.refresh()
+            }
+        }
         .onChange(of: scenePhase) { _, phase in
             switch phase {
             case .active:
                 library.reloadIfNeeded()
                 Task { await cloud.refresh() }
             case .background:
-                cloud.scheduleBackgroundSync()
+                cloud.syncBeforeSuspension()
             default:
                 break
             }

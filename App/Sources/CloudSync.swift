@@ -38,6 +38,7 @@ final class CloudSync: NSObject {
     /// When the changes waiting will go up, for the status line.
     private(set) var nextSync: Date?
     var isEnabled: Bool { state.isEnabled }
+    var hasPendingChanges: Bool { state.schedule.hasPendingChanges }
 
     @ObservationIgnored private let library: Library
     /// Development builds and TestFlight or App Store ones see different iClouds, so what one knows
@@ -115,7 +116,7 @@ final class CloudSync: NSObject {
         schedulePending()
         // Changed from the watch with the app in the background: no timer runs there.
         #if os(iOS)
-        if UIApplication.shared.applicationState != .active { scheduleBackgroundSync() }
+        if UIApplication.shared.applicationState != .active { syncBeforeSuspension() }
         #endif
     }
 
@@ -144,7 +145,12 @@ final class CloudSync: NSObject {
     func syncNow() async {
         guard let engine, !library.isWaitingForFile, !isSyncing else { return }
         isSyncing = true
-        defer { isSyncing = false }
+        var reachedSend = false
+        defer {
+            isSyncing = false
+            // A change made while this one was going up found the sync busy and is still waiting.
+            if reachedSend, state.schedule.hasPendingChanges { schedulePending() }
+        }
         status = .syncing
         timer?.cancel()
         if !state.ledger.hasFetched { await fetch() }
@@ -158,6 +164,7 @@ final class CloudSync: NSObject {
         state.schedule.reset()
         nextSync = nil
         persist()
+        reachedSend = true
         do {
             try await engine.sendChanges()
             await fetch()
@@ -186,7 +193,13 @@ final class CloudSync: NSObject {
             status = .unavailable
             return
         }
-        await fetch()
+        let hadFailed = status == .unavailable
+        let isReachable = await fetch()
+        // iCloud is back: what couldn't go up goes now.
+        if hadFailed, isReachable {
+            await syncNow()
+            return
+        }
         if status == .checking { status = state.schedule.hasPendingChanges ? .waiting : .upToDate }
         // Anything left over from the last session, and everything the first time.
         if state.ledger.hasFetched, state.schedule.hasPendingChanges || state.ledger.entries.isEmpty {
@@ -194,17 +207,20 @@ final class CloudSync: NSObject {
         }
     }
 
-    private func fetch() async {
-        guard let engine else { return }
+    @discardableResult
+    private func fetch() async -> Bool {
+        guard let engine else { return false }
         do {
             try await engine.fetchChanges()
             state.ledger.hasFetched = true
             state.lastSync = .now
             lastSync = state.lastSync
             persist()
+            return true
         } catch {
             Self.log.error("Fetch failed: \(error)")
             settleStatus(after: error)
+            return false
         }
     }
 
@@ -218,8 +234,29 @@ final class CloudSync: NSObject {
 
     // MARK: In the background
 
+    /// The app is leaving the screen: what's waiting goes up in the little time iOS still gives it,
+    /// with a wake-up asked for in case that isn't enough.
+    func syncBeforeSuspension() {
+        guard state.schedule.hasPendingChanges else { return }
+        #if os(iOS)
+        scheduleBackgroundSync()
+        var backgroundTask = UIBackgroundTaskIdentifier.invalid
+        let finish = {
+            guard backgroundTask != .invalid else { return }
+            UIApplication.shared.endBackgroundTask(backgroundTask)
+            backgroundTask = .invalid
+        }
+        backgroundTask = UIApplication.shared.beginBackgroundTask(withName: "iCloud", expirationHandler: finish)
+        Task {
+            await syncNow()
+            finish()
+        }
+        #else
+        Task { await syncNow() }
+        #endif
+    }
+
     /// iOS stops timers once the app leaves the screen: asks it to wake the app when the sync is due.
-    /// On the Mac the timer keeps running.
     func scheduleBackgroundSync() {
         #if os(iOS)
         guard let next = state.schedule.nextSync else {

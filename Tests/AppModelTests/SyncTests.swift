@@ -7,47 +7,24 @@ import Testing
 struct SyncScheduleTests {
     private let start = Date(timeIntervalSinceReferenceDate: 800_000_000)
 
-    private func minutes(_ count: Double) -> Date { start.addingTimeInterval(count * 60) }
-
-    @Test func oneChangeWaitsTenMinutes() {
+    @Test func oneChangeGoesUpAfterAPause() {
         var schedule = SyncSchedule()
         #expect(schedule.nextSync == nil)
         schedule.recordChange(at: start)
-        #expect(schedule.nextSync == minutes(10))
+        #expect(schedule.nextSync == start.addingTimeInterval(SyncSchedule.delay))
     }
 
-    @Test func aFewSpreadOutChangesDontMoveIt() {
+    @Test func typingKeepsItWaitingForThePause() {
         var schedule = SyncSchedule()
-        for minute in stride(from: 0.0, through: 9, by: 2) { schedule.recordChange(at: minutes(minute)) }
-        #expect(schedule.nextSync == minutes(10))
+        schedule.recordChange(at: start)
+        schedule.recordChange(at: start.addingTimeInterval(1))
+        #expect(schedule.nextSync == start.addingTimeInterval(1 + SyncSchedule.delay))
     }
 
-    @Test func typingADigitAtATimeIsOneChange() {
+    @Test func constantChangesStillGoUp() {
         var schedule = SyncSchedule()
         for second in 0..<60 { schedule.recordChange(at: start.addingTimeInterval(Double(second))) }
-        #expect(schedule.nextSync == minutes(10))
-    }
-
-    @Test func frequentChangesHoldItUntilTheyCalmDown() throws {
-        var schedule = SyncSchedule()
-        // One every 30 seconds for 12 minutes: past the ten, and still going.
-        for step in 0...24 { schedule.recordChange(at: minutes(Double(step) / 2)) }
-        let next = try #require(schedule.nextSync)
-        // The last few leave the window a little under 3 minutes after the last change, then 3 more.
-        #expect(next > minutes(12 + 3))
-        #expect(next <= minutes(12 + 3 + 3))
-    }
-
-    @Test func aBurstEarlyOnDoesntDelayTheTenMinutes() {
-        var schedule = SyncSchedule()
-        for step in 0..<8 { schedule.recordChange(at: start.addingTimeInterval(Double(step) * 10)) }
-        #expect(schedule.nextSync == minutes(10))
-    }
-
-    @Test func nothingWaitsMoreThanAnHour() {
-        var schedule = SyncSchedule()
-        for step in 0...400 { schedule.recordChange(at: minutes(Double(step) / 2)) }
-        #expect(schedule.nextSync == minutes(60))
+        #expect(schedule.nextSync == start.addingTimeInterval(SyncSchedule.longestWait))
     }
 
     @Test func aSyncClearsItAndItSurvivesClosingTheApp() throws {

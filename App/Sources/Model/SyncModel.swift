@@ -1,50 +1,30 @@
 import CryptoKit
 import Foundation
 
-/// When the changes waiting for iCloud go up: ten minutes after the first one, unless changes are
-/// coming fast. While they do nothing goes up, and once they calm down it waits a few minutes more.
-/// Pure and `Codable`, so a pending sync survives the app being closed.
+/// When the changes waiting for iCloud go up: as soon as they pause, so other devices see them
+/// straight away without a request for every key typed. Pure and `Codable`, so a pending sync
+/// survives the app being closed.
 struct SyncSchedule: Codable, Equatable {
-    /// How long after a change the sync happens.
-    static let delay: TimeInterval = 10 * 60
-    /// `frequentCount` changes within `frequentWindow` count as changing often.
-    static let frequentWindow: TimeInterval = 3 * 60
-    static let frequentCount = 6
-    /// How much longer it waits once they stop being that frequent.
-    static let calmDown: TimeInterval = 3 * 60
+    /// The pause after a change that means it's finished: a grade typed digit by digit saves on each key.
+    static let delay: TimeInterval = 2
     /// Nothing waits longer than this after its change, however busy the app stays.
-    static let longestWait: TimeInterval = 60 * 60
-    /// Changes this close are one: a grade typed digit by digit saves on each key.
-    static let sameChange: TimeInterval = 5
+    static let longestWait: TimeInterval = 15
 
     private(set) var firstChange: Date?
-    private var recent: [Date] = []
-    /// When changes stop being frequent, as far as what's happened so far says.
-    private var frequentUntil: Date?
+    private var lastChange: Date?
 
     var hasPendingChanges: Bool { firstChange != nil }
 
     mutating func recordChange(at date: Date) {
         if firstChange == nil { firstChange = date }
-        if let last = recent.last, date.timeIntervalSince(last) < Self.sameChange {
-            recent[recent.count - 1] = date
-            return
-        }
-        recent.append(date)
-        recent.removeAll { date.timeIntervalSince($0) >= Self.frequentWindow }
-        if recent.count >= Self.frequentCount {
-            // Frequent until the oldest of the last few leaves the window.
-            let until = recent[recent.count - Self.frequentCount].addingTimeInterval(Self.frequentWindow)
-            frequentUntil = max(frequentUntil ?? until, until)
-        }
+        lastChange = date
     }
 
     /// When the waiting changes should go up, `nil` when there are none.
     var nextSync: Date? {
         guard let firstChange else { return nil }
-        let regular = firstChange.addingTimeInterval(Self.delay)
-        let calm = frequentUntil?.addingTimeInterval(Self.calmDown) ?? regular
-        return min(max(regular, calm), firstChange.addingTimeInterval(Self.longestWait))
+        let settled = (lastChange ?? firstChange).addingTimeInterval(Self.delay)
+        return min(settled, firstChange.addingTimeInterval(Self.longestWait))
     }
 
     mutating func reset() { self = SyncSchedule() }
