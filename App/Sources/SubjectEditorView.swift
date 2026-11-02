@@ -51,7 +51,7 @@ struct SubjectEditorView: View {
                 if yearLong {
                     lastTerm = draft.term
                     draft.term = nil
-                    // Bachillerato grades its year-long subjects per term.
+                    // Bachillerato and ESO grade their year-long subjects per term.
                     if degree.studyType.gradesPerTerm, degree.termsPerYear > 1, !draft.isPerTerm { splitByTerm() }
                 } else {
                     if draft.isPerTerm { mergeTerms() }
@@ -144,7 +144,7 @@ struct SubjectEditorView: View {
                     }
                     .tourTarget("editor.name")
                 } footer: {
-                    Text("Nombre de la asignatura. Toca para cambiarlo.")
+                    Text("Nombre de la asignatura. \(Device.tap) para cambiarlo.")
                 }
 
                 if let termNode, let term {
@@ -706,6 +706,7 @@ private struct FormulaSections: View {
     var body: some View {
         Section {
             TextField("Fórmula", text: $text, axis: .vertical)
+                .labelsHidden()
                 .font(.body.monospaced())
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
@@ -845,6 +846,7 @@ private struct FormulaVariableEditor: View {
             Section {
                 LabeledContent("Variable") {
                     TextField("Letra", text: $keyText)
+                        .labelsHidden()
                         .multilineTextAlignment(.trailing)
                         .font(.body.monospaced().bold())
                         .textInputAutocapitalization(.never)
@@ -929,7 +931,7 @@ private struct ComponentEditorView: View {
             } footer: {
                 Text(onAdd != nil && child.node.title.trimmingCharacters(in: .whitespaces).isEmpty
                      ? "Ponle un nombre para poder añadirla, por ejemplo «Examen» o «Trabajos»."
-                     : "Nombre de la sección. Toca para cambiarlo.")
+                     : "Nombre de la sección. \(Device.tap) para cambiarlo.")
             }
 
             if let grade = Binding(unwrapping: $child.node.asGrade) {
@@ -944,6 +946,7 @@ private struct ComponentEditorView: View {
                                 get: { child.weight * (isPoints ? 10 : 100) },
                                 set: { child.weight = $0 / (isPoints ? 10 : 100) }
                             ), format: .number)
+                                .labelsHidden()
                                 .keyboardType(.decimalPad)
                                 .multilineTextAlignment(.trailing)
                             Text(isPoints ? "pts" : "%").foregroundStyle(.secondary)
@@ -1098,7 +1101,7 @@ private struct SchemesSections: View {
         } header: {
             Text("Modalidades")
         } footer: {
-            Text("Toca una para cambiar sus secciones y pesos.")
+            Text("\(Device.tapOn) una para cambiar sus secciones y pesos.")
         }
 
         Section {
@@ -1207,6 +1210,7 @@ private struct RecoverySection: View {
                 LabeledContent("Se guarda desde") {
                     HStack(spacing: 4) {
                         TextField("5", value: threshold, format: .number)
+                            .labelsHidden()
                             .keyboardType(.decimalPad)
                             .multilineTextAlignment(.trailing)
                         Text("/ \(node.scaleMax.formatted(.number.precision(.fractionLength(0...2))))").foregroundStyle(.secondary)
@@ -1227,6 +1231,7 @@ private struct RequirementsSection: View {
         Section {
             ForEach($requirements) { $requirement in
                 TextField("Asistencia mínima del 80 %", text: $requirement.name)
+                    .labelsHidden()
             }
             .onDelete { requirements.remove(atOffsets: $0) }
             Button("Añadir requisito", systemImage: "plus.circle.fill") {
@@ -1247,6 +1252,7 @@ private struct NameField: View {
     var body: some View {
         InlineField("Nombre") {
             TextField(prompt, text: $node.title)
+                .labelsHidden()
             .multilineTextAlignment(.trailing)
             .foregroundStyle(.secondary)
         }
@@ -1414,9 +1420,11 @@ private struct GradeInputSections: View {
                 ForEach(letters) { $letter in
                     HStack {
                         TextField("Letra", text: $letter.letter)
+                            .labelsHidden()
                             .font(.headline)
                         Spacer()
                         TextField("0", value: $letter.value, format: .number)
+                            .labelsHidden()
                             .keyboardType(.decimalPad)
                             .multilineTextAlignment(.trailing)
                             .frame(width: 60)
@@ -1510,6 +1518,7 @@ private struct MinimumSection: View {
             LabeledContent("Nota mínima") {
                 HStack(spacing: 4) {
                     TextField("Ninguna", value: threshold, format: .number)
+                        .labelsHidden()
                         .keyboardType(.decimalPad)
                         .multilineTextAlignment(.trailing)
                     Text("/ \(max)").foregroundStyle(.secondary)
@@ -1536,6 +1545,7 @@ private struct MinimumSection: View {
                     LabeledContent("Nota tope") {
                         HStack(spacing: 4) {
                             TextField("4,5", value: cap, format: .number)
+                                .labelsHidden()
                                 .keyboardType(.decimalPad)
                                 .multilineTextAlignment(.trailing)
                             Text("/ 10").foregroundStyle(.secondary)
@@ -1607,6 +1617,7 @@ private struct ScaleField: View {
     var body: some View {
         LabeledContent("Nota máxima") {
             TextField("10", value: $scaleMax, format: .number)
+                .labelsHidden()
                 .keyboardType(.decimalPad)
                 .multilineTextAlignment(.trailing)
         }

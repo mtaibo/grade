@@ -1,3 +1,4 @@
+#if os(iOS)
 import SwiftUI
 import UIKit
 
@@ -76,3 +77,4 @@ private final class WindowObservingView: UIView {
         onWindow?(window)
     }
 }
+#endif

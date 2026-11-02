@@ -39,7 +39,8 @@ dentro de `P4`). Para verlo y editarlo en el navegador: `make todo`.
 
 ## v2
 
-- [ ] Sincronización con iCloud entre dispositivos (ahora los datos solo están en el iPhone y en las copias que exportes).
+- [x] Sincronización con iCloud entre dispositivos.
+- [x] App de Apple Watch para poner notas.
 - [ ] Asistente de IA: pasarle una guía docente y que configure la asignatura solo; poder chatear con él («si saco menos de un 4 en tal parte, la otra no hace media») y que haga los cambios en la app sin tener que entrar al editor.
 
 ## v3

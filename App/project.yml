@@ -4,6 +4,8 @@ options:
   developmentLanguage: es
   deploymentTarget:
     iOS: "27.0"
+    watchOS: "26.0"
+    macOS: "27.0"
 
 packages:
   grade:
@@ -15,6 +17,13 @@ targets:
     platform: iOS
     sources:
       - path: Sources
+        excludes:
+          - Grade.entitlements
+          - Model
+          - Shared
+      # Their own entries, here and in the watch's target, so both can compile the same files.
+      - path: Sources/Model
+      - path: Sources/Shared
     configFiles:
       Debug: Config/Shared.xcconfig
       Release: Config/Shared.xcconfig
@@ -32,9 +41,83 @@ targets:
         TARGETED_DEVICE_FAMILY: "1"
         PRODUCT_NAME: "$(TARGET_NAME)"
         CODE_SIGN_STYLE: Automatic
+        CODE_SIGN_ENTITLEMENTS: Sources/Grade.entitlements
       configs:
         # Debug builds only the run destination's architecture, like the Engine package does;
         # building x86_64 as well leaves the app without an Engine module for that slice.
+        Debug:
+          ONLY_ACTIVE_ARCH: YES
+    dependencies:
+      - package: grade
+        product: Engine
+      - target: Grade-Watch
+
+  # Same bundle id as the iPhone's, so both share a universal purchase and the iCloud container.
+  Grade-macOS:
+    type: application
+    platform: macOS
+    sources:
+      - path: Sources
+        excludes:
+          - Assets.xcassets
+          - Grade.entitlements
+          - Info.plist
+          - PrivacyInfo.xcprivacy
+          - Model
+          - Shared
+          - WatchLink.swift
+      - path: Sources/Model
+      - path: Sources/Shared
+      - path: Sources/PrivacyInfo.xcprivacy
+      - path: Mac
+        excludes:
+          - Grade.entitlements
+          - Info.plist
+    configFiles:
+      Debug: Config/Shared.xcconfig
+      Release: Config/Shared.xcconfig
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.migueltaibo.grade
+        INFOPLIST_FILE: Mac/Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        PRODUCT_NAME: Grade
+        CODE_SIGN_STYLE: Automatic
+        CODE_SIGN_ENTITLEMENTS: Mac/Grade.entitlements
+        ENABLE_HARDENED_RUNTIME: YES
+      configs:
+        Debug:
+          ONLY_ACTIVE_ARCH: YES
+    dependencies:
+      - package: grade
+        product: Engine
+
+  Grade-Watch:
+    type: application
+    platform: watchOS
+    sources:
+      - path: Watch
+      - path: Sources/Model
+      - path: Sources/Shared
+    configFiles:
+      Debug: Config/Shared.xcconfig
+      Release: Config/Shared.xcconfig
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.migueltaibo.grade.watchkitapp
+        INFOPLIST_FILE: Watch/Info.plist
+        # Archived inside the iOS app, not as an app of its own.
+        SKIP_INSTALL: YES
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        GENERATE_INFOPLIST_FILE: NO
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        SDKROOT: watchos
+        SUPPORTED_PLATFORMS: "watchos watchsimulator"
+        TARGETED_DEVICE_FAMILY: "4"
+        PRODUCT_NAME: "$(TARGET_NAME)"
+        CODE_SIGN_STYLE: Automatic
+      configs:
         Debug:
           ONLY_ACTIVE_ARCH: YES
     dependencies:
@@ -49,4 +132,16 @@ schemes:
     run:
       config: Debug
     test:
+      config: Debug
+  Grade-macOS:
+    build:
+      targets:
+        Grade-macOS: all
+    run:
+      config: Debug
+  Grade-Watch:
+    build:
+      targets:
+        Grade-Watch: all
+    run:
       config: Debug

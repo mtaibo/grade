@@ -242,14 +242,21 @@ struct LibraryTests {
         #expect(library.record(id: last)?.term == 4)
     }
 
-    /// Studies saved when there were more types still open: ESO as Bachillerato, the rest as university.
+    /// Studies saved when there were more types still open, as university.
     @Test func removedStudyTypesDecode() throws {
         let decode = { (raw: String) in try JSONDecoder().decode(DegreeSettings.self, from: Data(#"{"studyType":"\#(raw)"}"#.utf8)).studyType }
-        #expect(try decode("secondary") == .highSchool)
+        #expect(try decode("secondary") == .secondary)
         #expect(try decode("master") == .university)
         #expect(try decode("vocational") == .university)
         #expect(try decode("other") == .university)
         #expect(try decode("highSchool") == .highSchool)
+    }
+
+    @Test func secondaryDefaults() {
+        let degree = DegreeSettings().switching(to: .secondary)
+        #expect(degree.years == 4 && degree.termsPerYear == 3 && degree.termName == "Trimestre")
+        #expect(!degree.usesCredits && degree.studyType.gradesPerTerm)
+        #expect(degree.yearLabel(3) == "3º ESO" && degree.displayName == "ESO")
     }
 
     @Test func schoolSubjectsLastingTheYearStartWithAGradePerTerm() throws {

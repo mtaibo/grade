@@ -70,6 +70,7 @@ struct HomeViewsScreen: View {
             CustomSelectionEditor(selection: selection, isNew: !library.selections.contains { $0.id == selection.id }) { saved in
                 choose(.custom(saved.id))
             }
+            .macSheetSize()
         }
     }
 
@@ -256,6 +257,7 @@ struct CustomSelectionEditor: View {
                     case .name:
                         InlineField("Nombre") {
                             TextField("Mi vista", text: name)
+                                .labelsHidden()
                                 .multilineTextAlignment(.trailing)
                                 .foregroundStyle(.secondary)
                         }

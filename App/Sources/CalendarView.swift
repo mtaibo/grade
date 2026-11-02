@@ -290,6 +290,7 @@ struct CalendarView: View {
                 .animation(.smooth(duration: 0.3), value: selectedDay)
                 .padding(.horizontal)
                 .padding(.bottom, 24)
+                .macReadableWidth()
                 .frame(maxWidth: .infinity, minHeight: viewportHeight, alignment: .top)
             }
             .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { viewportHeight = $0 }
@@ -344,7 +345,7 @@ private struct FoldingHeader: View {
         .buttonStyle(.plain)
         .accessibilityAddTraits(.isHeader)
         .accessibilityValue(isExpanded ? "Mostrado" : "Oculto")
-        .accessibilityHint(isExpanded ? "Toca para ocultar" : "Toca para mostrar")
+        .accessibilityHint(isExpanded ? "\(Device.tap) para ocultar" : "\(Device.tap) para mostrar")
     }
 }
 

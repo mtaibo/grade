@@ -24,11 +24,13 @@ struct AccountView: View {
             List {
                 // The title is part of the content, like in the other tabs, so it scrolls away
                 // instead of collapsing into the navigation bar.
+                #if os(iOS)
                 Text("Cuenta")
                     .font(.system(size: titleSize, weight: .bold, design: .rounded))
                     .accessibilityAddTraits(.isHeader)
                     .listRowBackground(Color.clear)
                     .listRowInsets(EdgeInsets(top: 8, leading: 4, bottom: 0, trailing: 4))
+                #endif
 
                 Section("Estudios") {
                     NavigationLink {
@@ -36,7 +38,7 @@ struct AccountView: View {
                     } label: {
                         AccountRow(
                             title: "Estudio actual",
-                            detail: library.hasStudy ? library.degree.displayName : "Ninguno · Toca para crear uno",
+                            detail: library.hasStudy ? library.degree.displayName : "Ninguno · \(Device.tap) para crear uno",
                             symbol: library.hasStudy ? library.degree.studyType.symbol : "plus.circle"
                         )
                     }
@@ -84,6 +86,11 @@ struct AccountView: View {
 
                 Section("Datos") {
                     NavigationLink {
+                        CloudSyncView()
+                    } label: {
+                        AccountRow(title: "iCloud", detail: "Sincroniza tus dispositivos", symbol: "icloud")
+                    }
+                    NavigationLink {
                         BackupView()
                     } label: {
                         AccountRow(title: "Copia de seguridad", detail: "Exportar o importar tus datos", symbol: "externaldrive")
@@ -98,6 +105,8 @@ struct AccountView: View {
                     .tourTarget("account.data")
                 }
 
+                // The guided tour is written for the iPhone's screens and gestures.
+                #if os(iOS)
                 Section {
                     Button {
                         tour?.startGeneral(degree: library.degree, returningTo: .account)
@@ -118,6 +127,7 @@ struct AccountView: View {
                 } footer: {
                     Text("Se hacen con un estudio de prueba: tus asignaturas y notas no se tocan.")
                 }
+                #endif
 
                 Section("Acerca de") {
                     LabeledContent("Versión", value: version)

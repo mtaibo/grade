@@ -28,6 +28,12 @@ private struct ScopePicker: View {
 
 /// "Copia de seguridad": export a `.grade` with exactly what you choose, or import one.
 struct BackupView: View {
+    #if os(macOS)
+    private static let filesApp = "el Finder"
+    #else
+    private static let filesApp = "Archivos"
+    #endif
+
     @Environment(Library.self) private var library
     @Environment(BackupImportCenter.self) private var backupCenter
     @State private var options = BackupOptions()
@@ -113,7 +119,7 @@ struct BackupView: View {
             } header: {
                 Text("Recuperar")
             } footer: {
-                Text("Elige un archivo .grade (también puedes abrirlo con Grade desde Archivos o AirDrop). Puedes añadir sus asignaturas a las tuyas o sustituir tu estudio actual por el de la copia.")
+                Text("Elige un archivo .grade (también puedes abrirlo con Grade desde \(Self.filesApp) o AirDrop). Puedes añadir sus asignaturas a las tuyas o sustituir tu estudio actual por el de la copia.")
             }
         }
         .alert("No se ha podido exportar", isPresented: Binding(get: { exportError != nil }, set: { if !$0 { exportError = nil } })) {
@@ -177,7 +183,7 @@ struct EraseDataView: View {
             Section {
                 Button("Borrar todos los datos", role: .destructive) { confirming = .everything }
             } footer: {
-                Text("Deja Grade como recién instalada: el estudio actual con sus ajustes, asignaturas, notas, fechas, vistas y guías, y también los estudios archivados.")
+                Text("Deja Grade como recién instalada: el estudio actual con sus ajustes, asignaturas, notas, fechas, vistas y guías, y también los estudios archivados. Con iCloud activado se borra también de iCloud y de tus otros dispositivos.")
             }
         }
         .navigationTitle("Borrar datos")
@@ -195,7 +201,7 @@ struct EraseDataView: View {
             }
         } message: { action in
             if action == .everything {
-                Text("Se borra todo, también los estudios archivados. Si quieres conservar algo, haz antes una copia de seguridad. No se puede deshacer.")
+                Text("Se borra todo, también los estudios archivados. Con iCloud activado, también en tus otros dispositivos. Si quieres conservar algo, haz antes una copia de seguridad. No se puede deshacer.")
             } else {
                 Text("Afecta a \(subjectsLabel(count)). No se puede deshacer.")
             }

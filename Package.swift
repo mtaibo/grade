@@ -5,6 +5,7 @@ let package = Package(
     name: "grade",
     platforms: [
         .iOS(.v27),
+        .watchOS(.v26),
         // Only for `swift test` on a Mac.
         .macOS(.v26),
     ],

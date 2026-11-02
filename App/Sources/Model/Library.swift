@@ -272,7 +272,17 @@ final class Library {
     /// The file is there but couldn't be read at all — iOS keeps it locked until the phone is
     /// first unlocked after a restart, and can launch the app before that. Nothing is saved over
     /// it until `reloadIfNeeded()` manages to read it.
-    @ObservationIgnored private var isWaitingForFile = false
+    private(set) var isWaitingForFile = false
+    /// Told after anything saved changes: `true` when the change came from iCloud.
+    @ObservationIgnored var onChange: ((_ fromCloud: Bool) -> Void)?
+    /// What's last in the file, to tell a real change from a save that changed nothing.
+    @ObservationIgnored private var lastSaved: Data?
+    /// The file was unreadable and set aside: this library's emptiness says nothing about iCloud.
+    private(set) var lostItsFile = false
+    /// iCloud has just filled an empty library: a new device got its study back. Not saved.
+    var wasRestoredFromCloud = false
+    /// Applying a change from iCloud: it doesn't count as a change to send back.
+    @ObservationIgnored private var isApplyingCloudChanges = false
 
     private struct Snapshot: Codable {
         var courses: [Course]
@@ -286,6 +296,8 @@ final class Library {
     nonisolated static var fileEncoder: JSONEncoder {
         let encoder = JSONEncoder()
         encoder.nonConformingFloatEncodingStrategy = .convertToString(positiveInfinity: "inf", negativeInfinity: "-inf", nan: "nan")
+        // Same contents, same bytes: how a change is told from a save that changed nothing.
+        encoder.outputFormatting = .sortedKeys
         return encoder
     }
 
@@ -332,6 +344,7 @@ final class Library {
                     .appending(path: "library-unreadable-\(Int(Date.now.timeIntervalSince1970)).json")
                 // And if even that fails, it's left alone rather than saved over.
                 if (try? FileManager.default.copyItem(at: fileURL, to: aside)) == nil { isWaitingForFile = true }
+                lostItsFile = true
             }
         }
         normalize()
@@ -405,11 +418,13 @@ final class Library {
         try FileManager.default.createDirectory(at: guidesDirectory, withIntermediateDirectories: true)
         try data.write(to: guidesDirectory.appending(path: "\(id.uuidString).pdf"), options: .atomic)
         guideIDs.insert(id)
+        if fileURL != nil, !isApplyingCloudChanges { onChange?(false) }
     }
 
     func removeGuide(for id: SubjectRecord.ID) {
         try? FileManager.default.removeItem(at: guidesDirectory.appending(path: "\(id.uuidString).pdf"))
         guideIDs.remove(id)
+        if fileURL != nil, !isApplyingCloudChanges { onChange?(false) }
     }
 
     /// The stored guides of these subjects, by subject, for the backup file.
@@ -483,7 +498,7 @@ final class Library {
             WeightedChild(weight: 1, node: .grade(Grade(name: "Examen", isFinalExam: true))),
         ]))
         var record = SubjectRecord(subject: Subject(name: name, ectsCredits: ects, root: root), term: term)
-        // Bachillerato: a year-long subject starts with a grade per term.
+        // Bachillerato and ESO: a year-long subject starts with a grade per term.
         if term == nil, degree.studyType.gradesPerTerm, degree.termsPerYear > 1 {
             record.splitByTerm(degree.termLabels)
         }
@@ -834,6 +849,90 @@ final class Library {
         return (added, skipped)
     }
 
+    // MARK: iCloud
+
+    /// The library as iCloud sees it, by record name (see `SyncItem`).
+    func syncItems() throws -> [String: SyncItem] {
+        let encoder = Self.fileEncoder
+        var items: [String: SyncItem] = [:]
+        func add(_ item: SyncItem) { items[item.name] = item }
+        add(SyncItem(name: SyncItem.studyName, data: try encoder.encode(SyncedStudy(
+            degree: degree, hasStudy: hasStudy, selections: selections, order: courses.flatMap(\.subjects).map(\.id)
+        ))))
+        for course in courses {
+            for record in course.subjects {
+                add(SyncItem(name: SyncItem.subjectName(record.id), data: try encoder.encode(SyncedSubject(year: course.year, record: record))))
+            }
+        }
+        for archive in archives {
+            add(SyncItem(name: SyncItem.archiveName(archive.id), data: try encoder.encode(archive)))
+        }
+        for id in guideIDs {
+            let file = guidesDirectory.appending(path: "\(id.uuidString).pdf")
+            let values = try? file.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey])
+            guard let size = values?.fileSize, let date = values?.contentModificationDate else { continue }
+            add(SyncItem(name: SyncItem.guideName(id), file: file, version: "\(size)-\(date.timeIntervalSince1970)"))
+        }
+        return items
+    }
+
+    /// Applies what came from iCloud in one go. A record it can't read (from a newer version of
+    /// the app, say) is left out; nothing here is sent back.
+    func applyFromCloud(_ changes: [CloudChange]) {
+        guard !changes.isEmpty else { return }
+        let wasEmpty = !hasOwnSubjects
+        isApplyingCloudChanges = true
+        defer { isApplyingCloudChanges = false }
+        let decoder = Self.fileDecoder
+        var order: [UUID]?
+        for change in changes {
+            switch change {
+            case .save(let name, let data):
+                if name == SyncItem.studyName, let study = try? decoder.decode(SyncedStudy.self, from: data) {
+                    degree = study.degree
+                    hasStudy = study.hasStudy
+                    selections = study.selections
+                    order = study.order
+                } else if let id = Self.id(in: name, prefix: "subject-"), let synced = try? decoder.decode(SyncedSubject.self, from: data) {
+                    removeSubject(id)
+                    courses[courseIndex(forYear: max(synced.year, 1))].subjects.append(synced.record)
+                } else if let id = Self.id(in: name, prefix: "archive-"), let archive = try? decoder.decode(ArchivedStudy.self, from: data) {
+                    archives.removeAll { $0.id == id }
+                    archives.append(archive)
+                } else if let id = Self.id(in: name, prefix: "guide-") {
+                    try? setGuide(data, for: id)
+                }
+            case .delete(let name):
+                if let id = Self.id(in: name, prefix: "subject-") {
+                    removeSubject(id)
+                } else if let id = Self.id(in: name, prefix: "archive-") {
+                    archives.removeAll { $0.id == id }
+                } else if let id = Self.id(in: name, prefix: "guide-") {
+                    removeGuide(for: id)
+                }
+            }
+        }
+        if let order {
+            let position = Dictionary(order.enumerated().map { ($1, $0) }) { first, _ in first }
+            for course in courses.indices {
+                // Stable, so subjects the order doesn't know about yet stay at the end as they came.
+                let sorted = courses[course].subjects.enumerated().sorted {
+                    (position[$0.element.id] ?? .max, $0.offset) < (position[$1.element.id] ?? .max, $1.offset)
+                }
+                courses[course].subjects = sorted.map(\.element)
+            }
+        }
+        normalize()
+        if wasEmpty, hasOwnSubjects { wasRestoredFromCloud = true }
+        save()
+    }
+
+    var hasOwnSubjects: Bool { courses.contains { !$0.subjects.isEmpty } || !archives.isEmpty }
+
+    private static func id(in name: String, prefix: String) -> UUID? {
+        name.hasPrefix(prefix) ? UUID(uuidString: String(name.dropFirst(prefix.count))) : nil
+    }
+
     private func mutateRecord(_ id: SubjectRecord.ID, _ body: (inout SubjectRecord) -> Void) {
         for course in courses.indices {
             if let index = courses[course].subjects.firstIndex(where: { $0.id == id }) {
@@ -848,8 +947,11 @@ final class Library {
         guard let fileURL, !isWaitingForFile else { return }
         do {
             try FileManager.default.createDirectory(at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
-            try Self.fileEncoder.encode(Snapshot(courses: courses, degree: degree, selections: selections, archives: archives, hasStudy: hasStudy))
-                .write(to: fileURL, options: .atomic)
+            let data = try Self.fileEncoder.encode(Snapshot(courses: courses, degree: degree, selections: selections, archives: archives, hasStudy: hasStudy))
+            try data.write(to: fileURL, options: .atomic)
+            let changed = lastSaved != nil && lastSaved != data
+            lastSaved = data
+            if changed { onChange?(isApplyingCloudChanges) }
         } catch {
             assertionFailure("Couldn't save the library: \(error)")
         }

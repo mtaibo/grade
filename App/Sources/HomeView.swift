@@ -98,6 +98,9 @@ enum SubjectSort: String, CaseIterable, Identifiable {
 /// name. Everything else lives inside the subject.
 struct HomeView: View {
     @Environment(Library.self) private var library
+    #if os(macOS)
+    @Environment(MenuActions.self) private var menuActions
+    #endif
     /// Per-device conveniences: reopen on the period last looked at, in the layout last chosen.
     @AppStorage("selectedYear") private var selectedYear = 0
     @AppStorage("selectedTerm") private var selectedTerm = 0
@@ -125,24 +128,7 @@ struct HomeView: View {
     @State private var isShowingHint = false
     @State private var hintTask: Task<Void, Never>?
 
-    /// Every period that has subjects, oldest first. A year-long subject belongs to every term of
-    /// its year, so a year with one has all its terms, even if it's the only subject; one graded
-    /// per term also adds the year's "Final" (term nil), after its terms, for the whole-year grade.
-    private var periods: [Period] {
-        let degree = library.degree
-        var result: [Period] = []
-        for course in library.courses {
-            var terms = Set(course.subjects.compactMap(\.term))
-            if course.subjects.contains(where: { $0.term == nil }) {
-                terms.formUnion((1...max(degree.termsPerYear, 1)).map { degree.absoluteTerm(year: course.year, relative: $0) })
-            }
-            result += terms.sorted().map { Period(year: course.year, term: $0) }
-            if course.subjects.contains(where: { $0.term == nil && $0.isPerTerm }) {
-                result.append(Period(year: course.year))
-            }
-        }
-        return result.sorted { ($0.year, $0.term ?? .max) < ($1.year, $1.term ?? .max) }
-    }
+    private var periods: [Period] { Period.all(in: library.courses, degree: library.degree) }
 
     /// Adding a subject with no current study (just archived one) sets the study up first.
     private func add(in period: Period) {
@@ -294,6 +280,9 @@ struct HomeView: View {
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { toolbar }
+            #if os(macOS)
+            .onChange(of: menuActions.newSubjectRequests) { add(in: newSubjectPeriod) }
+            #endif
             .navigationDestination(for: SubjectRecord.ID.self) { id in
                 SubjectDetailView(recordID: id)
             }
@@ -312,6 +301,7 @@ struct HomeView: View {
             }
             .sheet(isPresented: $isCreatingStudy, onDismiss: finishCreatingStudy) {
                 NewStudySheet()
+                    .macSheetSize()
             }
             .sheet(item: $placement) { placement in
                 NewSubjectView(placement: placement, degree: library.degree) { saved, id in
@@ -322,12 +312,15 @@ struct HomeView: View {
                     }
                     show(saved)
                 }
+                .macSheetSize(height: 420)
             }
             .sheet(item: $editing) { record in
                 SubjectEditorView(record: record)
+                    .macSheetSize(width: 640, height: 760)
             }
             .sheet(item: $customizing) { record in
                 CustomizeSubjectView(record: record)
+                    .macSheetSize()
             }
             .alert(
                 "¿Eliminar \(deleting?.subject.name ?? "la asignatura")?",
@@ -441,6 +434,9 @@ struct HomeView: View {
                 Menu {
                     Button("Añadir asignatura", systemImage: "plus") { add(in: newSubjectPeriod) }
                     Button("Editar vistas", systemImage: "rectangle.stack") { isChoosingView = true }
+                    #if os(macOS)
+                    Button("Reordenar asignaturas", systemImage: "arrow.up.arrow.down") { isEditing = true }
+                    #endif
                     Divider()
                     Picker("Diseño", selection: $layout) {
                         ForEach(SubjectLayout.allCases) { option in
@@ -613,50 +609,6 @@ struct SubjectTile: View {
             }
         }
         .accessibilityElement(children: .combine)
-    }
-}
-
-/// The final grade, in the colour of its band, once the ring would be full.
-private struct FinalGradeBadge: View {
-    let grade: Double
-    var hasHonors = false
-
-    var body: some View {
-        let tint = GradeBand.color(for: grade)
-        Text(hasHonors ? "\(grade.formatted(.number.precision(.fractionLength(0...2)))) MH" : grade.formatted(.number.precision(.fractionLength(0...2))))
-            .font(.subheadline.weight(.bold).monospacedDigit())
-            .foregroundStyle(tint == .yellow ? Color.orange : tint)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 4)
-            .background(tint.opacity(0.18), in: Capsule())
-            .accessibilityLabel("Nota final \(grade.formatted(.number.precision(.fractionLength(0...2))))\(hasHonors ? ", matrícula de honor" : "")")
-    }
-}
-
-/// A small circle that fills as grades are entered.
-private struct CompletionRing: View {
-    let entered: Int
-    let total: Int
-
-    private var fraction: Double { min(Double(entered) / Double(max(total, 1)), 1) }
-    private var isComplete: Bool { entered >= total }
-
-    var body: some View {
-        ZStack {
-            Circle().stroke(.quaternary, lineWidth: 4)
-            Circle()
-                .trim(from: 0, to: fraction)
-                .stroke(isComplete ? Color.green : Color.accentColor, style: StrokeStyle(lineWidth: 4, lineCap: .round))
-                .rotationEffect(.degrees(-90))
-            if isComplete {
-                Image(systemName: "checkmark")
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundStyle(.green)
-            }
-        }
-        .frame(width: 28, height: 28)
-        .animation(.snappy, value: fraction)
-        .accessibilityLabel("\(entered) de \(total) notas")
     }
 }
 

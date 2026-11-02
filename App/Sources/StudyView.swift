@@ -67,28 +67,32 @@ struct StudySettingsSections: View {
             }
             InlineField("Nombre") {
                 TextField(degree.studyType.label, text: $degree.name)
+                    .labelsHidden()
                     .multilineTextAlignment(.trailing)
                     .textInputAutocapitalization(.words)
             }
             InlineField("Centro") {
                 TextField("Opcional", text: $degree.institution)
+                    .labelsHidden()
                     .multilineTextAlignment(.trailing)
                     .textInputAutocapitalization(.words)
             }
         } footer: {
-            Text("Al cambiar el tipo se ponen sus años, periodos y créditos habituales. En Bachillerato, las asignaturas nuevas duran todo el curso con nota por trimestre.")
+            Text("Al cambiar el tipo se ponen sus años, periodos y créditos habituales. En Bachillerato y ESO, las asignaturas nuevas duran todo el curso con nota por trimestre.")
         }
 
         Section {
             CountRow(title: "Años", value: $degree.years, range: 1...DegreeSettings.maxYears)
             InlineField("Nombre del año") {
                 TextField(DegreeSettings.defaultYearName, text: $degree.yearName)
+                    .labelsHidden()
                     .multilineTextAlignment(.trailing)
                     .textInputAutocapitalization(.words)
             }
             CountRow(title: "Periodos por año", value: $degree.termsPerYear, range: 1...DegreeSettings.maxTermsPerYear)
             InlineField("Nombre del periodo") {
                 TextField(DegreeSettings.defaultTermName, text: $degree.termName)
+                    .labelsHidden()
                     .multilineTextAlignment(.trailing)
                     .textInputAutocapitalization(.words)
             }

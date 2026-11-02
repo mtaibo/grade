@@ -1,4 +1,4 @@
-.PHONY: build test generate open clean todo device testflight web
+.PHONY: build test generate open clean todo device mac testflight web
 
 build:
 	swift build
@@ -34,6 +34,16 @@ device: generate
 	xcrun devicectl device install app --device $(DEVICE) $(DEVICE_BUILD)/Build/Products/Debug-iphoneos/Grade-iOS.app \
 		|| (sleep 2 && xcrun devicectl device install app --device $(DEVICE) $(DEVICE_BUILD)/Build/Products/Debug-iphoneos/Grade-iOS.app)
 	xcrun devicectl device process launch --device $(DEVICE) com.migueltaibo.grade
+
+# Builds the Mac app and opens it. Needs DEVELOPMENT_TEAM in App/Config/Local.xcconfig: without signing it
+# has no iCloud entitlement, and CloudKit stops the app on launch.
+# The first build registers this Mac in the developer account.
+MAC_BUILD = build/mac
+
+mac: generate
+	xcodebuild -project App/Grade.xcodeproj -scheme Grade-macOS -configuration Debug \
+		-destination 'platform=macOS' -derivedDataPath $(MAC_BUILD) -allowProvisioningUpdates -allowProvisioningDeviceRegistration -quiet build
+	open $(MAC_BUILD)/Build/Products/Debug/Grade.app
 
 # Archives the app and uploads it to App Store Connect (TestFlight). Needs DEVELOPMENT_TEAM in
 # App/Config/Local.xcconfig, Xcode signed in with the developer account and the app created in App Store

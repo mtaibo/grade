@@ -1,70 +1,47 @@
 import Engine
 import SwiftUI
 
-/// 0…10 track: solid up to what's already secured, faint up to the best case still reachable,
-/// with a tick at the pass threshold — the whole "where do I stand" in one line.
-struct GradeRangeBar: View {
-    let worst: Double
-    let best: Double
-    let threshold: Double
-    let tint: Color
-    var scale: Double = 10
-
-    var body: some View {
-        GeometryReader { proxy in
-            let width = proxy.size.width
-            ZStack(alignment: .leading) {
-                Capsule().fill(.quaternary)
-                Capsule().fill(tint.opacity(0.25))
-                    .frame(width: width * fraction(best))
-                Capsule().fill(tint)
-                    .frame(width: width * fraction(worst))
-                Rectangle()
-                    .fill(.primary.opacity(0.6))
-                    .frame(width: 2, height: 12)
-                    .offset(x: width * fraction(threshold) - 1)
-            }
-            .frame(height: 6)
-            .frame(maxHeight: .infinity)
-        }
-        .frame(height: 12)
-        .accessibilityHidden(true)
-    }
-
-    private func fraction(_ value: Double) -> Double {
-        min(max(value / scale, 0), 1)
-    }
-}
-
-/// The colour a finished grade (out of 10) gets: red below 5, yellow up to 7, green up to 9, purple
-/// from 9. Only used once everything in a section is entered — until then bars stay blue.
-enum GradeBand {
-    static func color(for grade: Double) -> Color {
-        switch grade {
-        case ..<5: .red
-        case ..<7: .yellow
-        case ..<9: .green
-        default: .purple
-        }
-    }
-}
-
-extension PassStatus {
-    var tint: Color {
-        switch self {
-        case .guaranteed: .green
-        case .possible: .orange
-        case .impossible: .red
-        }
-    }
-}
-
 extension View {
     /// The rounded, raised surface every card in the app sits on.
     func card(padding: CGFloat = 16) -> some View {
         self.padding(padding)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(Color(.secondarySystemGroupedBackground), in: .rect(cornerRadius: 18))
+    }
+}
+
+/// The words that depend on the device the screens are on.
+enum Device {
+    #if os(macOS)
+    static let name = "Mac"
+    static let tap = "Haz clic"
+    static let tapOn = "Haz clic en"
+    #else
+    static let name = "iPhone"
+    static let tap = "Toca"
+    static let tapOn = "Toca"
+    #endif
+}
+
+extension View {
+    /// Sheets on the Mac are as small as their content, which for a form is next to nothing.
+    @ViewBuilder
+    func macSheetSize(width: CGFloat = 560, height: CGFloat = 680) -> some View {
+        #if os(macOS)
+        frame(minWidth: width, idealWidth: width, minHeight: height, idealHeight: height)
+        #else
+        self
+        #endif
+    }
+
+    /// Keeps a screen's cards to a comfortable width on a wide window, centred.
+    @ViewBuilder
+    func macReadableWidth(_ width: CGFloat = 760) -> some View {
+        #if os(macOS)
+        frame(maxWidth: width).frame(maxWidth: .infinity)
+        #else
+        self
+        #endif
     }
 }
 
@@ -98,6 +75,8 @@ struct InlineField<Content: View>: View {
             Text(title)
                 .fixedSize()
             content
+                // A Mac's form would show the field's own title as a second label.
+                .labelsHidden()
                 .frame(maxWidth: .infinity, alignment: .trailing)
         }
     }

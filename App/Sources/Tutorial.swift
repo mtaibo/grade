@@ -78,7 +78,9 @@ final class Tour {
     /// The UIKit views behind each target, by each view that marks it (a section marked on several
     /// rows is highlighted as their union). Measured in window coordinates on every frame while the
     /// tour runs: SwiftUI doesn't report a sheet moving as a whole, nor toolbar buttons at all.
+    #if os(iOS)
     @ObservationIgnored private var anchors: [String: [UUID: Weak]] = [:]
+    #endif
     /// Toolbar buttons become native bar buttons that drop SwiftUI modifiers, so they're found by
     /// position instead: 0 is the rightmost button of the frontmost navigation bar, 1 the next one.
     private static let toolbarPositions = [
@@ -105,7 +107,7 @@ final class Tour {
     }
 
     /// A section's tour, on sample subjects: the first degree template at university, a few
-    /// year-long subjects graded per term in Bachillerato.
+    /// year-long subjects graded per term in Bachillerato and ESO.
     func start(_ section: TourSection, degree: DegreeSettings, returningTo tab: AppTab) {
         let degree = Self.sandboxDegree(degree)
         let library = Library(inMemory: degree)
@@ -140,7 +142,9 @@ final class Tour {
 
     func next() {
         // The keyboard sits above the tour's window: once past a step it would only cover the pop-up.
+        #if os(iOS)
         UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+        #endif
         isMenuOpen = false
         if isLast { end() } else { index += 1 }
     }
@@ -164,6 +168,7 @@ final class Tour {
         session = UUID()
     }
 
+    #if os(iOS)
     func register(_ view: UIView?, for target: String, part: UUID) {
         anchors[target, default: [:]][part] = view.map(Weak.init)
     }
@@ -215,19 +220,20 @@ final class Tour {
         weak var view: UIView?
         init(_ view: UIView) { self.view = view }
     }
+    #endif
 }
 
 // MARK: - Steps
 
 extension Tour {
     /// The words that change with the study: what a term and the year are called, where the grading
-    /// comes from, and whether subjects are graded per term (Bachillerato) or once (university).
+    /// comes from, and whether subjects are graded per term (Bachillerato, ESO) or once (university).
     private struct Vocabulary {
         let isSchool: Bool
         /// "cuatrimestre", "trimestre"…
         let term: String
         let terms: String
-        /// "año" at university, "curso" in Bachillerato.
+        /// "año" at university, "curso" in Bachillerato and ESO.
         let year: String
         /// Where the grading rules come from.
         let guide: String
@@ -369,14 +375,19 @@ private struct TourTargetModifier: ViewModifier {
     @State private var part = UUID()
 
     func body(content: Content) -> some View {
+        #if os(iOS)
         if let id, let tour {
             content.background(ViewGrabber { tour.register($0, for: id, part: part) })
         } else {
             content
         }
+        #else
+        content
+        #endif
     }
 }
 
+#if os(iOS)
 /// A clear UIKit view behind some SwiftUI content, handed over so it can be measured in window
 /// coordinates.
 private struct ViewGrabber: UIViewRepresentable {
@@ -392,6 +403,7 @@ private struct ViewGrabber: UIViewRepresentable {
 
     func updateUIView(_ view: UIView, context: Context) { grab(view) }
 }
+#endif
 
 private struct TourActionModifier: ViewModifier {
     let action: TourAction
@@ -407,6 +419,7 @@ private struct TourActionModifier: ViewModifier {
 
 // MARK: - Overlay
 
+#if os(iOS)
 /// The tour is drawn in a window of its own above the app, sheets included, so every element is
 /// measured and highlighted in the same coordinates. It lets touches through only inside the
 /// highlight of a step that waits for the user, and not at all while no tour runs.
@@ -616,6 +629,8 @@ private struct DimShape: Shape {
         return path
     }
 }
+
+#endif
 
 // MARK: - Cuenta → Tutoriales → Por sección
 

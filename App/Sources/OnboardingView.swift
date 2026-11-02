@@ -21,7 +21,7 @@ struct OnboardingView: View {
     private var isUniversity: Bool { draft.studyType == .university }
 
     /// The question steps, for the progress bar (the welcome and the end don't count). Bachillerato
-    /// always lasts two years split in trimestres, so it isn't asked.
+    /// and ESO always last the same years split in trimestres, so it isn't asked.
     private var questions: [Step] {
         isUniversity ? [.type, .years, .terms, .name, .templates] : [.type, .years, .name]
     }
@@ -60,7 +60,9 @@ struct OnboardingView: View {
             PrimaryButton("Empezar") { path.append(.type) }
         }
         .padding(24)
+        #if os(iOS)
         .toolbar(.hidden, for: .navigationBar)
+        #endif
     }
 
     // MARK: Questions
@@ -192,6 +194,10 @@ struct OnboardingView: View {
                 .accessibilityHidden(true)
             Text("Todo listo")
                 .font(.system(.largeTitle, design: .rounded).bold())
+            #if os(macOS)
+            Spacer()
+            PrimaryButton("Empezar") { onFinish(false) }
+            #else
             Text("¿Te enseño cómo funciona? Es un recorrido de un par de minutos con asignaturas de prueba; lo tuyo no se toca. Lo tienes siempre en Cuenta → Tutoriales.")
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -203,6 +209,7 @@ struct OnboardingView: View {
                 Text("Ahora no").frame(maxWidth: .infinity)
             }
             .controlSize(.large)
+            #endif
         }
         .padding(24)
         .navigationBarBackButtonHidden()
@@ -219,6 +226,7 @@ struct OnboardingView: View {
         switch draft.studyType {
         case .university: ("¿Cómo se llama tu grado?", "Ingeniería Informática", "Universidad o facultad")
         case .highSchool: ("¿Qué modalidad haces?", "Ciencias, Humanidades…", "Instituto")
+        case .secondary: ("¿Dónde estudias?", "ESO", "Instituto o colegio")
         }
     }
 

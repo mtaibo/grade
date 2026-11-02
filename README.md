@@ -8,7 +8,7 @@
 
 ![Status](https://img.shields.io/badge/status-prototype-orange)
 ![Made with](https://img.shields.io/badge/made%20with-Swift-orange)
-![Platform](https://img.shields.io/badge/platform-iOS-lightgrey)
+![Platform](https://img.shields.io/badge/platform-iOS%20%C2%B7%20macOS%20%C2%B7%20watchOS-lightgrey)
 
 </div>
 
@@ -104,7 +104,7 @@ The calculation library: the evaluation tree, current grade, best case, pass sta
 └─────────────────────────────────────────────────────────────┘
 ```
 
-The engine knows nothing about screens or storage: it takes a subject's tree and the grades entered so far and returns numbers. Everything about how a grade is typed (out of 2, 85 %, a "B") is converted in the app before it gets there. Persistence is a local JSON file for now; the plan is SwiftData with iCloud sync once subjects can be created from scratch.
+The engine knows nothing about screens or storage: it takes a subject's tree and the grades entered so far and returns numbers. Everything about how a grade is typed (out of 2, 85 %, a "B") is converted in the app before it gets there. Each device keeps a local JSON file. CloudKit keeps it in the user's private iCloud, one record per subject, and the Apple Watch app gets the current study from the iPhone and sends grades back to it.
 
 ## How it works
 
@@ -141,7 +141,9 @@ Each subject keeps both sittings' grades. In the extraordinary one, parts the sy
 |---|---|
 | **Engine** | Swift Package, no SwiftUI/SwiftData dependency, value types |
 | **UI** | SwiftUI |
-| **Persistence** | Local JSON for now; SwiftData with iCloud sync via CloudKit planned |
+| **Persistence** | Local JSON, synced through the private iCloud database with `CKSyncEngine` |
+| **Mac** | The iPhone's SwiftUI screens in a native macOS target, with a sidebar and a menu bar |
+| **Watch** | SwiftUI on watchOS, talking to the iPhone over WatchConnectivity |
 | **Project** | XcodeGen (`App/project.yml`), the `.xcodeproj` is generated |
 | **Tests** | Swift Testing: one suite per syllabus, every mix of evaluations against the engine's invariants, and the app's model (saving, backups, studies) run on the Mac |
 
@@ -157,6 +159,7 @@ cp App/Config/Local.xcconfig.example App/Config/Local.xcconfig
 # set DEVELOPMENT_TEAM in Local.xcconfig to your Apple team ID
 make open                                              # generates and opens the Xcode project
 make device                                            # builds, installs and opens it on a paired iPhone
+make mac                                               # builds and opens the Mac app
 make testflight                                        # archives and uploads a build to App Store Connect
 ```
 

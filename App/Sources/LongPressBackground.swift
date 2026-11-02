@@ -1,4 +1,5 @@
 import SwiftUI
+#if os(iOS)
 import UIKit
 
 /// A transparent view that calls `action` once the finger has been held for `duration`, while
@@ -45,3 +46,19 @@ struct LongPressBackground: UIViewRepresentable {
         }
     }
 }
+#else
+/// A pointer doesn't hold: a secondary click offers what holding does on the iPhone.
+struct LongPressBackground: View {
+    var duration: TimeInterval = 0.4
+    var onTap: (() -> Void)?
+    var action: () -> Void
+
+    var body: some View {
+        Color.clear
+            .contentShape(Rectangle())
+            .contextMenu {
+                Button("Reordenar asignaturas", systemImage: "arrow.up.arrow.down", action: action)
+            }
+    }
+}
+#endif

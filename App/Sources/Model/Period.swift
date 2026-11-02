@@ -1,23 +1,23 @@
 import Foundation
 
-/// What the user is studying: a university degree or Bachillerato for now. It picks the usual
+/// What the user is studying: a university degree, Bachillerato or ESO for now. It picks the usual
 /// years and terms, whether there are credits, and how subjects and the tutorial are set up.
 enum StudyType: String, Codable, CaseIterable, Identifiable {
-    case university, highSchool
+    case university, highSchool, secondary
 
     var id: Self { self }
 
-    /// Studies saved when there were more types: ESO goes with Bachillerato (graded per term), the
-    /// rest (máster, FP, otros) with university.
+    /// Studies saved when there were more types (máster, FP, otros) go with university.
     init(from decoder: Decoder) throws {
         let raw = try decoder.singleValueContainer().decode(String.self)
-        self = Self(rawValue: raw) ?? (raw == "secondary" ? .highSchool : .university)
+        self = Self(rawValue: raw) ?? .university
     }
 
     var label: String {
         switch self {
         case .university: "Universidad"
         case .highSchool: "Bachillerato"
+        case .secondary: "ESO"
         }
     }
 
@@ -25,6 +25,7 @@ enum StudyType: String, Codable, CaseIterable, Identifiable {
         switch self {
         case .university: "graduationcap"
         case .highSchool: "books.vertical"
+        case .secondary: "backpack"
         }
     }
 
@@ -32,13 +33,14 @@ enum StudyType: String, Codable, CaseIterable, Identifiable {
     var usesCredits: Bool { self == .university }
 
     /// Whether its subjects usually last the whole year with a grade per term.
-    var gradesPerTerm: Bool { self == .highSchool }
+    var gradesPerTerm: Bool { self != .university }
 
     /// The usual years, terms per year and term name, applied when the type is picked.
     var defaults: (years: Int, termsPerYear: Int, termName: String) {
         switch self {
         case .university: (4, 2, "Cuatrimestre")
         case .highSchool: (2, 3, "Trimestre")
+        case .secondary: (4, 3, "Trimestre")
         }
     }
 }
@@ -111,8 +113,8 @@ struct DegreeSettings: Codable, Equatable {
         new.years = type.defaults.years
         new.termsPerYear = type.defaults.termsPerYear
         new.termName = type.defaults.termName
-        // "1º Bachillerato", "2º Año".
-        new.yearName = type == .highSchool ? "Bachillerato" : Self.defaultYearName
+        // "1º Bachillerato", "3º ESO", "2º Año".
+        new.yearName = type == .university ? Self.defaultYearName : type.label
         return new
     }
 
@@ -216,6 +218,26 @@ struct Period: Hashable {
 
     func subtitle(in degree: DegreeSettings) -> String? {
         term.map(degree.termLabel)
+    }
+}
+
+extension Period {
+    /// Every period that has subjects, oldest first. A year-long subject belongs to every term of
+    /// its year, so a year with one has all its terms, even if it's the only subject; one graded
+    /// per term also adds the year's "Final" (term nil), after its terms, for the whole-year grade.
+    static func all(in courses: [Course], degree: DegreeSettings) -> [Period] {
+        var result: [Period] = []
+        for course in courses {
+            var terms = Set(course.subjects.compactMap(\.term))
+            if course.subjects.contains(where: { $0.term == nil }) {
+                terms.formUnion((1...max(degree.termsPerYear, 1)).map { degree.absoluteTerm(year: course.year, relative: $0) })
+            }
+            result += terms.sorted().map { Period(year: course.year, term: $0) }
+            if course.subjects.contains(where: { $0.term == nil && $0.isPerTerm }) {
+                result.append(Period(year: course.year))
+            }
+        }
+        return result.sorted { ($0.year, $0.term ?? .max) < ($1.year, $1.term ?? .max) }
     }
 }
 

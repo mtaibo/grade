@@ -28,7 +28,6 @@ struct RoadmapVersion: Identifiable {
         RoadmapVersion(title: "Más adelante", subtitle: "Sin fecha todavía", items: [
             "Una bienvenida al abrir la app por primera vez para elegir qué estudias.",
             "Instituto y otros estudios, además de la universidad.",
-            "Sincronización con iCloud entre tus dispositivos.",
         ]),
     ]
 }

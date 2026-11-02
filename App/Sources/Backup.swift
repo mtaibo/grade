@@ -1,5 +1,6 @@
 import Foundation
 import SwiftUI
+#if os(iOS)
 import UIKit
 
 /// The system share sheet for a file already on disk, presented by UIKit itself: wrapped in a
@@ -17,6 +18,22 @@ enum ShareSheet {
         top.present(controller, animated: true)
     }
 }
+#else
+import AppKit
+
+/// On the Mac a copy is a file you save somewhere.
+@MainActor
+enum ShareSheet {
+    static func present(_ url: URL) {
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = url.lastPathComponent
+        panel.canCreateDirectories = true
+        guard panel.runModal() == .OK, let destination = panel.url else { return }
+        try? FileManager.default.removeItem(at: destination)
+        try? FileManager.default.copyItem(at: url, to: destination)
+    }
+}
+#endif
 
 /// Picking or opening a `.grade` file: read it, ask before replacing anything, then restore.
 @MainActor
