@@ -1,5 +1,6 @@
 import Foundation
-import WatchConnectivity
+// Its reply handlers aren't marked `Sendable`, but WatchConnectivity lets them be called from any thread.
+@preconcurrency import WatchConnectivity
 
 /// The iPhone's end of the watch app: sends the study whenever it changes and applies the grades
 /// that come back. The watch never saves anything for good; its grades live here, and go on to
