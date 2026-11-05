@@ -45,6 +45,26 @@ extension View {
     }
 }
 
+/// A pushed screen that takes a binding, for the destination of a `NavigationLink`. On the Mac a
+/// screen that reads such a binding and is pushed from another one loops: rebuilding its parent gives
+/// the link a new destination, which updates the navigation, which rebuilds the parent, until AppKit
+/// ends the app ("more Update Constraints in Window passes than there are views in the window").
+/// So its parent only rebuilds it when `value`, what the screen shows and edits, has changed.
+struct StableDestination<Value: Equatable, Content: View>: View, Equatable {
+    let value: Value
+    @ViewBuilder let content: () -> Content
+
+    var body: some View { content() }
+
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        #if os(macOS)
+        lhs.value == rhs.value
+        #else
+        false
+        #endif
+    }
+}
+
 extension Binding {
     /// Like SwiftUI's `Binding(_: Binding<Value?>)`, which force-unwraps on every read: when the
     /// value turns `nil` (a date switched off, a group turned into a single grade) a view that

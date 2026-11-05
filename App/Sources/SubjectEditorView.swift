@@ -194,7 +194,9 @@ struct SubjectEditorView: View {
                         ).animation())
                         if draft.extraordinaryRoot != nil, let root = Binding(unwrapping: $draft.extraordinaryRoot) {
                             NavigationLink {
-                                ExtraordinaryEditorView(node: root)
+                                StableDestination(value: root.wrappedValue) {
+                                    ExtraordinaryEditorView(node: root)
+                                }
                             } label: {
                                 Label("Evaluación de la extraordinaria", systemImage: "arrow.uturn.backward.circle")
                             }
@@ -210,7 +212,9 @@ struct SubjectEditorView: View {
 
                 Section {
                     NavigationLink {
-                        AdvancedSubjectView(subject: $draft.subject, requirements: $draft.requirements, showsCredits: library.degree.usesCredits)
+                        StableDestination(value: draft) {
+                            AdvancedSubjectView(subject: $draft.subject, requirements: $draft.requirements, showsCredits: library.degree.usesCredits)
+                        }
                     } label: {
                         Label("Avanzado", systemImage: "slider.horizontal.3")
                     }
@@ -615,9 +619,11 @@ private struct GroupSections: View {
         Section {
             ForEach($group.children) { $child in
                 NavigationLink {
-                    ComponentEditorView(child: $child, combination: group.combination, onDelete: {
-                        group.children.removeAll { $0.id == child.id }
-                    })
+                    StableDestination(value: child) {
+                        ComponentEditorView(child: $child, combination: group.combination, onDelete: {
+                            group.children.removeAll { $0.id == child.id }
+                        })
+                    }
                 } label: {
                     ComponentRow(title: child.node.title, subtitle: child.node.rowSubtitle, value: isUndecided ? "" : share(of: child))
                 }
@@ -627,7 +633,9 @@ private struct GroupSections: View {
             // Opens the new section straight away; it only joins the list once its required
             // fields are filled and it's confirmed. Going back discards it.
             NavigationLink {
-                NewSectionView(child: newChild(), combination: group.combination) { group.children.append($0) }
+                StableDestination(value: group.combination) {
+                    NewSectionView(child: newChild(), combination: group.combination) { group.children.append($0) }
+                }
             } label: {
                 Label("Añadir", systemImage: "plus.circle.fill")
                     .foregroundStyle(.tint)
@@ -739,7 +747,9 @@ private struct FormulaSections: View {
         Section {
             ForEach(orderedKeys, id: \.self) { key in
                 NavigationLink {
-                    FormulaVariableEditor(key: key, formula: $formula, onRenameKey: renameKey)
+                    StableDestination(value: formula) {
+                        FormulaVariableEditor(key: key, formula: $formula, onRenameKey: renameKey)
+                    }
                 } label: {
                     ComponentRow(
                         title: "\(key) · \(formula.variables[key]?.title ?? key)",
@@ -1093,7 +1103,9 @@ private struct SchemesSections: View {
         Section {
             ForEach(alternatives.branches.indices, id: \.self) { index in
                 NavigationLink {
-                    SchemeEditorView(node: $alternatives.branches[index].node)
+                    StableDestination(value: alternatives.branches[index].node) {
+                        SchemeEditorView(node: $alternatives.branches[index].node)
+                    }
                 } label: {
                     ComponentRow(title: alternatives.branches[index].node.title, subtitle: alternatives.branches[index].node.rowSubtitle, value: "")
                 }
