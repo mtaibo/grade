@@ -33,6 +33,46 @@ struct List<Content: View>: View {
     }
 }
 
+/// Keeps the sidebar's toggle beside the traffic lights, which SwiftUI has no modifier for. The toolbar
+/// moves it into a » menu on the far side of the window when the sidebar is too narrow for it, and when
+/// the window opens with the sidebar folded. Goes in the background of the tabs; rebuilt tabs need a new one.
+struct SidebarToggleFix: NSViewRepresentable {
+    func makeNSView(context: Context) -> FixView { FixView() }
+    func updateNSView(_ view: FixView, context: Context) {}
+
+    final class FixView: NSView {
+        private static let width: CGFloat = 170
+        private var observation: NSKeyValueObservation?
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            // Once SwiftUI has set up the split view and filled the toolbar.
+            DispatchQueue.main.async { [weak self] in
+                guard let self, let window, let content = window.contentView,
+                      let sidebar = Self.sidebar(in: content) else { return }
+                sidebar.minimumThickness = Self.width
+                // SwiftUI puts its own minimum back each time the sidebar folds.
+                observation = sidebar.observe(\.minimumThickness) { sidebar, _ in
+                    if sidebar.minimumThickness != Self.width { sidebar.minimumThickness = Self.width }
+                }
+                // Folding or unfolding is what brings a clipped toggle back; this one isn't seen.
+                if sidebar.isCollapsed {
+                    sidebar.isCollapsed = false
+                    window.layoutIfNeeded()
+                    sidebar.isCollapsed = true
+                }
+            }
+        }
+
+        private static func sidebar(in view: NSView) -> NSSplitViewItem? {
+            if let split = view as? NSSplitView, let controller = split.delegate as? NSSplitViewController {
+                return controller.splitViewItems.first { $0.behavior == .sidebar }
+            }
+            return view.subviews.lazy.compactMap(sidebar).first
+        }
+    }
+}
+
 extension ToolbarItemPlacement {
     static var topBarTrailing: ToolbarItemPlacement { .primaryAction }
     static var topBarLeading: ToolbarItemPlacement { .navigation }

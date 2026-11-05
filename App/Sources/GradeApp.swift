@@ -89,6 +89,7 @@ struct GradeApp: App {
         .textFieldStyle(.plain)
         // No bar across the top: the buttons float over the content, which scrolls under them.
         .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
+        .background(SidebarToggleFix().id([tour.session, appSession]))
         #else
         // No scroll bars anywhere: every list, form and scroll view below (sheets included) inherits it.
         .scrollIndicators(.hidden)
