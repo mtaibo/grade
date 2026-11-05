@@ -125,8 +125,8 @@ struct SubjectDetailView: View {
         }
 
         #if os(macOS)
-        // Without one the bar shows the app's name.
-        .navigationTitle(library.record(id: recordID)?.subject.name ?? "")
+        // Without one the bar shows the app's name. The subject's own is at the top of the screen.
+        .navigationTitle("")
         #endif
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(isSimulating)

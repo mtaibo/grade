@@ -87,6 +87,8 @@ struct GradeApp: App {
         .formStyle(.grouped)
         // Fields draw their own background where they need one, as on the iPhone.
         .textFieldStyle(.plain)
+        // No bar across the top: the buttons float over the content, which scrolls under them.
+        .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
         #else
         // No scroll bars anywhere: every list, form and scroll view below (sheets included) inherits it.
         .scrollIndicators(.hidden)
