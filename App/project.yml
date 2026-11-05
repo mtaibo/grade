@@ -73,6 +73,10 @@ targets:
         excludes:
           - Grade.entitlements
           - Info.plist
+          - AppIcon.icon
+      # An Icon Composer file: a plain white square with the tick, so macOS has no plate to add.
+      - path: Mac/AppIcon.icon
+        type: file
     configFiles:
       Debug: Config/Shared.xcconfig
       Release: Config/Shared.xcconfig
