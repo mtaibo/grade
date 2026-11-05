@@ -78,6 +78,7 @@ struct RecordView: View {
                     } label: {
                         Image(systemName: "arrow.up.arrow.down")
                     }
+                    .menuIndicator(.hidden)
                     .accessibilityLabel("Ordenar")
                 }
             }

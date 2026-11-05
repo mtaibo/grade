@@ -1326,6 +1326,7 @@ private struct GradeTypeSection: View {
                     }
                     .foregroundStyle(type == nil ? AnyShapeStyle(.red) : AnyShapeStyle(.secondary))
                 }
+                .menuIndicator(.hidden)
             }
         } footer: {
             Text(type == nil
@@ -1552,6 +1553,7 @@ private struct MinimumSection: View {
                         }
                         .foregroundStyle(.secondary)
                     }
+                    .menuIndicator(.hidden)
                 }
                 if kind == .capAt {
                     LabeledContent("Nota tope") {

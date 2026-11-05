@@ -199,6 +199,7 @@ struct SubjectDetailView: View {
                 } label: {
                     Image(systemName: "ellipsis")
                 }
+                .menuIndicator(.hidden)
                 .accessibilityLabel("Más opciones")
             }
             }

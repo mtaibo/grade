@@ -425,6 +425,7 @@ struct HomeView: View {
                     } label: {
                         Image(systemName: "calendar")
                     }
+                    .menuIndicator(.hidden)
                     .accessibilityLabel("Cambiar de vista")
                 }
                 // Keeps the two buttons as separate glass capsules instead of one joined pill.
@@ -451,6 +452,7 @@ struct HomeView: View {
                 } label: {
                     Image(systemName: "ellipsis")
                 }
+                .menuIndicator(.hidden)
                 .accessibilityLabel("Más opciones")
             }
         }
