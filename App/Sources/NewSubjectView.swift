@@ -17,7 +17,6 @@ enum SubjectPlacement: Identifiable {
 struct NewSubjectView: View {
     @Environment(Library.self) private var library
     @Environment(\.dismiss) private var dismiss
-    @Environment(Tour.self) private var tour: Tour?
 
     let placement: SubjectPlacement
     /// Called with the subject's new period once saved, so the home screen can follow it.
@@ -66,7 +65,6 @@ struct NewSubjectView: View {
                                 .multilineTextAlignment(.trailing)
                                 .foregroundStyle(.secondary)
                         }
-                        .tourTarget("new.name")
                     }
                 }
 
@@ -82,14 +80,12 @@ struct NewSubjectView: View {
                         }
                         .animation(.snappy, value: year)
                     }
-                    .tourTarget("new.period")
                     Picker(degree.termName.isEmpty ? "Cuatrimestre" : degree.termName, selection: $relativeTerm) {
                         Text("Todo el año").tag(Int?.none)
                         ForEach(1...max(degree.termsPerYear, 1), id: \.self) { n in
                             Text(degree.termLabel(degree.absoluteTerm(year: year, relative: n))).tag(Int?.some(n))
                         }
                     }
-                    .tourTarget("new.period")
                 } footer: {
                     Text("Si la asignatura dura todo el año, elige «Todo el año»: aparecerá en todos sus periodos.")
                 }
@@ -112,7 +108,6 @@ struct NewSubjectView: View {
             }
             .onAppear {
                 nameFocused = isCreating
-                if isCreating { tour?.perform(.newSubjectOpened) }
             }
         }
         .presentationDetents([.medium])
@@ -144,6 +139,5 @@ struct NewSubjectView: View {
         }
         onSaved(Period(year: year, term: term), id)
         dismiss()
-        if isCreating { tour?.perform(.subjectCreated) }
     }
 }

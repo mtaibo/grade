@@ -1,11 +1,17 @@
 import Engine
 import SwiftUI
+import TipKit
 
 /// The account tab, top to bottom: your studies (with the archive once something's been archived),
-/// your record, your data (backups and deletes), the tutorials and about the app.
+/// your record, your data (backups and deletes), the tips and about the app.
 struct AccountView: View {
+    /// Whether Cuenta is the tab on screen: its tip waits for the user to come back to it.
+    let isCurrentTab: Bool
     @Environment(Library.self) private var library
-    @Environment(Tour.self) private var tour: Tour?
+    @AppStorage(GradeTips.shownKey) private var tipsShown = true
+    /// Tips just turned back on from here: this screen's own waits until Cuenta is opened again,
+    /// instead of popping up under the finger that asked for them.
+    @AppStorage("accountTipWaits") private var accountTipWaits = false
     /// Same size as the other tabs' titles.
     @ScaledMetric(relativeTo: .largeTitle) private var titleSize = 40
 
@@ -20,7 +26,6 @@ struct AccountView: View {
 
     var body: some View {
         NavigationStack {
-            ScrollViewReader { proxy in
             List {
                 // The title is part of the content, like in the other tabs, so it scrolls away
                 // instead of collapsing into the navigation bar.
@@ -32,6 +37,16 @@ struct AccountView: View {
                     .listRowInsets(EdgeInsets(top: 8, leading: 4, bottom: 0, trailing: 4))
                 #endif
 
+                // A card of its own, like the sections below, not a second card inside one.
+                if !accountTipWaits {
+                    Section {
+                        TipView(AccountTip())
+                            .tipBackground(Color.clear)
+                            .tipImageSize(CGSize(width: 28, height: 28))
+                            .listRowInsets(EdgeInsets(top: 2, leading: 4, bottom: 2, trailing: 4))
+                    }
+                }
+
                 Section("Estudios") {
                     NavigationLink {
                         CurrentStudyView()
@@ -42,14 +57,11 @@ struct AccountView: View {
                             symbol: library.hasStudy ? library.degree.studyType.symbol : "plus.circle"
                         )
                     }
-                    .tourTarget("account.study")
-                    .id("account.study")
                     NavigationLink {
                         TemplatesView()
                     } label: {
                         AccountRow(title: "Plantillas", detail: "Cursos completos o asignaturas sueltas", symbol: "square.stack")
                     }
-                    .tourTarget("account.study")
                     if !library.archives.isEmpty {
                         NavigationLink {
                             ArchiveView()
@@ -67,15 +79,12 @@ struct AccountView: View {
                     // Only a current study has numbers of its own; archived ones are inside.
                     if library.hasStudy {
                         RecordStats(summary: RecordSummary(library.courses, degree: library.degree))
-                            .tourTarget("account.record")
-                            .id("account.record")
                     }
                     NavigationLink {
                         RecordView()
                     } label: {
                         Label("Ver expediente", systemImage: "chart.bar.doc.horizontal")
                     }
-                    .tourTarget("account.record")
                 } header: {
                     Text("Expediente")
                 } footer: {
@@ -95,39 +104,32 @@ struct AccountView: View {
                     } label: {
                         AccountRow(title: "Copia de seguridad", detail: "Exportar o importar tus datos", symbol: "externaldrive")
                     }
-                    .tourTarget("account.data")
-                    .id("account.data")
                     NavigationLink {
                         EraseDataView()
                     } label: {
                         AccountRow(title: "Borrar datos", detail: "Notas o asignaturas", symbol: "trash")
                     }
-                    .tourTarget("account.data")
                 }
 
-                // The guided tour is written for the iPhone's screens and gestures.
-                #if os(iOS)
                 Section {
                     Button {
-                        tour?.startGeneral(degree: library.degree, returningTo: .account)
+                        accountTipWaits = true
+                        GradeTips.showAgain()
                     } label: {
-                        AccountRow(title: "Tutorial general", detail: "Un recorrido guiado por toda la app", symbol: "figure.walk")
+                        AccountRow(title: "Volver a ver los consejos", detail: "Salen otra vez en cada pantalla", symbol: "lightbulb")
                     }
                     .foregroundStyle(.primary)
-                    .tourTarget("account.tutorials")
-                    .id("account.tutorials")
-                    NavigationLink {
-                        TourSectionsView()
-                    } label: {
-                        AccountRow(title: "Por sección", detail: "Cómo funciona cada pantalla", symbol: "rectangle.stack")
+                    Toggle(isOn: Binding(get: { tipsShown }, set: { shown in
+                        if shown { accountTipWaits = true }
+                        GradeTips.setShown(shown)
+                    })) {
+                        AccountRow(title: "Mostrar consejos", detail: tipsShown ? "Activados" : "Desactivados", symbol: "text.bubble")
                     }
-                    .tourTarget("account.tutorials")
                 } header: {
-                    Text("Tutoriales")
+                    Text("Consejos")
                 } footer: {
-                    Text("Se hacen con un estudio de prueba: tus asignaturas y notas no se tocan.")
+                    Text("Pequeñas explicaciones que salen la primera vez que llegas a cada pantalla. Desactívalos si ya sabes cómo va.")
                 }
-                #endif
 
                 Section("Acerca de") {
                     LabeledContent("Versión", value: version)
@@ -146,14 +148,11 @@ struct AccountView: View {
                     }
                 }
             }
-            .onChange(of: tour?.current?.target) { _, target in
-                // Brings the highlighted row on screen during a tour.
-                guard let target, target.hasPrefix("account.") else { return }
-                withAnimation { proxy.scrollTo(target, anchor: .center) }
-            }
-            }
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
+            .onChange(of: isCurrentTab) {
+                if !isCurrentTab { accountTipWaits = false }
+            }
         }
     }
 }
@@ -173,7 +172,9 @@ struct AccountRow: View {
                     .foregroundStyle(.secondary)
             }
         } icon: {
+            // Tinted even in a button row, whose text is the primary colour.
             Image(systemName: symbol)
+                .foregroundStyle(.tint)
         }
     }
 }

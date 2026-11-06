@@ -1,5 +1,6 @@
 import Engine
 import SwiftUI
+import TipKit
 
 /// Edits a subject's details and evaluation tree on a draft, committed only on the checkmark — the
 /// modular part of the app: any subject's structure can be reshaped to match its real syllabus.
@@ -242,8 +243,6 @@ struct SubjectEditorView: View {
             }
         }
         .environment(\.isUndecidedEvaluation, draft.subject.root.asGroup?.combination == .undecided)
-        .tourPerforms(.editorOpened)
-        .tourPerforms(.editorClosed, onAppear: false)
     }
 
     /// "Anual", "Nota por periodo" and the subject's own evaluation: for a subject graded per term,
@@ -341,27 +340,18 @@ private struct NodeContentsSections: View {
     var isSubtree = false
     /// Above the evaluation picker, e.g. the term a subject graded per term was opened from.
     var header: String?
-    /// Whether the tour points at these (the subject's own, or the term opened from).
-    var marksTour = false
-
     @Environment(\.isUndecidedEvaluation) private var isUndecided
-
-    private var isTourTarget: Bool { isRoot || marksTour }
 
     var body: some View {
         if isRoot || isSubtree || (!isUndecided && (node.asGroup != nil || node.asFormula != nil)) {
             CalculationSection(node: $node, isRoot: isRoot || isSubtree, isSubtree: isSubtree, header: header)
-                .tourTarget(isTourTarget ? "editor.evaluation" : nil)
         }
         if let alternatives = Binding(unwrapping: $node.asAlternatives) {
             SchemesSections(alternatives: alternatives)
-                .tourTarget(isTourTarget ? "editor.sections" : nil)
         } else if let group = Binding(unwrapping: $node.asGroup) {
             GroupSections(group: group, isRoot: isRoot || isSubtree, isPerTerm: isPerTerm)
-                .tourTarget(isTourTarget ? "editor.sections" : nil)
         } else if let formula = Binding(unwrapping: $node.asFormula) {
             FormulaSections(formula: formula)
-                .tourTarget(isTourTarget ? "editor.sections" : nil)
         } else if let grade = Binding(unwrapping: $node.asGrade) {
             if isRoot {
                 // "Nota única": just the final grade, typed in the exam card of each sitting.
@@ -443,12 +433,23 @@ private struct CalculationSection: View {
     }
 
     var body: some View {
+        // Only on the subject's own evaluation, the first thing to get right. A card of its own,
+        // like Cuenta's, not a second card inside the picker's.
+        if isRoot && !isSubtree {
+            Section {
+                TipView(CalculationTip())
+                    .tipBackground(Color.clear)
+                    .tipImageSize(CGSize(width: 28, height: 28))
+                    .listRowInsets(EdgeInsets(top: 2, leading: 4, bottom: 2, trailing: 4))
+            }
+        }
         Section {
             Picker("Evaluación", selection: selection) {
                 ForEach(methods, id: \.self) { method in
                     Text(method.label).tag(method)
                 }
             }
+            .onChange(of: current) { CalculationTip().invalidate(reason: .actionPerformed) }
             if let group = node.asGroup, let count = group.combination.bestOfCount {
                 Stepper(
                     value: Binding(get: { count }, set: { node.asGroup?.combination = .bestOf($0) }),

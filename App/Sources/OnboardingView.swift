@@ -4,10 +4,9 @@ import SwiftUI
 /// The first launch, and the first one after "Borrar todos los datos": what Grade does, then how
 /// to start — a `.grade` copy, setting up your own study or the defaults — and, for your own, one
 /// question per screen: what you study, how long it lasts and which year you're in, how the year
-/// is split, its name. It ends offering the guided tour.
+/// is split, its name.
 struct OnboardingView: View {
-    /// Called when it's done; `true` to start the tour.
-    let onFinish: (Bool) -> Void
+    let onFinish: () -> Void
 
     @Environment(Library.self) private var library
     @AppStorage("selectedYear") private var selectedYear = 0
@@ -202,22 +201,11 @@ struct OnboardingView: View {
                 .accessibilityHidden(true)
             Text("Todo listo")
                 .font(.system(.largeTitle, design: .rounded).bold())
-            #if os(macOS)
-            Spacer()
-            PrimaryButton("Empezar") { onFinish(false) }
-            #else
-            Text("¿Te enseño cómo funciona? Es un recorrido de un par de minutos con asignaturas de prueba; lo tuyo no se toca. Lo tienes siempre en Cuenta → Tutoriales.")
+            Text("Añade tus asignaturas y pon cómo te evalúan. La primera vez que llegues a cada pantalla te dejo un consejo de cómo funciona.")
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             Spacer()
-            PrimaryButton("Ver el tutorial") { onFinish(true) }
-            Button {
-                onFinish(false)
-            } label: {
-                Text("Ahora no").frame(maxWidth: .infinity)
-            }
-            .controlSize(.large)
-            #endif
+            PrimaryButton("Empezar") { onFinish() }
         }
         .padding(24)
         .navigationBarBackButtonHidden()
@@ -268,7 +256,7 @@ struct OnboardingView: View {
         do {
             guard let data = try? Data(contentsOf: url) else { throw BackupError.unreadable }
             library.restore(try GradeBackup.decode(data))
-            onFinish(false)
+            onFinish()
         } catch {
             importError = error.localizedDescription
         }

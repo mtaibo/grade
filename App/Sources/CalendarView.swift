@@ -1,5 +1,6 @@
 import Engine
 import SwiftUI
+import TipKit
 
 /// A dated grade somewhere in the library — a lab hand-in, an assignment, an exam.
 struct Deadline: Identifiable {
@@ -101,7 +102,6 @@ struct CalendarView: View {
     /// with "Ver más" back to the start.
     let isCurrentTab: Bool
     @Environment(Library.self) private var library
-    @Environment(Tour.self) private var tour: Tour?
     @State private var selectedDay: CalendarDay?
     @State private var isFiltering = false
     /// The scroll view's height, so the empty state can sit in the middle of the screen.
@@ -118,10 +118,6 @@ struct CalendarView: View {
     private static let pageSize = 3
 
     private var calendar: Calendar { .current }
-
-    /// The tour points at the month and the list, so it unfolds them while it does.
-    private var showsMonth: Bool { isMonthShown || tour?.current?.target == "calendar.month" }
-    private var showsList: Bool { isListShown || tour?.current?.target == "calendar.list" }
 
     private func upcoming(_ deadlines: [Deadline]) -> [Deadline] {
         let today = calendar.startOfDay(for: .now)
@@ -188,7 +184,7 @@ struct CalendarView: View {
                     // Nothing dated yet: only the empty state, with no title, month, list or filter.
                     if !allDeadlines.isEmpty {
                         VStack(alignment: .leading, spacing: 0) {
-                            FoldingHeader(title: "Calendario", isExpanded: showsMonth) { showList(isMonthShown) }
+                            FoldingHeader(title: "Calendario", isExpanded: isMonthShown) { showList(isMonthShown) }
                                 .font(.system(size: titleSize, weight: .bold, design: .rounded))
                                 .padding(.leading, 4)
 
@@ -196,9 +192,8 @@ struct CalendarView: View {
                                 .frame(maxWidth: 320)
                                 .frame(maxWidth: .infinity)
                                 .card(padding: 4)
-                                .tourTarget("calendar.month")
                                 .padding(.top, 28)
-                                .folded(!showsMonth)
+                                .folded(!isMonthShown)
                         }
                     }
 
@@ -239,7 +234,7 @@ struct CalendarView: View {
 
                     if !allDeadlines.isEmpty {
                         VStack(alignment: .leading, spacing: 10) {
-                            FoldingHeader(title: "Próximas fechas", isExpanded: showsList) { showList(!isListShown) }
+                            FoldingHeader(title: "Próximas fechas", isExpanded: isListShown) { showList(!isListShown) }
                                 .font(.title3.bold())
                                 .padding(.horizontal, 4)
 
@@ -271,9 +266,8 @@ struct CalendarView: View {
                                     }
                                 }
                             }
-                            .folded(!showsList)
+                            .folded(!isListShown)
                         }
-                        .tourTarget("calendar.list")
                     }
 
                     if allDeadlines.isEmpty {
@@ -286,8 +280,8 @@ struct CalendarView: View {
                         .frame(maxHeight: .infinity)
                     }
                 }
-                .animation(.smooth(duration: 0.4), value: showsMonth)
-                .animation(.smooth(duration: 0.4), value: showsList)
+                .animation(.smooth(duration: 0.4), value: isMonthShown)
+                .animation(.smooth(duration: 0.4), value: isListShown)
                 .animation(.smooth(duration: 0.3), value: selectedDay)
                 .padding(.horizontal)
                 .padding(.bottom, 24)
@@ -302,9 +296,11 @@ struct CalendarView: View {
                 if !allDeadlines.isEmpty {
                     ToolbarItem(placement: .topBarTrailing) {
                         Button {
+                            CalendarFilterTip().invalidate(reason: .actionPerformed)
                             isFiltering = true
                         } label: {
                             Image(systemName: isFiltered ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease")
+                                .popoverTip(isCurrentTab ? CalendarFilterTip() : nil)
                         }
                         .accessibilityLabel("Filtrar")
                         .popover(isPresented: $isFiltering) {

@@ -1,6 +1,7 @@
 import Engine
 import PDFKit
 import SwiftUI
+import TipKit
 
 /// One subject, as a few calm cards: where you stand (folded until you want the detail), the final
 /// exam with its two sittings, and one card per other part showing its grade. Nothing here edits
@@ -19,7 +20,6 @@ struct SubjectDetailView: View {
     @Environment(Library.self) private var library
     @Environment(\.isSimulating) private var isSimulating
     @Environment(\.dismiss) private var dismiss
-    @Environment(Tour.self) private var tour: Tour?
     @State private var isEditing = false
     @State private var isEditingDates = false
     @State private var addingDateFor: Convocatoria?
@@ -29,6 +29,11 @@ struct SubjectDetailView: View {
     @State private var isShowingGuide = false
     @State private var isConfirmingDeleteGuide = false
     @State private var guideError: String?
+    /// How to put grades in first, then where the evaluation is changed: one at a time.
+    @State private var tips = TipGroup(.firstAvailable) {
+        GradeEntryTip()
+        EvaluationTip()
+    }
 
     var body: some View {
         if let record = library.record(id: recordID) {
@@ -65,7 +70,6 @@ struct SubjectDetailView: View {
 
                 if record.isUndecided {
                     UndecidedCard(progress: progress)
-                        .tourTarget("subject.summary")
                 } else {
                     GradeCard(
                         progress: progress,
@@ -73,7 +77,6 @@ struct SubjectDetailView: View {
                         formula: (scope?.node ?? record.subject.root).asFormula,
                         needs: NeededGrade.rows(for: scope?.node ?? record.root(for: session), progress: progress, items: items)
                     )
-                        .tourTarget("subject.summary")
                 }
 
                 // Only when a part is the final exam (never for "Nota única", which has none).
@@ -84,7 +87,6 @@ struct SubjectDetailView: View {
                         onAddDate: { addingDateFor = $0 },
                         onOpen: { session in open(GradeTarget(partID: exam?.id ?? "", session: session, isExam: true)) }
                     )
-                    .tourTarget("subject.exam")
                 }
 
                 if !record.requirements.isEmpty {
@@ -109,7 +111,7 @@ struct SubjectDetailView: View {
                                 .accessibilityAddTraits(.isButton)
                         }
                     }
-                    .tourTarget("subject.parts")
+                    .popoverTip(isSimulating ? nil : tips.currentTip as? GradeEntryTip, arrowEdge: .bottom)
                 }
             }
             .padding(.horizontal)
@@ -130,7 +132,12 @@ struct SubjectDetailView: View {
         #endif
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(isSimulating)
-        .onAppear { if !isSimulating { tour?.perform(.subjectOpened) } }
+        .onAppear {
+            if !isSimulating { Task { await GradeTips.subjectOpened.donate() } }
+        }
+        .onChange(of: isEditing) {
+            if isEditing { EvaluationTip().invalidate(reason: .actionPerformed) }
+        }
         .toolbar {
             if isSimulating {
                 ToolbarItem(placement: .cancellationAction) {
@@ -201,6 +208,7 @@ struct SubjectDetailView: View {
                 }
                 .menuIndicator(.hidden)
                 .accessibilityLabel("Más opciones")
+                .popoverTip(tips.currentTip as? EvaluationTip)
             }
             }
         }
@@ -252,6 +260,7 @@ extension SubjectDetailView {
     /// One animation in and one out: the card slides from the top while the screen behind blurs
     /// slightly and dims.
     fileprivate func open(_ target: GradeTarget) {
+        GradeEntryTip().invalidate(reason: .actionPerformed)
         withAnimation(.snappy(duration: 0.36)) { gradeTarget = target }
     }
 

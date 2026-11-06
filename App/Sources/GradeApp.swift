@@ -11,15 +11,14 @@ struct GradeApp: App {
     /// Calendar sits leftmost, but the app still opens on the subjects.
     @State private var selectedTab = AppTab.subjects
     @State private var backupCenter = BackupImportCenter()
-    @State private var tour = Tour()
-    /// The guided tour is offered once, on the first launch; after that it's in Cuenta → Tutoriales.
-    @AppStorage("tourOffered") private var tourOffered = false
-    @State private var isOfferingTour = false
-    /// A fresh install: the welcome, what you study and your template, then the tour.
+    /// Whether the first-launch welcome has been through (or wasn't needed: there was a study).
+    /// Its key is from when the end of it offered a guided tour.
+    @AppStorage("tourOffered") private var hasOnboarded = false
+    /// A fresh install: the welcome, then how to start (a copy, your own study or the defaults).
     @State private var isOnboarding = false
-    #if os(iOS)
-    @State private var tourWindow: TourWindow?
-    #else
+    /// «Volver a ver los consejos» bumps it: the tabs are rebuilt so every tip is asked for again.
+    @AppStorage("tipsGeneration") private var tipsGeneration = 0
+    #if os(macOS)
     @State private var menuActions = MenuActions()
     @NSApplicationDelegateAdaptor private var appDelegate: MacAppDelegate
     #endif
@@ -42,6 +41,7 @@ struct GradeApp: App {
         }
         _library = State(initialValue: library)
         _cloud = State(initialValue: cloud)
+        GradeTips.configure()
     }
 
     var body: some Scene {
@@ -73,14 +73,13 @@ struct GradeApp: App {
                 CalendarView(isCurrentTab: selectedTab == .calendar)
             }
             Tab("Asignaturas", systemImage: "books.vertical", value: .subjects) {
-                HomeView()
+                HomeView(isCurrentTab: selectedTab == .subjects)
             }
             Tab("Cuenta", systemImage: "person.crop.circle", value: .account) {
-                AccountView()
+                AccountView(isCurrentTab: selectedTab == .account)
             }
         }
-        // Rebuilt when a tour starts or ends, so no screen keeps the other library's state.
-        .id([tour.session, appSession])
+        .id([appSession.uuidString, String(tipsGeneration)])
         #if os(macOS)
         .tabViewStyle(.sidebarAdaptable)
         // The iPhone's grouped look, sheets included, rather than the Mac's two-column forms.
@@ -89,24 +88,18 @@ struct GradeApp: App {
         .textFieldStyle(.plain)
         // No bar across the top: the buttons float over the content, which scrolls under them.
         .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
-        .background(SidebarToggleFix().id([tour.session, appSession]))
+        .background(SidebarToggleFix().id(appSession))
         #else
         // No scroll bars anywhere: every list, form and scroll view below (sheets included) inherits it.
         .scrollIndicators(.hidden)
         #endif
-        // Imports always go into the real library, even if a file is opened mid-tour.
         .modifier(BackupImportHost(center: backupCenter, library: library))
-        // During a tour the app shows a throwaway study instead of the real one.
-        .environment(tour.sandbox ?? library)
+        .environment(library)
         .environment(backupCenter)
         #if os(macOS)
         .environment(menuActions)
         #endif
         .environment(cloud)
-        .environment(tour)
-        .onChange(of: [tour.session.uuidString, String(tour.index)]) {
-            if let tab = tour.current?.tab { selectedTab = tab }
-        }
         // iCloud announces changes with a push, which can come late or not at all: while the app is
         // on screen it also asks, so what's done on another device shows up on its own.
         .task(id: scenePhase) {
@@ -134,7 +127,11 @@ struct GradeApp: App {
             guard needs else { return }
             // Asked for on the spot, unlike other changes: it shouldn't linger in iCloud.
             Task { await cloud.syncNow() }
+            // The tips come back too, as on a fresh install: what TipKit remembers isn't a preference.
+            let generation = GradeTips.generation
             if let domain = Bundle.main.bundleIdentifier { UserDefaults.standard.removePersistentDomain(forName: domain) }
+            tipsGeneration = generation + 1
+            GradeTips.setShown(true)
             selectedTab = .subjects
             appSession = UUID()
             Task {
@@ -146,47 +143,21 @@ struct GradeApp: App {
         // A new device has got its study from iCloud: nothing to ask or set up.
         .onChange(of: library.wasRestoredFromCloud) { _, restored in
             guard restored, isOnboarding else { return }
-            tourOffered = true
+            hasOnboarded = true
             isOnboarding = false
         }
-        #if os(iOS)
-        .onChange(of: tour.isActive) { _, isActive in
-            tourWindow?.isHidden = !isActive
-            if !isActive { selectedTab = tour.returnTab }
-        }
-        #endif
         .onAppear {
-            #if os(iOS)
-            if tourWindow == nil, let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene {
-                tourWindow = TourWindow(scene: scene, tour: tour)
-            }
-            #endif
-            if !tourOffered {
-                let isEmpty = library.courses.allSatisfy(\.subjects.isEmpty) && library.archives.isEmpty
-                #if os(macOS)
-                if isEmpty { isOnboarding = true } else { tourOffered = true }
-                #else
-                if isEmpty { isOnboarding = true } else { isOfferingTour = true }
-                #endif
-            }
+            guard !hasOnboarded else { return }
+            let isEmpty = library.courses.allSatisfy(\.subjects.isEmpty) && library.archives.isEmpty
+            if isEmpty { isOnboarding = true } else { hasOnboarded = true }
         }
         .fullScreenCover(isPresented: $isOnboarding) {
-            OnboardingView { startsTour in
-                tourOffered = true
+            OnboardingView {
+                hasOnboarded = true
                 library.needsOnboarding = false
                 isOnboarding = false
-                if startsTour { tour.startGeneral(degree: library.degree, returningTo: .subjects) }
             }
             .environment(library)
-        }
-        .alert("¿Te enseño cómo funciona?", isPresented: $isOfferingTour) {
-            Button("Empezar el tour") {
-                tourOffered = true
-                tour.startGeneral(degree: library.degree, returningTo: .subjects)
-            }
-            Button("Ahora no", role: .cancel) { tourOffered = true }
-        } message: {
-            Text("Un recorrido guiado de un par de minutos con un estudio de prueba. Puedes hacerlo cuando quieras desde Cuenta → Tutoriales.")
         }
     }
 }

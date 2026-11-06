@@ -517,14 +517,12 @@ struct LibraryTests {
         #expect(reopened.hasStudy && reopened.degree == DegreeSettings())
     }
 
-    @Test func simulationsAndToursNeverTouchTheDisk() {
+    @Test func simulationsNeverTouchTheDisk() {
         let sandbox = Sandbox()
         let real = sandbox.open()
         let id = real.addSubject(Self.subject(), year: 1, term: 1)
         let simulation = Library(simulating: real.record(id: id)!, degree: real.degree)
         simulation.setEntry(GradeEntry(value: 10, outOf: 10), forLeaf: "Examen", in: id, session: .ordinary)
-        let tour = Library(inMemory: DegreeSettings())
-        tour.apply(DegreeTemplate.all[0])
         #expect(Self.sameContents(real, sandbox.open()))
         #expect(sandbox.open().record(id: id)?.entries.isEmpty == true)
     }

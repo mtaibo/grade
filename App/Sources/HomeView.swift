@@ -1,5 +1,6 @@
 import Engine
 import SwiftUI
+import TipKit
 
 /// One sort option in a menu, ✓ when chosen. Name starts A to Z and grade highest first; choosing
 /// the one already chosen flips it, and its subtitle says which way it runs. Home and the record
@@ -97,6 +98,9 @@ enum SubjectSort: String, CaseIterable, Identifiable {
 /// The home screen: the year and term as a big title, then one large card per subject — just the
 /// name. Everything else lives inside the subject.
 struct HomeView: View {
+    /// Whether Asignaturas is the tab on screen. The tabs stay alive behind the one shown, and a
+    /// tip shown from one of them would float at the top of another's screen.
+    let isCurrentTab: Bool
     @Environment(Library.self) private var library
     #if os(macOS)
     @Environment(MenuActions.self) private var menuActions
@@ -126,6 +130,17 @@ struct HomeView: View {
     @State private var viewportHeight: CGFloat = 0
     /// The "hold the background" tip: only shown after tapping the background itself.
     @State private var isShowingHint = false
+    /// What a tile does, then switching period, then reordering: one at a time.
+    @State private var tips = TipGroup(.firstAvailable) {
+        SubjectTileTip()
+        PeriodTip()
+        ReorderTip()
+    }
+
+    /// The tip to show now, if it's `T` and this tab is on screen.
+    private func tip<T: Tip>(_ type: T.Type) -> T? {
+        isCurrentTab ? tips.currentTip as? T : nil
+    }
     @State private var hintTask: Task<Void, Never>?
 
     private var periods: [Period] { Period.all(in: library.courses, degree: library.degree) }
@@ -275,6 +290,10 @@ struct HomeView: View {
                 }
             }
             .sensoryFeedback(.impact, trigger: isEditing)
+            .onChange(of: isEditing) {
+                if isEditing { ReorderTip().invalidate(reason: .actionPerformed) }
+            }
+            .onChange(of: period) { PeriodTip().invalidate(reason: .actionPerformed) }
             .animation(.snappy, value: isEditing)
             .background(Color(.systemGroupedBackground))
             .navigationTitle("")
@@ -353,7 +372,7 @@ struct HomeView: View {
         .padding(.leading, 4)
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(.isHeader)
-        .tourTarget("home.header")
+        .popoverTip(tip(ReorderTip.self), arrowEdge: .top)
     }
 
     /// A subject graded per term opens on the term on screen; anything else, and every subject in
@@ -389,13 +408,22 @@ struct HomeView: View {
                     SubjectTile(record: record, isCompact: layout == .list, rounding: library.degree.rounding)
                 }
                 .buttonStyle(TilePressStyle())
-                .tourTarget(record.id == records.first?.id && selection == nil ? "home.firstTile" : nil)
+                .popoverTip(record.id == records.first?.id && selection == nil ? tip(SubjectTileTip.self) : nil, arrowEdge: .top) { action in
+                    if action.id == GradeTips.turnOff { GradeTips.setShown(false) }
+                }
                 .contextMenu {
-                    Button("Personalizar", systemImage: "paintpalette") { customizing = record }
+                    Button("Personalizar", systemImage: "paintpalette") {
+                        SubjectTileTip().invalidate(reason: .actionPerformed)
+                        customizing = record
+                    }
                     Button("Mover", systemImage: "arrow.right.circle") {
+                        SubjectTileTip().invalidate(reason: .actionPerformed)
                         placement = .move(record.id, name: record.subject.name, from: library.period(of: record.id) ?? Period(year: period.year, term: record.term))
                     }
-                    Button("Editar", systemImage: "slider.horizontal.3") { editing = record }
+                    Button("Editar", systemImage: "slider.horizontal.3") {
+                        SubjectTileTip().invalidate(reason: .actionPerformed)
+                        editing = record
+                    }
                     Divider()
                     Button("Eliminar", systemImage: "trash", role: .destructive) { deleting = record }
                 }
@@ -427,6 +455,7 @@ struct HomeView: View {
                     }
                     .menuIndicator(.hidden)
                     .accessibilityLabel("Cambiar de vista")
+                    .popoverTip(tip(PeriodTip.self))
                 }
                 // Keeps the two buttons as separate glass capsules instead of one joined pill.
                 ToolbarSpacer(.fixed, placement: .topBarTrailing)
@@ -658,12 +687,11 @@ private struct EmptyHome: View {
                     .font(.headline)
             }
             .buttonStyle(.borderless)
-                .tourTarget("home.add")
         }
     }
 }
 
 #Preview {
-    HomeView()
+    HomeView(isCurrentTab: true)
         .environment(Library(fileURL: .temporaryDirectory.appending(path: "preview-library.json")))
 }
