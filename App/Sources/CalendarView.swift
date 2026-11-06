@@ -97,7 +97,8 @@ extension Library {
 /// month (from the chevron by its title) folds the list, and a day picked on it shows that day's
 /// dates above the list. The filter at the top right picks which kinds show.
 struct CalendarView: View {
-    /// Whether the Calendario tab is the one on screen: leaving it puts "Ver más" back to the start.
+    /// Whether the Calendario tab is the one on screen: leaving it folds the month and opens the list,
+    /// with "Ver más" back to the start.
     let isCurrentTab: Bool
     @Environment(Library.self) private var library
     @Environment(Tour.self) private var tour: Tour?
@@ -317,7 +318,16 @@ struct CalendarView: View {
                 SubjectDetailView(recordID: id)
             }
             .onChange(of: isCurrentTab) {
-                if !isCurrentTab { upcomingCount = Self.initialCount }
+                guard !isCurrentTab else { return }
+                // Out of sight, so no fold to watch: back to the list alone, from its first few.
+                var transaction = Transaction()
+                transaction.disablesAnimations = true
+                withTransaction(transaction) {
+                    isMonthShown = false
+                    isListShown = true
+                    selectedDay = nil
+                    upcomingCount = Self.initialCount
+                }
             }
             .onAppear(perform: migrateKindFilter)
         }
