@@ -263,10 +263,15 @@ struct SubjectEditorView: View {
                         }
                     }
                 } footer: {
-                    if draft.isPerTerm {
-                        Text("Cada periodo tiene su propia evaluación, y la de abajo es la general: cómo se juntan las notas de los periodos en la final. Aparece en todos los periodos del año.")
+                    // What it means now, in the study's own words ("cuatrimestre", "trimestre"…).
+                    let term = (degree.termName.trimmingCharacters(in: .whitespaces).isEmpty ? DegreeSettings.defaultTermName : degree.termName).lowercased()
+                    let terms = degree.pluralTermName.lowercased()
+                    if draft.term != nil {
+                        Text("Dura un solo \(term) y solo aparece en ese. Si la asignatura dura todo el curso, activa «Anual» y aparecerá en todos los \(terms) del año.")
+                    } else if draft.isPerTerm {
+                        Text("Dura todo el curso y cada \(term) se evalúa por separado, con sus propias partes y notas. La evaluación de abajo es la general: cuánto cuenta cada \(term) en la nota final.")
                     } else {
-                        Text("Una asignatura anual aparece en todos los periodos de su año. Si no, solo en el que elijas. Con «Nota por periodo», cada periodo se evalúa por separado.")
+                        Text("Dura todo el curso: aparece en todos los \(terms) del año, con una sola evaluación y una nota final. Si te ponen una nota en cada \(term) y la final sale de ellas, activa «Nota por periodo».")
                     }
                 }
 
