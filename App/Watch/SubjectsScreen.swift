@@ -15,7 +15,7 @@ struct SubjectsScreen: View {
                         NavigationLink {
                             SubjectScreen(recordID: record.id, term: record.isPerTerm ? period.term.map(snapshot.degree.relativeTerm) : nil)
                         } label: {
-                            SubjectTileRow(record: record, part: part(of: record, period: period, degree: snapshot.degree), rounding: snapshot.degree.rounding)
+                            SubjectTileRow(record: record, part: part(of: record, period: period, degree: snapshot.degree))
                         }
                         .buttonStyle(TilePress())
                     }
@@ -79,11 +79,10 @@ struct SubjectsScreen: View {
 private struct SubjectTileRow: View {
     let record: SubjectRecord
     let part: Node?
-    let rounding: GradeRounding
 
     var body: some View {
         let style = SubjectStyle(record)
-        let progress = SubjectProgress(record, rounding: rounding, part: part)
+        let progress = SubjectProgress(record, part: part)
         HStack(spacing: 7) {
             Image(systemName: style.symbol)
                 .font(.system(size: 14, weight: .semibold))

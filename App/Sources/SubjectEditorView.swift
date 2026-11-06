@@ -214,7 +214,7 @@ struct SubjectEditorView: View {
                     Section {
                         NavigationLink {
                             StableDestination(value: draft) {
-                                AdvancedSubjectView(subject: $draft.subject, requirements: $draft.requirements, showsCredits: library.degree.usesCredits)
+                                AdvancedSubjectView(subject: $draft.subject, requirements: $draft.requirements, rounding: $draft.rounding, showsCredits: library.degree.usesCredits)
                             }
                         } label: {
                             Label("Avanzado", systemImage: "slider.horizontal.3")
@@ -301,6 +301,7 @@ private extension EnvironmentValues {
 private struct AdvancedSubjectView: View {
     @Binding var subject: Subject
     @Binding var requirements: [SubjectRequirement]
+    @Binding var rounding: GradeRounding
     /// Off when the study has no credits.
     let showsCredits: Bool
 
@@ -321,6 +322,13 @@ private struct AdvancedSubjectView: View {
                 }
             } footer: {
                 Text("La nota final con la que se aprueba, sobre 10. Casi siempre un 5.")
+            }
+            Section {
+                Picker("Redondeo", selection: $rounding) {
+                    ForEach(GradeRounding.allCases) { Text($0.label).tag($0) }
+                }
+            } footer: {
+                Text("Cómo se pone la nota final en el acta. A la unidad, un 4,5 es un 5 y apruebas; a una décima, un 4,95 es un 5,0; truncando, un 4,99 se queda en 4,9. Suele decirlo la guía docente.")
             }
             RequirementsSection(requirements: $requirements)
         }

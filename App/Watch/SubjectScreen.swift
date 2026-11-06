@@ -25,7 +25,7 @@ struct SubjectScreen: View {
         let session = record.activeSession
         let scope = PartItem.termScope(of: record, session: session, term: term, termsPerYear: degree.termsPerYear)
         let items = scope?.items ?? PartItem.items(of: record, session: session)
-        let progress = SubjectProgress(record, session: session, rounding: degree.rounding, part: scope?.node)
+        let progress = SubjectProgress(record, session: session, part: scope?.node)
         let tint = SubjectStyle(record).tint
         return ScrollView {
             VStack(alignment: .leading, spacing: 8) {

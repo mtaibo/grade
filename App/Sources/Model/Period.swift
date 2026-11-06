@@ -45,17 +45,26 @@ enum StudyType: String, Codable, CaseIterable, Identifiable {
     }
 }
 
-/// How the transcript turns the worked-out grade into the final one: as it is, or to one decimal
-/// rounding (4,95 → 5,0) or cutting (4,99 → 4,9) — it decides a pass right at the line.
+/// How the transcript turns the worked-out grade into the final one: as it is, to a whole number
+/// (4,5 → 5), or to one decimal rounding (4,95 → 5,0) or cutting (4,99 → 4,9) — it decides a pass
+/// right at the line.
 enum GradeRounding: String, Codable, CaseIterable, Identifiable {
-    case none, round, truncate
+    case none
+    /// Not stored as «unit»: development builds saved that on every subject when it was briefly
+    /// the default, and read as unknown those subjects go back to `.standard`.
+    case unit = "wholeNumber"
+    case round, truncate
+
+    /// What a subject starts with: the grade as it's worked out, until its guide says otherwise.
+    static let standard = GradeRounding.none
 
     var id: Self { self }
 
     var label: String {
         switch self {
         case .none: "Sin redondear"
-        case .round: "A una décima, redondeando"
+        case .unit: "A la unidad"
+        case .round: "A una décima"
         case .truncate: "A una décima, truncando"
         }
     }
@@ -65,6 +74,7 @@ enum GradeRounding: String, Codable, CaseIterable, Identifiable {
         switch self {
         case .none: return value
         // A hair added first, so a 4,95 that's 4,9499999… in binary still goes up.
+        case .unit: return (value + 1e-9).rounded(.toNearestOrAwayFromZero)
         case .round: return (value * 10 + 1e-9).rounded(.toNearestOrAwayFromZero) / 10
         case .truncate: return (value * 10 + 1e-9).rounded(.towardZero) / 10
         }
@@ -72,7 +82,11 @@ enum GradeRounding: String, Codable, CaseIterable, Identifiable {
 
     /// The lowest worked-out grade that ends up at `threshold` or above.
     func lowestPassing(_ threshold: Double) -> Double {
-        self == .round ? threshold - 0.05 - 1e-9 : threshold
+        switch self {
+        case .unit: threshold - 0.5 - 1e-9
+        case .round: threshold - 0.05 - 1e-9
+        case .none, .truncate: threshold
+        }
     }
 }
 
@@ -97,7 +111,10 @@ struct DegreeSettings: Codable, Equatable {
     var yearName = defaultYearName
     /// Off: no credits anywhere (record, editor) and averages count every subject the same.
     var usesCredits = true
-    var rounding = GradeRounding.none
+    /// How the final grade went on the transcript when it was one setting for the whole study.
+    /// Each subject has its own now (`SubjectRecord.rounding`); this is only read from older files
+    /// to hand it to their subjects, and is `.none` once it has.
+    var legacyRounding = GradeRounding.none
 
     /// The name given to the study, or its type when it has none.
     var displayName: String {
@@ -177,7 +194,7 @@ struct DegreeSettings: Codable, Equatable {
 }
 
 extension DegreeSettings {
-    private enum CodingKeys: String, CodingKey { case studyType, name, institution, years, termsPerYear, termName, yearName, usesCredits, rounding }
+    private enum CodingKeys: String, CodingKey { case studyType, name, institution, years, termsPerYear, termName, yearName, usesCredits, legacyRounding = "rounding" }
 
     /// Clamped to what the settings screen allows, so a hand-edited backup can't hand the app zero
     /// terms a year (which it divides by) or a hundred years.
@@ -196,7 +213,7 @@ extension DegreeSettings {
             yearName: try container.decodeIfPresent(String.self, forKey: .yearName) ?? Self.defaultYearName,
             // Studies saved before the setting existed get their type's usual one.
             usesCredits: try container.decodeIfPresent(Bool.self, forKey: .usesCredits) ?? studyType.usesCredits,
-            rounding: (try? container.decodeIfPresent(GradeRounding.self, forKey: .rounding)) ?? .none
+            legacyRounding: (try? container.decodeIfPresent(GradeRounding.self, forKey: .legacyRounding)) ?? .none
         )
     }
 }

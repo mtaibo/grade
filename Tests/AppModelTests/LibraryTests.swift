@@ -132,6 +132,24 @@ struct LibraryTests {
         #expect(library.record(id: shared)?.term == nil)
     }
 
+    @Test func theStudysRoundingGoesToEachOfItsSubjects() {
+        let sandbox = Sandbox()
+        let library = sandbox.open()
+        let id = library.addSubject(Self.subject(), year: 1, term: 1)
+        // As a file from before each subject had its own.
+        var degree = library.degree
+        degree.legacyRounding = .round
+        library.updateDegree(degree)
+        let reopened = sandbox.open()
+        #expect(reopened.record(id: id)?.rounding == .round)
+        #expect(reopened.degree.legacyRounding == .none)
+        // Once handed over, a subject's own choice stays.
+        var record = reopened.record(id: id)!
+        record.rounding = .truncate
+        reopened.update(record)
+        #expect(sandbox.open().record(id: id)?.rounding == .truncate)
+    }
+
     @Test func scalesAndWeightsNoFormAllowsAreFixedWhenRead() throws {
         let sandbox = Sandbox()
         // As a hand-edited backup could have them: nothing in the app writes these.
@@ -182,9 +200,13 @@ struct LibraryTests {
         #expect(record.isCarriedOver("Prácticas", in: .extraordinary))
         record.extraordinaryEntries["Examen"] = GradeEntry(value: 6, outOf: 10)
         #expect(record.activeSession == .extraordinary)
-        let progress = SubjectProgress(record)
+        let progress = SubjectProgress(record, rounding: GradeRounding.none)
         #expect(abs(progress.worst - 6.8) < 1e-9)
         #expect(progress.status == .guaranteed)
+        // Not rounded unless the subject says so.
+        #expect(abs(SubjectProgress(record).worst - 6.8) < 1e-9)
+        record.rounding = .unit
+        #expect(SubjectProgress(record).worst == 7)
     }
 
     @Test func aSectionSentToTheExtraordinaryIsTakenAgain() {

@@ -227,7 +227,7 @@ private struct RecordSubjectView: View {
     @Environment(Library.self) private var library
 
     var body: some View {
-        let progress = SubjectProgress(record, rounding: library.degree.rounding)
+        let progress = SubjectProgress(record)
         let inputs = progress.inputs
         let parts = Self.parts(of: progress.session == .extraordinary ? (record.extraordinaryRoot ?? record.subject.root) : record.subject.root)
         List {

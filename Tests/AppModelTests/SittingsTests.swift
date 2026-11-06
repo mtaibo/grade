@@ -127,13 +127,33 @@ struct SittingsTests {
     @Test func roundingDecidesAPassAtTheLine() {
         var record = Self.record()
         record.entries = ["P1": GradeEntry(value: 4.875, outOf: 10), "P2": GradeEntry(value: 4.875, outOf: 10), "Examen": GradeEntry(value: 5, outOf: 10)]
-        #expect(SubjectProgress(record).status == .impossible)
+        #expect(SubjectProgress(record, rounding: GradeRounding.none).status == .impossible)
         #expect(SubjectProgress(record, rounding: .truncate).status == .impossible)
         let rounded = SubjectProgress(record, rounding: .round)
         #expect(rounded.status == .guaranteed)
         #expect(rounded.worst == 5)
         #expect(SubjectProgress(record, rounding: .truncate).worst == 4.9)
         #expect(GradeRounding.round.apply(4.95) == 5 && GradeRounding.truncate.apply(4.99) == 4.9)
+    }
+
+    /// To a whole number the .5 goes up: a 4,5 is a 5 and a pass, a 4,49 a 4. Only once every
+    /// grade is in. By default nothing is rounded.
+    @Test func roundingToAWholeNumber() {
+        #expect(GradeRounding.unit.apply(4.5) == 5 && GradeRounding.unit.apply(4.49) == 4)
+        var record = Self.record()
+        #expect(record.rounding == .none)
+        record.rounding = .unit
+        // 0,4 · 4 + 0,6 · 4,75 = 4,45: a 4.
+        record.entries = ["P1": GradeEntry(value: 4, outOf: 10), "P2": GradeEntry(value: 4, outOf: 10), "Examen": GradeEntry(value: 4.75, outOf: 10)]
+        #expect(SubjectProgress(record).worst == 4 && SubjectProgress(record).status == .impossible)
+        // 0,4 · 4 + 0,6 · 4,85 = 4,51: a 5.
+        record.entries["Examen"] = GradeEntry(value: 4.85, outOf: 10)
+        #expect(SubjectProgress(record).worst == 5 && SubjectProgress(record).status == .guaranteed)
+        // With the exam still to come, what's secured shows as it is, and the exam aims at a 4,5.
+        record.entries["Examen"] = nil
+        let pending = SubjectProgress(record)
+        #expect(abs(pending.worst - 1.6) < 1e-9)
+        #expect(abs((pending.neededAverage ?? 0) - 29 / 6) < 0.01)
     }
 
     @Test func newFieldsSurviveAndOldFilesStillRead() throws {
@@ -147,9 +167,20 @@ struct SittingsTests {
         let old = #"{"id":"\#(UUID().uuidString)","subject":{"name":"A","ectsCredits":6,"root":{"grade":{"_0":{"name":"Examen","scaleMax":10}}}}}"#
         let plain = try JSONDecoder().decode(SubjectRecord.self, from: Data(old.utf8))
         #expect(plain.extraordinaryRoot == nil && plain.requirements.isEmpty && !plain.hasHonors)
-        var degree = try JSONDecoder().decode(DegreeSettings.self, from: Data("{}".utf8))
-        #expect(degree.rounding == .none)
-        degree.rounding = .round
-        #expect(try JSONDecoder().decode(DegreeSettings.self, from: JSONEncoder().encode(degree)).rounding == .round)
+        #expect(plain.rounding == .standard)
+        // What development builds saved while whole numbers were the default reads as the default.
+        let developmentDefault = old.dropLast() + #","rounding":"unit"}"#
+        #expect(try JSONDecoder().decode(SubjectRecord.self, from: Data(developmentDefault.utf8)).rounding == GradeRounding.none)
+        var rounded = record
+        rounded.rounding = .truncate
+        #expect(try JSONDecoder().decode(SubjectRecord.self, from: JSONEncoder().encode(rounded)).rounding == .truncate)
+    }
+
+    @Test func eachSubjectRoundsItsOwnWay() {
+        var record = Self.record()
+        record.entries = ["P1": GradeEntry(value: 4.875, outOf: 10), "P2": GradeEntry(value: 4.875, outOf: 10), "Examen": GradeEntry(value: 5, outOf: 10)]
+        record.rounding = .round
+        #expect(SubjectProgress(record).status == .guaranteed)
+        #expect(SubjectProgress(record, rounding: GradeRounding.none).status == .impossible)
     }
 }

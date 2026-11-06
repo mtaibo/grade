@@ -60,6 +60,8 @@ struct SubjectRecord: Identifiable, Codable, Equatable {
     var hasHonors = false
     /// Conditions with no grade, like compulsory attendance: one not met fails the subject.
     var requirements: [SubjectRequirement] = []
+    /// How the final grade goes on the transcript: each subject's guide says its own.
+    var rounding = GradeRounding.standard
 
     init(id: UUID = UUID(), subject: Subject, entries: [String: GradeEntry] = [:], term: Int? = nil) {
         self.id = id
@@ -87,6 +89,7 @@ struct SubjectRecord: Identifiable, Codable, Equatable {
         extraordinaryNotPresented = try container.decodeIfPresent(Bool.self, forKey: .extraordinaryNotPresented) ?? false
         hasHonors = try container.decodeIfPresent(Bool.self, forKey: .hasHonors) ?? false
         requirements = try container.decodeIfPresent([SubjectRequirement].self, forKey: .requirements) ?? []
+        rounding = (try? container.decodeIfPresent(GradeRounding.self, forKey: .rounding)) ?? .standard
     }
 
     func isNotPresented(in session: Convocatoria) -> Bool {
@@ -385,7 +388,22 @@ final class Library {
             }
         }
         courses = merged.sorted { $0.year < $1.year }
+        // The study's rounding, from before each subject had its own, goes to all of them.
+        if degree.legacyRounding != .none {
+            Self.giveRounding(degree.legacyRounding, to: &courses)
+            degree.legacyRounding = .none
+        }
+        for index in archives.indices where archives[index].degree.legacyRounding != .none {
+            Self.giveRounding(archives[index].degree.legacyRounding, to: &archives[index].courses)
+            archives[index].degree.legacyRounding = .none
+        }
         flagFinalExams()
+    }
+
+    private static func giveRounding(_ rounding: GradeRounding, to courses: inout [Course]) {
+        for course in courses.indices {
+            for index in courses[course].subjects.indices { courses[course].subjects[index].rounding = rounding }
+        }
     }
 
     // MARK: Teaching guides
@@ -947,9 +965,10 @@ struct SubjectProgress {
     let session: Convocatoria
 
     /// `part`, for the numbers of one part alone (a term of a subject graded per term) instead of
-    /// the whole subject's.
-    init(_ record: SubjectRecord, session: Convocatoria? = nil, rounding: GradeRounding = .none, part: Node? = nil) {
+    /// the whole subject's. `rounding` overrides the subject's own.
+    init(_ record: SubjectRecord, session: Convocatoria? = nil, rounding: GradeRounding? = nil, part: Node? = nil) {
         let session = session ?? record.activeSession
+        let rounding = rounding ?? record.rounding
         let root = part ?? record.root(for: session)
         var inputs = Self.inputs(record, session: session)
         if part != nil {
@@ -963,8 +982,12 @@ struct SubjectProgress {
         if record.missesARequirement { status = .impossible }
 
         self.inputs = inputs
-        self.worst = rounding.apply(root.evaluate(inputs, pendingFraction: 0))
-        self.best = rounding.apply(root.evaluate(inputs, pendingFraction: 1))
+        // Only the final grade goes on the transcript: while grades are missing, what's secured so
+        // far shows as it is (a 3,4, not a 3), and the pass line is already in `target`.
+        let isFinal = !inputs.isEmpty && inputs.count == root.allLeafNames().count
+        let shown = { (value: Double) in isFinal ? rounding.apply(value) : value }
+        self.worst = shown(root.evaluate(inputs, pendingFraction: 0))
+        self.best = shown(root.evaluate(inputs, pendingFraction: 1))
         self.threshold = threshold
         self.target = target
         self.status = status

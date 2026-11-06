@@ -405,7 +405,7 @@ struct HomeView: View {
             onDelete: { deleting = $0 },
             normal: { record in
                 NavigationLink(value: route(to: record, in: selection)) {
-                    SubjectTile(record: record, isCompact: layout == .list, rounding: library.degree.rounding)
+                    SubjectTile(record: record, isCompact: layout == .list)
                 }
                 .buttonStyle(TilePressStyle())
                 .popoverTip(record.id == records.first?.id && selection == nil ? tip(SubjectTileTip.self) : nil, arrowEdge: .top) { action in
@@ -555,9 +555,9 @@ struct SubjectTile: View {
     /// A slim row (icon, name, ring) instead of the tall card, for the list view.
     var isCompact = false
 
-    init(record: SubjectRecord, isCompact: Bool = false, rounding: GradeRounding = .none) {
+    init(record: SubjectRecord, isCompact: Bool = false) {
         let style = SubjectStyle(record)
-        let progress = SubjectProgress(record, rounding: rounding)
+        let progress = SubjectProgress(record)
         self.init(
             name: record.subject.name, symbol: style.symbol, tint: style.tint,
             count: (progress.enteredCount, progress.leafCount),

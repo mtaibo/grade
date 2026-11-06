@@ -47,7 +47,7 @@ struct SubjectDetailView: View {
         let session = record.activeSession
         let scope = PartItem.termScope(of: record, session: session, term: term, termsPerYear: library.degree.termsPerYear)
         // Opened from a term, the card on top is that term's grade.
-        let progress = SubjectProgress(record, session: session, rounding: library.degree.rounding, part: scope?.node)
+        let progress = SubjectProgress(record, session: session, part: scope?.node)
         let items = scope?.items ?? PartItem.items(of: record, session: session)
         // "Nota única": one card for the final grade, no exam sittings.
         let exam = record.isSingleGrade ? nil : items.first(where: \.isExam)
