@@ -168,7 +168,7 @@ struct CombinationTests {
             default: trees.append(builder.node(depth: Int.random(in: 1...4, using: &builder.random), isRoot: true))
             }
         }
-        return trees + Subject.all.map(\.root) + DegreeTemplate.all.flatMap { $0.entries.map(\.subject.root) }
+        return trees + Subject.all.map(\.root)
     }()
 
     // MARK: Inputs

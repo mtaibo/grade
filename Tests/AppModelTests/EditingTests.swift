@@ -84,8 +84,8 @@ struct EditingTests {
         #expect(record.entries.mapValues(\.value) == ["A bis": 1, "B": 2, "C": 3])
     }
 
-    @Test func notesFromOlderFilesAndTemplatesGetUniqueIds() {
-        for subject in Subject.all + DegreeTemplate.all.flatMap({ $0.entries.map(\.subject) }) {
+    @Test func notesFromOlderFilesAndReferenceSubjectsGetUniqueIds() {
+        for subject in Subject.all {
             var root = subject.root
             #expect(root.grades.allSatisfy { $0.id == nil })
             root.identifyGrades()

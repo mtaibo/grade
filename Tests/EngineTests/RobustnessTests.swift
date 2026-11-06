@@ -5,9 +5,7 @@ import Engine
 /// Inputs the app can't fully control (hand-typed formulas, old or edited files, empty groups)
 /// must give a number on screen, never a crash or a NaN.
 struct RobustnessTests {
-    private static var everySubject: [Subject] {
-        Subject.all + DegreeTemplate.all.flatMap { $0.entries.map(\.subject) }
-    }
+    private static var everySubject: [Subject] { Subject.all }
 
     @Test func aVariableTheFormulaNoLongerHasCountsAsZero() {
         let expression = Expression.add(.variable("A"), .variable("B"))

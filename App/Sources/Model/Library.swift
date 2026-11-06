@@ -523,7 +523,7 @@ final class Library {
         save()
     }
 
-    /// Adds a ready-made subject (from a template) to a year and term.
+    /// Adds a ready-made subject to a year and term.
     @discardableResult
     func addSubject(_ subject: Subject, year: Int, term: Int?) -> SubjectRecord.ID {
         let record = SubjectRecord(subject: subject, term: term)
@@ -807,29 +807,6 @@ final class Library {
         // while either still has it.
         for subject in Set(removed).subtracting(subjectIDsInUse) { removeGuide(for: subject) }
         save()
-    }
-
-    /// Adds the template's subjects, each in its year and term. A subject the course already has
-    /// (same name) is left alone, so applying a template twice never duplicates or loses grades.
-    /// `only` limits it to those entries (by index); `nil` adds them all.
-    @discardableResult
-    func apply(_ template: DegreeTemplate, only: Set<Int>? = nil) -> (added: Int, skipped: Int) {
-        var added = 0
-        var skipped = 0
-        // A template is a whole study's subjects: applying one with no study starts one.
-        hasStudy = true
-        for (index, entry) in template.entries.enumerated() where only?.contains(index) ?? true {
-            let course = courseIndex(forYear: entry.year)
-            if courses[course].subjects.contains(where: { $0.subject.name == entry.subject.name }) {
-                skipped += 1
-                continue
-            }
-            let term = degree.absoluteTerm(year: entry.year, relative: min(entry.term, degree.termsPerYear))
-            courses[course].subjects.append(SubjectRecord(subject: entry.subject, term: term))
-            added += 1
-        }
-        save()
-        return (added, skipped)
     }
 
     // MARK: iCloud

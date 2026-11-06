@@ -2,9 +2,9 @@ import Foundation
 import Testing
 import Engine
 
-/// The Ingeniería Informática template: the seven syllabi added for it (hand-calculated against
-/// each guide) and the template's own shape.
-struct InformaticaTemplateTests {
+/// The seven Ingeniería Informática syllabi added after the first reference guides, each
+/// hand-calculated against its guide.
+struct InformaticaSyllabiTests {
     private func final(_ subject: Subject, _ inputs: [String: Double]) -> Double {
         subject.root.evaluate(inputs, pendingFraction: 0)
     }
@@ -68,22 +68,6 @@ struct InformaticaTemplateTests {
         ]
         // 1 + 0.5 + 1 + 0.75 * 5 = 6.25
         #expect(abs(final(.algoritmos, inputs) - 6.25) < 0.0001)
-    }
-
-    @Test func informaticaTemplateCoversTwoYearsWithoutRepeats() {
-        let template = DegreeTemplate.informatica
-        #expect(template.years == [1, 2])
-        #expect(template.entries.count == 15)
-        for year in template.years {
-            for term in 1...2 {
-                let names = template.entries(year: year, term: term).map(\.subject.name)
-                #expect(Set(names).count == names.count)
-            }
-        }
-        #expect(template.entries(year: 1, term: 1).count == 5)
-        #expect(template.entries(year: 1, term: 2).count == 5)
-        #expect(template.entries(year: 2, term: 1).count == 5)
-        #expect(template.entries(year: 2, term: 2).isEmpty)
     }
 }
 

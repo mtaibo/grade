@@ -292,24 +292,6 @@ struct LibraryTests {
         #expect(library.record(id: library.addSubject(name: "Álgebra", year: 1, term: nil))?.isPerTerm == false)
     }
 
-    @Test func applyingATemplateTwiceAddsNothingTheSecondTime() throws {
-        let library = Sandbox().open()
-        let template = try #require(DegreeTemplate.all.first)
-        let first = library.apply(template)
-        #expect(first.added == template.entries.count)
-        let second = library.apply(template)
-        #expect(second.added == 0 && second.skipped == template.entries.count)
-        // Fewer terms than the template expects still puts everything in a valid term.
-        let single = Sandbox().open()
-        var degree = single.degree
-        degree.termsPerYear = 1
-        single.updateDegree(degree)
-        single.apply(template)
-        for course in single.courses {
-            for subject in course.subjects { #expect(subject.term == nil || subject.term == course.year) }
-        }
-    }
-
     @Test func deletingASubjectTakesItOutOfEveryView() {
         let library = Sandbox().open()
         let a = library.addSubject(Self.subject("A"), year: 1, term: 1)

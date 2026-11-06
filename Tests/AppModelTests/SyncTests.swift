@@ -274,7 +274,8 @@ struct WatchLinkTests {
     @Test func aWholeDegreeFitsInOneContext() throws {
         let sandbox = Sandbox()
         let library = sandbox.open()
-        for template in DegreeTemplate.all { library.apply(template) }
+        // Every reference subject, as many as a whole degree's first two years.
+        for (index, subject) in Subject.all.enumerated() { library.addSubject(subject, year: index < 8 ? 1 : 2, term: index % 2 + 1) }
         let data = try library.watchSnapshot(year: 1, term: 1, appliedChanges: []).encodedForTransfer()
         #expect(data.count < WatchSnapshot.sizeLimit)
     }

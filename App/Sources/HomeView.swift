@@ -679,7 +679,7 @@ private struct EmptyHome: View {
             Label("Sin asignaturas", systemImage: "books.vertical")
         } description: {
             Text(hasStudy
-                 ? "Añade las de este cuatrimestre o carga una plantilla en Cuenta → Plantillas."
+                 ? "Añade las de este periodo para empezar a llevar sus notas."
                  : "No tienes ningún estudio en curso. Al añadir una asignatura creas uno nuevo.")
         } actions: {
             Button(action: add) {

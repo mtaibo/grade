@@ -57,11 +57,6 @@ struct AccountView: View {
                             symbol: library.hasStudy ? library.degree.studyType.symbol : "plus.circle"
                         )
                     }
-                    NavigationLink {
-                        TemplatesView()
-                    } label: {
-                        AccountRow(title: "Plantillas", detail: "Cursos completos o asignaturas sueltas", symbol: "square.stack")
-                    }
                     if !library.archives.isEmpty {
                         NavigationLink {
                             ArchiveView()
