@@ -1,9 +1,10 @@
 import Engine
 import SwiftUI
 
-/// The first launch, and the first one after "Borrar todos los datos": what Grade does, then one
-/// question per screen — what you study, how long it lasts and which year you're in, how the year
-/// is split, its name — and, for a degree, its template. It ends offering the guided tour.
+/// The first launch, and the first one after "Borrar todos los datos": what Grade does, then how
+/// to start — a `.grade` copy, setting up your own study or the defaults — and, for your own, one
+/// question per screen: what you study, how long it lasts and which year you're in, how the year
+/// is split, its name. It ends offering the guided tour.
 struct OnboardingView: View {
     /// Called when it's done; `true` to start the tour.
     let onFinish: (Bool) -> Void
@@ -15,15 +16,17 @@ struct OnboardingView: View {
     @State private var draft = DegreeSettings()
     /// The year the student is in now, so the home screen opens there.
     @State private var currentYear = 1
+    @State private var isImporting = false
+    @State private var importError: String?
 
-    private enum Step: Hashable { case type, years, terms, name, templates, done }
+    private enum Step: Hashable { case start, type, years, terms, name, done }
 
     private var isUniversity: Bool { draft.studyType == .university }
 
     /// The question steps, for the progress bar (the welcome and the end don't count). Bachillerato
     /// and ESO always last the same years split in trimestres, so it isn't asked.
     private var questions: [Step] {
-        isUniversity ? [.type, .years, .terms, .name, .templates] : [.type, .years, .name]
+        isUniversity ? [.type, .years, .terms, .name] : [.type, .years, .name]
     }
 
     var body: some View {
@@ -31,11 +34,11 @@ struct OnboardingView: View {
             welcome
                 .navigationDestination(for: Step.self) { step in
                     switch step {
+                    case .start: startStep
                     case .type: typeStep
                     case .years: yearsStep
                     case .terms: termsStep
                     case .name: nameStep
-                    case .templates: templatesStep
                     case .done: done
                     }
                 }
@@ -48,21 +51,62 @@ struct OnboardingView: View {
     private var welcome: some View {
         VStack(alignment: .leading, spacing: 28) {
             Spacer(minLength: 24)
-            Text("Te dice qué necesitas para aprobar")
-                .font(.system(.largeTitle, design: .rounded).bold())
-                .fixedSize(horizontal: false, vertical: true)
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Bienvenido a Grade")
+                    .font(.system(.largeTitle, design: .rounded).bold())
+                Text("Tus asignaturas, tus notas y tus fechas, bien organizadas y siempre al día.")
+                    .font(.title3)
+                    .foregroundStyle(.secondary)
+            }
+            .fixedSize(horizontal: false, vertical: true)
             VStack(alignment: .leading, spacing: 22) {
-                Feature(symbol: "list.bullet.rectangle", title: "Cada asignatura, a su manera", text: "Pesos, notas mínimas, exámenes y trabajos, tal como te evalúan.")
-                Feature(symbol: "target", title: "Lo que te falta", text: "Con cada nota que pones, lo que necesitas en el resto para aprobar.")
-                Feature(symbol: "calendar", title: "Fechas y medias", text: "Exámenes y entregas en el calendario, y tu media de cada periodo y curso.")
+                Feature(symbol: "list.bullet.rectangle", title: "Como te evalúan de verdad", text: "Exámenes, prácticas, pesos y notas mínimas, tal como vienen en la guía.")
+                Feature(symbol: "target", title: "Sabes cuánto te falta", text: "Con cada nota que pones, ves qué necesitas en lo que queda para aprobar.")
+                Feature(symbol: "calendar", title: "Todo a tiempo", text: "Tus exámenes y entregas en un calendario, y tu media de cada periodo y curso.")
             }
             Spacer()
-            PrimaryButton("Empezar") { path.append(.type) }
+            PrimaryButton("Empezar") { path.append(.start) }
         }
         .padding(24)
         #if os(iOS)
         .toolbar(.hidden, for: .navigationBar)
         #endif
+    }
+
+    // MARK: How to start
+
+    private var startStep: some View {
+        QuestionScreen(progress: nil, title: "¿Cómo empezamos?", subtitle: nil) {
+            VStack(spacing: 10) {
+                StartOption(
+                    symbol: "slider.horizontal.3",
+                    title: "Configurar mi curso",
+                    detail: "Unas preguntas rápidas: qué estudias, cuántos años dura y cómo se divide."
+                ) { path.append(.type) }
+                StartOption(
+                    symbol: "square.and.arrow.down",
+                    title: "Importar una copia",
+                    detail: "Carga un archivo .grade con tus asignaturas y tus notas, de otro dispositivo o de un compañero."
+                ) { isImporting = true }
+                StartOption(
+                    symbol: "checkmark.circle",
+                    title: "Por defecto",
+                    detail: "Un grado de 4 años en cuatrimestres. Lo cambias cuando quieras en Cuenta → Estudio actual."
+                ) { skipQuestions() }
+            }
+        } footer: {
+            EmptyView()
+        }
+        // The welcome has said its piece: no going back to it.
+        .navigationBarBackButtonHidden()
+        .fileImporter(isPresented: $isImporting, allowedContentTypes: [.gradeBackup, .markBackup, .json]) { result in
+            if case .success(let url) = result { importCopy(from: url) }
+        }
+        .alert("No se ha podido importar", isPresented: Binding(get: { importError != nil }, set: { if !$0 { importError = nil } })) {
+            Button("Vale") {}
+        } message: {
+            Text(importError ?? "")
+        }
     }
 
     // MARK: Questions
@@ -147,42 +191,6 @@ struct OnboardingView: View {
         }
     }
 
-    private var templatesStep: some View {
-        QuestionScreen(progress: progress(of: .templates), title: "¿Está tu grado?", subtitle: "Asignaturas ya preparadas con la evaluación de su guía docente. Si el tuyo no está, crearás las tuyas copiando cómo te evalúan.") {
-            VStack(spacing: 10) {
-                ForEach(DegreeTemplate.all) { template in
-                    NavigationLink {
-                        TemplateView(template: template)
-                    } label: {
-                        HStack(spacing: 14) {
-                            Image(systemName: "graduationcap")
-                                .font(.title3)
-                                .foregroundStyle(.tint)
-                                .frame(width: 28)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(template.name).font(.headline)
-                                Text("\(template.university) · \(TemplatesView.subjectsLabel(template.entries.count))")
-                                    .font(.subheadline)
-                                    .foregroundStyle(.secondary)
-                            }
-                            Spacer(minLength: 8)
-                            Image(systemName: "chevron.right")
-                                .font(.footnote.weight(.semibold))
-                                .foregroundStyle(.tertiary)
-                        }
-                        .padding(16)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(Color(.secondarySystemGroupedBackground), in: .rect(cornerRadius: 18))
-                        .contentShape(.rect)
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-        } footer: {
-            PrimaryButton(library.courses.contains { !$0.subjects.isEmpty } ? "Continuar" : "Seguir sin plantilla") { path.append(.done) }
-        }
-    }
-
     // MARK: End
 
     private var done: some View {
@@ -241,7 +249,29 @@ struct OnboardingView: View {
         library.startStudy(draft)
         selectedYear = currentYear
         selectedTerm = draft.absoluteTerm(year: currentYear, relative: 1)
-        path.append(isUniversity ? .templates : .done)
+        path.append(.done)
+    }
+
+    /// No questions: a four-year degree in cuatrimestres, from its first year.
+    private func skipQuestions() {
+        let settings = DegreeSettings()
+        library.startStudy(settings)
+        selectedYear = 1
+        selectedTerm = settings.absoluteTerm(year: 1, relative: 1)
+        path.append(.done)
+    }
+
+    /// A copy brings its own study, subjects and grades: nothing left to ask or to show.
+    private func importCopy(from url: URL) {
+        let scoped = url.startAccessingSecurityScopedResource()
+        defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+        do {
+            guard let data = try? Data(contentsOf: url) else { throw BackupError.unreadable }
+            library.restore(try GradeBackup.decode(data))
+            onFinish(false)
+        } catch {
+            importError = error.localizedDescription
+        }
     }
 }
 
@@ -264,7 +294,8 @@ private struct Division: Identifiable {
 /// One question: a thin progress bar, the question in big type, its options, and the button to
 /// go on pinned to the bottom.
 private struct QuestionScreen<Content: View, Footer: View>: View {
-    let progress: Double
+    /// `nil` for a screen that isn't one of the questions, which shows no bar.
+    let progress: Double?
     let title: String
     let subtitle: String?
     @ViewBuilder let content: Content
@@ -297,14 +328,53 @@ private struct QuestionScreen<Content: View, Footer: View>: View {
         }
         .background(Color(.systemGroupedBackground))
         .toolbar {
-            ToolbarItem(placement: .principal) {
-                ProgressView(value: progress)
-                    .frame(width: 120)
-                    .animation(.snappy, value: progress)
-                    .accessibilityLabel("Progreso")
+            if let progress {
+                ToolbarItem(placement: .principal) {
+                    ProgressView(value: progress)
+                        .frame(width: 120)
+                        .animation(.snappy, value: progress)
+                        .accessibilityLabel("Progreso")
+                }
             }
         }
         .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+/// A way to start: a big card that goes on to it.
+private struct StartOption: View {
+    let symbol: String
+    let title: String
+    let detail: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 14) {
+                Image(systemName: symbol)
+                    .font(.title2)
+                    .foregroundStyle(.tint)
+                    .frame(width: 34)
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(title).font(.headline)
+                    Text(detail)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 8)
+                Image(systemName: "chevron.right")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+                    .accessibilityHidden(true)
+            }
+            .padding(16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color(.secondarySystemGroupedBackground), in: .rect(cornerRadius: 18))
+            .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
     }
 }
 
