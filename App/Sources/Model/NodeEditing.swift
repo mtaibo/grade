@@ -253,7 +253,11 @@ extension Node {
         case .alternatives(var alternatives):
             for index in alternatives.branches.indices { alternatives.branches[index].node.sanitize() }
             self = .alternatives(alternatives)
-        case .bonus, .requirement:
+        case .bonus(var bonus):
+            if !(bonus.scaleMax.isFinite && bonus.scaleMax > 0) { bonus.scaleMax = 10 }
+            if !(bonus.parentCap.isFinite && bonus.parentCap >= 0) { bonus.parentCap = 10 }
+            self = .bonus(bonus)
+        case .requirement:
             break
         }
     }

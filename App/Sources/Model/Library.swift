@@ -378,8 +378,8 @@ final class Library {
         save()
     }
 
-    /// Makes whatever was loaded safe to show: one course per year (from the 1st), no subject id used twice, and
-    /// the final exam flagged on old subjects. Runs after loading the file and after a restore.
+    /// Makes whatever was loaded safe to show: one course per year (from the 1st), no subject id used twice,
+    /// no scale or weight the engine can't use, and the final exam flagged on old subjects. Runs after loading the file and after a restore.
     private func normalize() {
         var merged: [Course] = []
         for var course in courses {
@@ -399,6 +399,9 @@ final class Library {
                 }
                 // Terms count from 1; anything else is treated as year-long.
                 if let term = merged[course].subjects[index].term, term < 1 { merged[course].subjects[index].term = nil }
+                // A hand-edited file or a backup can carry a scale or a weight no form would let through.
+                merged[course].subjects[index].subject.root.sanitize()
+                merged[course].subjects[index].extraordinaryRoot?.sanitize()
             }
         }
         courses = merged.sorted { $0.year < $1.year }

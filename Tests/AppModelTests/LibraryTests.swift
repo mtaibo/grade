@@ -132,6 +132,21 @@ struct LibraryTests {
         #expect(library.record(id: shared)?.term == nil)
     }
 
+    @Test func scalesAndWeightsNoFormAllowsAreFixedWhenRead() throws {
+        let sandbox = Sandbox()
+        // As a hand-edited backup could have them: nothing in the app writes these.
+        let root = Node.group(Group(name: "F", combination: .sum, children: [
+            WeightedChild(weight: .nan, node: .grade(Grade(name: "A", scaleMax: .infinity))),
+            WeightedChild(weight: 0.5, node: .bonus(Bonus(name: "B", scaleMax: .nan, parentCap: .infinity))),
+        ], minimum: Minimum(threshold: .nan, consequence: .fails)))
+        var record = SubjectRecord(subject: Subject(name: "F", ectsCredits: 6, root: root))
+        record.entries["A"] = GradeEntry(value: 7, outOf: 10)
+        try Library.fileEncoder.encode([Course(year: 1, subjects: [record])]).write(to: sandbox.file)
+        let progress = try SubjectProgress(#require(sandbox.open().record(id: record.id)))
+        #expect(progress.worst.isFinite && progress.best.isFinite)
+        #expect(progress.neededAverage?.isFinite ?? true)
+    }
+
     @Test func degreeSettingsAreClampedWhenRead() throws {
         let json = #"{"years": 400, "termsPerYear": 0, "studyType": "spaceship"}"#
         let degree = try JSONDecoder().decode(DegreeSettings.self, from: Data(json.utf8))
