@@ -44,8 +44,9 @@ extension Expression {
 
     // MARK: Printing
 
-    /// The formula as text that `parse` reads back: `0,1 * (8 - C) * F`, `min(a; b)`,
-    /// `si(E >= 4; entonces; si no)`. Decimals use a comma, arguments are separated by `;`.
+    /// The formula as text that `parse` reads back: `0,1 × (8 − C) × F`, `min(a; b)`,
+    /// `si(E ≥ 4; entonces; si no)`. Decimals use a comma, arguments are separated by `;`. Printed
+    /// with the signs a guide uses rather than the keyboard's `*`, `-` and `>=`, which read as well.
     public var source: String {
         func precedence(_ e: Expression) -> Int {
             switch e {
@@ -66,14 +67,43 @@ extension Expression {
             return String(rounded).replacingOccurrences(of: ".", with: ",")
         case .variable(let name): return name
         case .add(let a, let b): return binary(a, "+", b, 1)
-        case .subtract(let a, let b): return binary(a, "-", b, 1)
-        case .multiply(let a, let b): return binary(a, "*", b, 2)
+        case .subtract(let a, let b): return binary(a, "−", b, 1)
+        case .multiply(let a, let b): return binary(a, "×", b, 2)
         case .divide(let a, let b): return binary(a, "/", b, 2)
         case .min(let a, let b): return "min(\(a.source); \(b.source))"
         case .max(let a, let b): return "max(\(a.source); \(b.source))"
         case .ifGreaterOrEqual(let lhs, let rhs, let then, let otherwise):
-            return "si(\(lhs.source) >= \(rhs.source); \(then.source); \(otherwise.source))"
+            return "si(\(lhs.source) ≥ \(rhs.source); \(then.source); \(otherwise.source))"
         }
+    }
+
+    /// The names a formula typed by hand uses as variables, in the order they first appear —
+    /// whether or not they exist yet, so the editor can offer to add the ones that don't. Function
+    /// names (`min(`, `si(`…) aren't variables.
+    public static func names(in text: String) -> [String] {
+        let characters = Array(text)
+        var names: [String] = []
+        var index = 0
+        while index < characters.count {
+            let c = characters[index]
+            if c.isNumber {
+                // A number, digits and separators included, never starts a name: «2a» isn't «a».
+                while index < characters.count, characters[index].isNumber || characters[index].isLetter || characters[index] == "_" { index += 1 }
+            } else if c.isLetter || c == "_" {
+                var name = ""
+                while index < characters.count, characters[index].isLetter || characters[index].isNumber || characters[index] == "_" {
+                    name.append(characters[index])
+                    index += 1
+                }
+                var next = index
+                while next < characters.count, characters[next].isWhitespace { next += 1 }
+                let isCall = next < characters.count && characters[next] == "("
+                if !isCall, !names.contains(name) { names.append(name) }
+            } else {
+                index += 1
+            }
+        }
+        return names
     }
 
     // MARK: Parsing

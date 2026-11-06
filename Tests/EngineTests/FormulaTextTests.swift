@@ -54,9 +54,22 @@ struct FormulaTextTests {
         #expect(message("A + 1)") != nil)
     }
 
+    @Test func theNamesAFormulaUsesAreFoundEvenIfTheyDontExistYet() {
+        #expect(Expression.names(in: "0,4 × P + 0,6 × Exam2") == ["P", "Exam2"])
+        #expect(Expression.names(in: "si(E ≥ 4; min(E; L) ; 2E)") == ["E", "L"])
+        #expect(Expression.names(in: "máx (A; A)") == ["A"])
+        #expect(Expression.names(in: "") == [])
+    }
+
+    @Test func printedSignsReadBack() throws {
+        let expression = try Expression.parse("si(E >= 4; 0,4 * L - 1; E / 2)", variables: ["E", "L"])
+        #expect(expression.source == "si(E ≥ 4; 0,4 × L − 1; E / 2)")
+        #expect(try Expression.parse(expression.source, variables: ["E", "L"]) == expression)
+    }
+
     @Test func renamingAVariableUpdatesEveryUse() throws {
         let expression = try Expression.parse("P + 0,1 * (8 - P) * F", variables: ["P", "F"])
-        #expect(expression.renamingVariable("P", to: "X").source == "X + 0,1 * (8 - X) * F")
+        #expect(expression.renamingVariable("P", to: "X").source == "X + 0,1 × (8 − X) × F")
     }
 
     @Test func paradigmasShowsHowMuchEachPartCanGive() {

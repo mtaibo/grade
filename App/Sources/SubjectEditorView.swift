@@ -135,91 +135,95 @@ struct SubjectEditorView: View {
 
     var body: some View {
         NavigationStack {
-            Form {
-                Section {
-                    InlineField("Nombre") {
-                        TextField("Nombre", text: $draft.subject.name)
-                            .multilineTextAlignment(.trailing)
-                            .foregroundStyle(.secondary)
-                    }
-                    .tourTarget("editor.name")
-                } footer: {
-                    Text("Nombre de la asignatura. \(Device.tap) para cambiarlo.")
-                }
-
-                if let termNode, let term {
-                    NodeContentsSections(node: termNode, isSubtree: true, header: termLabel(term), marksTour: true)
-
+            ScrollViewReader { proxy in
+                Form {
                     Section {
-                        Button {
-                            withAnimation(.snappy) { showsWholeYear.toggle() }
-                        } label: {
-                            HStack {
-                                Label("Todo el curso", systemImage: "calendar")
-                                    .foregroundStyle(.primary)
-                                Spacer()
-                                Image(systemName: "chevron.down")
-                                    .font(.footnote.weight(.semibold))
-                                    .foregroundStyle(.tertiary)
-                                    .rotationEffect(.degrees(showsWholeYear ? 0 : -90))
-                            }
-                            .contentShape(.rect)
+                        InlineField("Nombre") {
+                            TextField("Nombre", text: $draft.subject.name)
+                                .multilineTextAlignment(.trailing)
+                                .foregroundStyle(.secondary)
                         }
-                        .buttonStyle(.plain)
                     } footer: {
-                        let termName = degree.termName.isEmpty ? "periodo" : degree.termName.lowercased()
-                        Text("Si es anual y con nota por \(termName), cuánto pesa cada \(termName) en la nota final y la evaluación de los demás.")
+                        Text("Nombre de la asignatura. \(Device.tap) para cambiarlo.")
                     }
-                }
 
-                if termNode == nil || showsWholeYear {
-                    wholeYearSections
-                }
+                    if let termNode, let term {
+                        NodeContentsSections(node: termNode, isSubtree: true, header: termLabel(term))
 
-                if !duplicateLeafNames.isEmpty {
-                    Section {
-                        Label(
-                            "Hay notas con el mismo nombre (\(duplicateLeafNames.formatted(.list(type: .and)))). Cambia uno para poder guardar.",
-                            systemImage: "exclamationmark.triangle.fill"
-                        )
-                        .foregroundStyle(.orange)
-                    }
-                }
-
-                if !draft.isSingleGrade && !draft.isUndecided {
-                    Section {
-                        Toggle("Se evalúa distinto", isOn: Binding(
-                            get: { draft.extraordinaryRoot != nil },
-                            set: { draft.extraordinaryRoot = $0 ? draft.subject.root : nil }
-                        ).animation())
-                        if draft.extraordinaryRoot != nil, let root = Binding(unwrapping: $draft.extraordinaryRoot) {
-                            NavigationLink {
-                                StableDestination(value: root.wrappedValue) {
-                                    ExtraordinaryEditorView(node: root)
-                                }
+                        Section {
+                            Button {
+                                withAnimation(.snappy) { showsWholeYear.toggle() }
                             } label: {
-                                Label("Evaluación de la extraordinaria", systemImage: "arrow.uturn.backward.circle")
+                                HStack {
+                                    Label("Todo el curso", systemImage: "calendar")
+                                        .foregroundStyle(.primary)
+                                    Spacer()
+                                    Image(systemName: "chevron.down")
+                                        .font(.footnote.weight(.semibold))
+                                        .foregroundStyle(.tertiary)
+                                        .rotationEffect(.degrees(showsWholeYear ? 0 : -90))
+                                }
+                                .contentShape(.rect)
                             }
+                            .buttonStyle(.plain)
+                        } footer: {
+                            let termName = degree.termName.isEmpty ? "periodo" : degree.termName.lowercased()
+                            Text("Si es anual y con nota por \(termName), cuánto pesa cada \(termName) en la nota final y la evaluación de los demás.")
                         }
-                    } header: {
-                        Text("Extraordinaria")
+                    }
+
+                    if termNode == nil || showsWholeYear {
+                        wholeYearSections
+                    }
+
+                    if !duplicateLeafNames.isEmpty {
+                        Section {
+                            Label(
+                                "Hay notas con el mismo nombre (\(duplicateLeafNames.formatted(.list(type: .and)))). Cambia uno para poder guardar.",
+                                systemImage: "exclamationmark.triangle.fill"
+                            )
+                            .foregroundStyle(.orange)
+                        }
+                    }
+
+                    if !draft.isSingleGrade && !draft.isUndecided {
+                        Section {
+                            Toggle("Se evalúa distinto", isOn: Binding(
+                                get: { draft.extraordinaryRoot != nil },
+                                set: { draft.extraordinaryRoot = $0 ? draft.subject.root : nil }
+                            ).animation())
+                            if draft.extraordinaryRoot != nil, let root = Binding(unwrapping: $draft.extraordinaryRoot) {
+                                NavigationLink {
+                                    StableDestination(value: root.wrappedValue) {
+                                        ExtraordinaryEditorView(node: root)
+                                    }
+                                } label: {
+                                    Label("Evaluación de la extraordinaria", systemImage: "arrow.uturn.backward.circle")
+                                }
+                            }
+                        } header: {
+                            Text("Extraordinaria")
+                        } footer: {
+                            Text(draft.extraordinaryRoot == nil
+                                 ? "Por defecto la extraordinaria usa esta misma evaluación. Actívalo si la guía la cambia, por ejemplo con el examen valiendo el 100 %."
+                                 : "Empieza como una copia de la de arriba. Una nota con el mismo nombre en las dos es la misma nota: lo que se guarda de la ordinaria pasa solo.")
+                        }
+                    }
+
+                    Section {
+                        NavigationLink {
+                            StableDestination(value: draft) {
+                                AdvancedSubjectView(subject: $draft.subject, requirements: $draft.requirements, showsCredits: library.degree.usesCredits)
+                            }
+                        } label: {
+                            Label("Avanzado", systemImage: "slider.horizontal.3")
+                        }
                     } footer: {
-                        Text(draft.extraordinaryRoot == nil
-                             ? "Por defecto la extraordinaria usa esta misma evaluación. Actívalo si la guía la cambia, por ejemplo con el examen valiendo el 100 %."
-                             : "Empieza como una copia de la de arriba. Una nota con el mismo nombre en las dos es la misma nota: lo que se guarda de la ordinaria pasa solo.")
+                        Text("Opciones extra para personalizar la asignatura.")
                     }
                 }
-
-                Section {
-                    NavigationLink {
-                        StableDestination(value: draft) {
-                            AdvancedSubjectView(subject: $draft.subject, requirements: $draft.requirements, showsCredits: library.degree.usesCredits)
-                        }
-                    } label: {
-                        Label("Avanzado", systemImage: "slider.horizontal.3")
-                    }
-                } footer: {
-                    Text("Opciones extra para personalizar la asignatura.")
+                .environment(\.revealFormulaField) {
+                    withAnimation(.snappy) { proxy.scrollTo(FormulaSections.fieldID, anchor: UnitPoint(x: 0.5, y: 0.25)) }
                 }
             }
             .dismissesKeyboardOnBackgroundTap()
@@ -289,6 +293,9 @@ private extension EnvironmentValues {
     /// True while the subject's evaluation is "Por definir": its sections only sort the notes, so
     /// weights, evaluations and minimums are hidden all the way down.
     @Entry var isUndecidedEvaluation = false
+    /// Scrolls the formula's field up to where the keyboard and its bar of letters and signs
+    /// leave it in sight; the scroll the keyboard does by itself doesn't count the bar.
+    @Entry var revealFormulaField: (() -> Void)?
 }
 
 /// What rarely changes once a subject is set up: its credits and the grade it takes to pass.
@@ -695,17 +702,42 @@ private struct FormulaSections: View {
     @Binding var formula: Formula
 
     @State private var text = ""
+    @State private var selection: TextSelection?
+    @FocusState private var isEditing: Bool
+    /// Why the text doesn't read right now, and what's shown of it: only once typing pauses (or the
+    /// field is left), so a formula half typed doesn't flash an error on every key.
     @State private var parseError: String?
+    @State private var shownError: String?
+    @State private var errorTask: Task<Void, Never>?
+    @State private var showsHelp = false
+    /// The grades typed in «Probar», by variable, each on its own scale. Never saved.
+    @State private var trial: [String: Double] = [:]
+
+    private static let functionNames: Set<String> = ["min", "max", "mín", "máx", "si", "if"]
+    static let fieldID = "formula-field"
+
+    @Environment(\.revealFormulaField) private var revealField
 
     private var orderedKeys: [String] {
         let used = formula.expression.variableOrder.filter { formula.variables[$0] != nil }
         return used + formula.variables.keys.sorted().filter { !used.contains($0) }
     }
 
+    private var isEmpty: Bool { text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+
+    /// Names the text uses that aren't variables yet, which can be added from the error.
+    private var missingKeys: [String] {
+        Engine.Expression.names(in: text).filter { name in
+            formula.variables[name] == nil && !Self.functionNames.contains(name.lowercased())
+                && name.first?.isLetter == true
+        }
+    }
+
     /// The formula reads, and no mix of grades takes the result below 0 or above 10.
     /// What's off, or `nil` when it's fine.
     private var problem: String? {
-        if parseError != nil { return "La fórmula tiene un error." }
+        if isEmpty { return "Falta escribir la fórmula." }
+        if shownError != nil { return "La fórmula tiene un error." }
         let range = formula.resultRange
         guard range.lowerBound < -0.001 || range.upperBound > 10.001 else { return nil }
         return "La fórmula puede dar de \(formatted(range.lowerBound)) a \(formatted(range.upperBound)); debería quedarse entre 0 y 10."
@@ -713,36 +745,73 @@ private struct FormulaSections: View {
 
     var body: some View {
         Section {
-            TextField("Fórmula", text: $text, axis: .vertical)
+            TextField("Fórmula", text: $text, selection: $selection, prompt: Text("Por ejemplo, 0,4 × P + 0,6 × E"), axis: .vertical)
                 .labelsHidden()
                 .font(.body.monospaced())
+                // Numbers and signs first: the letters come from the bar above the keyboard.
+                .keyboardType(.numbersAndPunctuation)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
+                .focused($isEditing)
+                .id(Self.fieldID)
                 .onChange(of: text) { apply() }
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    ForEach(orderedKeys, id: \.self) { key in
-                        InsertChip(label: key, bold: true) { text += key }
-                    }
-                    ForEach(["+", "-", "*", "/", "(", ")", ";", ">="], id: \.self) { token in
-                        InsertChip(label: token) { text += " \(token) " }
-                    }
-                    ForEach(["min(", "max(", "si("], id: \.self) { token in
-                        InsertChip(label: token) { text += token }
+                #if os(iOS)
+                .toolbar {
+                    if isEditing {
+                        ToolbarItem(placement: .keyboard) { tokenBar }
                     }
                 }
-            }
-            if let parseError {
-                Label(parseError, systemImage: "exclamationmark.triangle.fill")
+                #endif
+            #if os(macOS)
+            tokenBar
+            #endif
+            if let shownError {
+                if let key = missingKeys.first {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Label(missingKeys.count == 1
+                              ? "«\(key)» todavía no es una variable."
+                              : "\(missingKeys.map { "«\($0)»" }.formatted(.list(type: .and))) todavía no son variables.",
+                              systemImage: "exclamationmark.triangle.fill")
+                            .foregroundStyle(.orange)
+                        Button(missingKeys.count == 1 ? "Añadir \(key)" : "Añadir \(missingKeys.formatted(.list(type: .and)))",
+                               systemImage: "plus.circle.fill", action: addMissingVariables)
+                            .fontWeight(.semibold)
+                    }
                     .font(.footnote)
-                    .foregroundStyle(.orange)
+                } else {
+                    Label(shownError, systemImage: "exclamationmark.triangle.fill")
+                        .font(.footnote)
+                        .foregroundStyle(.orange)
+                }
+            }
+            DisclosureGroup("Cómo se escribe", isExpanded: $showsHelp) {
+                FormulaExample(formula: "0,4 × P + 0,6 × E", meaning: "Una media: P cuenta un 40 % y E un 60 %.")
+                FormulaExample(formula: "P + C + E", meaning: "Una suma de puntos, cuando cada parte ya viene sobre lo que vale.")
+                FormulaExample(formula: "min(P + E; 10)", meaning: "La menor de las dos cosas: aquí, nunca más de un 10.")
+                FormulaExample(formula: "máx(E; 0,3 × P + 0,7 × E)", meaning: "La mayor de las dos: el examen solo, o la media si te sale mejor.")
+                FormulaExample(formula: "si(E ≥ 4; 0,4 × P + 0,6 × E; E)", meaning: "Si E llega a un 4, la media; si no, solo el examen. También vale «≤».")
+                Text("Los decimales van con coma y las partes de min, máx y si se separan con «;». Puedes usar × o *, − o -, y ≥ o >=.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
             }
         } header: {
             Text("Fórmula")
         } footer: {
-            Text("Escríbela como en la guía, con las letras de las variables de abajo: por ejemplo «0,4 * P + 0,6 * E». Los decimales llevan coma y los argumentos se separan con «;»: «min(a; b)», «max(a; b)» y «si(E >= 4; entonces; si no)».")
+            Text("Escríbela como en la guía, con las letras de las variables de abajo.")
         }
-        .onAppear { text = formula.expression.source }
+        .onAppear {
+            // A formula started from nothing is a bare 0: an empty field with its example reads better.
+            text = formula.expression == .constant(0) && formula.variables.isEmpty ? "" : formula.expression.source
+        }
+        .onChange(of: isEditing) {
+            if !isEditing { showError(now: true) }
+        }
+        .task(id: isEditing) {
+            guard isEditing else { return }
+            // Once the keyboard is up, or the scroll would aim at the space it's about to take.
+            try? await Task.sleep(for: .milliseconds(350))
+            revealField?()
+        }
 
         Section {
             ForEach(orderedKeys, id: \.self) { key in
@@ -751,11 +820,14 @@ private struct FormulaSections: View {
                         FormulaVariableEditor(key: key, formula: $formula, onRenameKey: renameKey)
                     }
                 } label: {
-                    ComponentRow(
-                        title: "\(key) · \(formula.variables[key]?.title ?? key)",
-                        subtitle: formula.variables[key]?.rowSubtitle ?? "",
-                        value: share(of: key)
-                    )
+                    HStack(spacing: 12) {
+                        VariableBadge(key: key)
+                        ComponentRow(
+                            title: formula.variables[key]?.title ?? key,
+                            subtitle: formula.variables[key]?.rowSubtitle ?? "",
+                            value: share(of: key)
+                        )
+                    }
                 }
                 .deleteDisabled(formula.expression.variableOrder.contains(key))
             }
@@ -764,12 +836,87 @@ private struct FormulaSections: View {
                     formula.variables[key] = nil
                 }
             }
-            Button("Añadir variable", systemImage: "plus.circle.fill", action: addVariable)
+            Button("Añadir variable", systemImage: "plus.circle.fill") { addVariable() }
         } header: {
             CheckedHeader(title: "Variables", isValid: problem == nil)
         } footer: {
-            CheckFooter(problem: problem, hint: "Personaliza las variables con las que se calcula la nota final.")
+            CheckFooter(problem: problem, hint: "Cada letra de la fórmula es una nota, o un grupo de notas, de la asignatura. A la derecha, cuánto puede aportar a la nota final.")
         }
+
+        if !orderedKeys.isEmpty {
+            Section {
+                ForEach(orderedKeys, id: \.self) { key in
+                    let maximum = formula.variables[key]?.scaleMax ?? 10
+                    LabeledContent {
+                        HStack(spacing: 4) {
+                            TextField("0", value: Binding(
+                                get: { trial[key] },
+                                set: { trial[key] = $0.map { min(max($0, 0), maximum) } }
+                            ), format: .number)
+                                .labelsHidden()
+                                .keyboardType(.decimalPad)
+                                .multilineTextAlignment(.trailing)
+                                .frame(maxWidth: 72)
+                            Text("/ \(maximum.formatted())")
+                                .foregroundStyle(.secondary)
+                                .monospacedDigit()
+                        }
+                    } label: {
+                        HStack(spacing: 12) {
+                            VariableBadge(key: key)
+                            Text(formula.variables[key]?.title ?? key)
+                                .lineLimit(1)
+                        }
+                    }
+                }
+                LabeledContent {
+                    Text(trialResult, format: .number.precision(.fractionLength(0...2)))
+                        .font(.title3.bold())
+                        .foregroundStyle(.primary)
+                        .monospacedDigit()
+                        .contentTransition(.numericText())
+                        .animation(.snappy, value: trialResult)
+                } label: {
+                    Text("Nota final").fontWeight(.semibold)
+                }
+            } header: {
+                Text("Probar")
+            } footer: {
+                Text("Pon las notas de un ejemplo de la guía y comprueba que da lo mismo. Las que dejes vacías cuentan como 0. Aquí no se guarda nada.")
+            }
+        }
+    }
+
+    private var tokenBar: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 6) {
+                ForEach(orderedKeys, id: \.self) { key in
+                    InsertChip(label: key, isVariable: true) { insert(key) }
+                }
+                ForEach(["+", "−", "×", "/", "(", ")", ";", "≥"], id: \.self) { token in
+                    InsertChip(label: token) { insert(token, spaced: !"();".contains(token)) }
+                }
+                ForEach(["min", "máx", "si"], id: \.self) { name in
+                    InsertChip(label: "\(name)( )") { insert("\(name)(") }
+                }
+            }
+            .padding(.horizontal, 4)
+        }
+    }
+
+    /// What the formula gives with the grades in «Probar»: each variable's notes all at the same
+    /// share of their maximum, so a part made of several notes takes the value typed for it.
+    private var trialResult: Double {
+        var inputs: [String: Double] = [:]
+        for (key, node) in formula.variables {
+            let maximum = node.scaleMax
+            let fraction = maximum > 0 ? (trial[key] ?? 0) / maximum : 0
+            for leaf in node.allLeafNames() {
+                if let leafMax = node.leaf(named: leaf)?.scaleMax { inputs[leaf] = fraction * leafMax }
+            }
+        }
+        let result = Node.formula(formula).evaluate(inputs, pendingFraction: 0)
+        return result.isFinite ? result : 0
     }
 
     /// How much of the final grade a variable can account for, estimated from the formula: one
@@ -784,13 +931,50 @@ private struct FormulaSections: View {
         value.formatted(.number.precision(.fractionLength(0...1)))
     }
 
+    /// Puts `token` where the cursor is (over what's selected), or at the end, and leaves the
+    /// cursor after it. Signs get a space on each side, without doubling one already there.
+    private func insert(_ token: String, spaced: Bool = false) {
+        var range = text.endIndex..<text.endIndex
+        if case .selection(let selected)? = selection?.indices,
+           let lower = selected.lowerBound.samePosition(in: text), let upper = selected.upperBound.samePosition(in: text) {
+            range = lower..<upper
+        }
+        var piece = token
+        if spaced {
+            if range.lowerBound > text.startIndex, !text[text.index(before: range.lowerBound)].isWhitespace { piece = " " + piece }
+            if range.upperBound == text.endIndex || !text[range.upperBound].isWhitespace { piece += " " }
+        }
+        let offset = text.distance(from: text.startIndex, to: range.lowerBound) + piece.count
+        text.replaceSubrange(range, with: piece)
+        selection = TextSelection(insertionPoint: text.index(text.startIndex, offsetBy: offset))
+    }
+
     /// Applies the text as the formula as soon as it reads; until it does, the last good one stays.
     private func apply() {
-        do {
-            formula.expression = try Engine.Expression.parse(text, variables: Set(formula.variables.keys))
+        if isEmpty {
             parseError = nil
-        } catch {
-            parseError = error.localizedDescription
+        } else {
+            do {
+                formula.expression = try Engine.Expression.parse(text, variables: Set(formula.variables.keys))
+                parseError = nil
+            } catch {
+                parseError = error.localizedDescription
+            }
+        }
+        showError(now: !isEditing)
+    }
+
+    /// A fixed formula clears the error at once; a new one waits for typing to pause.
+    private func showError(now: Bool) {
+        errorTask?.cancel()
+        guard parseError != nil, !now else {
+            withAnimation(.snappy) { shownError = parseError }
+            return
+        }
+        errorTask = Task {
+            try? await Task.sleep(for: .seconds(1.2))
+            guard !Task.isCancelled else { return }
+            withAnimation(.snappy) { shownError = parseError }
         }
     }
 
@@ -799,33 +983,77 @@ private struct FormulaSections: View {
         formula.variables[old] = nil
         formula.variables[new] = variable
         formula.expression = formula.expression.renamingVariable(old, to: new)
+        trial[new] = trial.removeValue(forKey: old)
         text = formula.expression.source
     }
 
-    private func addVariable() {
+    private func addVariable(_ key: String? = nil) {
         let letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".map(String.init)
-        let key = letters.first { formula.variables[$0] == nil } ?? "V\(formula.variables.count + 1)"
+        let key = key ?? letters.first { formula.variables[$0] == nil } ?? "V\(formula.variables.count + 1)"
         let taken = Set(formula.variables.values.map(\.title))
         let name = taken.contains("Nota nueva") ? ((2...).lazy.map { "Nota nueva \($0)" }.first { !taken.contains($0) }!) : "Nota nueva"
         formula.variables[key] = .grade(Grade(name: name, isFinalExam: Node.formula(formula).isFinalExamPart ? true : nil))
+    }
+
+    /// The letters the text uses that don't exist yet, each as a new note to fill in below.
+    private func addMissingVariables() {
+        for key in missingKeys { addVariable(key) }
+        apply()
+    }
+}
+
+/// A variable's letter, as it's written in the formula.
+private struct VariableBadge: View {
+    let key: String
+
+    var body: some View {
+        Text(key)
+            .font(.callout.monospaced().bold())
+            .foregroundStyle(.tint)
+            .lineLimit(1)
+            .padding(.horizontal, 6)
+            .frame(minWidth: 30, minHeight: 30)
+            .background(.tint.opacity(0.12), in: .rect(cornerRadius: 8))
+    }
+}
+
+/// One line of «Cómo se escribe»: a formula and what it does.
+private struct FormulaExample: View {
+    let formula: String
+    let meaning: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(formula)
+                .font(.callout.monospaced())
+            Text(meaning)
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+        }
+        .padding(.vertical, 2)
     }
 }
 
 private struct InsertChip: View {
     let label: String
-    var bold = false
+    var isVariable = false
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
             Text(label)
-                .font(.callout.monospaced().weight(bold ? .bold : .regular))
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
-                .background(Color(.tertiarySystemFill), in: .rect(cornerRadius: 8))
+                .font(.body.monospaced().weight(isVariable ? .bold : .regular))
+                .foregroundStyle(isVariable ? AnyShapeStyle(.tint) : AnyShapeStyle(.primary))
+                .padding(.horizontal, 12)
+                .frame(minWidth: 40, minHeight: 36)
+                .background(isVariable ? AnyShapeStyle(.tint.opacity(0.14)) : AnyShapeStyle(Color(.tertiarySystemFill)), in: .rect(cornerRadius: 9))
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(Self.spoken[label] ?? label)
     }
+
+    private static let spoken = ["+": "más", "−": "menos", "×": "por", "/": "entre", "(": "abrir paréntesis",
+                                 ")": "cerrar paréntesis", ";": "punto y coma", "≥": "mayor o igual que"]
 }
 
 /// One variable of a formula: its letter, its name and everything about how its grade is given.
