@@ -26,7 +26,6 @@ dentro de `P4`). Para verlo y editarlo en el navegador: `make todo`.
 - [x] Menú «…» → «Abrir guía»: crashea a veces y va lento; además, la pantalla de la guía necesita retoques.
 - [x] El pop-up para poner las notas: demasiado liquid glass, se siente lento y tosco; rediseñarlo.
 - [x] Quitar la barra de scroll.
-- [ ] Poner la opción de inferir notas, es decir, poder poner la nota final, y que infiera las posibilidades del resto de notas y demás. Una feature compleja pero muy útil para cuando no te dan la nota de un control y solo tienes la nota final y tienes que inferir como puedieron salir las otras notas.
 
 #### P4.1 · Fechas
 
@@ -49,5 +48,5 @@ dentro de `P4`). Para verlo y editarlo en el navegador: `make todo`.
 
 ## Más adelante (versión por decidir)
 
-_Nada todavía._
+- [ ] **P4 · Asignatura:** Poner la opción de inferir notas, es decir, poder poner la nota final, y que infiera las posibilidades del resto de notas y demás. Una feature compleja pero muy útil para cuando no te dan la nota de un control y solo tienes la nota final y tienes que inferir como puedieron salir las otras notas.
 
