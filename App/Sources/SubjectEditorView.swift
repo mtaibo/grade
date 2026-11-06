@@ -435,7 +435,9 @@ private struct CalculationSection: View {
         var methods: [Method] = isSubtree
             ? [.group(.weightedAverage), .formula, .group(.sum)]
             : isRoot
-            ? [.group(.weightedAverage), .formula, .group(.sum), .schemes, .single, .group(.undecided)]
+            // Several schemes (`Alternatives`) are rare enough not to offer: a subject that has them,
+            // from a copy, still shows and edits them through `current`.
+            ? [.group(.weightedAverage), .formula, .group(.sum), .single, .group(.undecided)]
             : [.group(.weightedAverage), .group(.sum), .formula, .finalExam]
         if !methods.contains(current) { methods.append(current) }
         return methods
