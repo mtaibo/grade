@@ -178,7 +178,9 @@ struct HomeView: View {
         if periods.isEmpty, (1...max(library.degree.years, 1)).contains(selectedYear) {
             return Period(year: selectedYear, term: library.degree.absoluteTerm(year: selectedYear, relative: 1))
         }
-        return periods.first ?? Period(year: 1, term: 1)
+        // Nothing chosen yet (a copy just imported, a study back from iCloud) or gone: the latest
+        // term of the latest year, where a student usually is, rather than the first.
+        return periods.last { $0.term != nil } ?? periods.last ?? Period(year: 1, term: 1)
     }
 
     /// The custom view on screen, if one is selected and still exists.
