@@ -96,10 +96,19 @@ struct SubjectDetailView: View {
                 if !others.isEmpty {
                     // A single-grade subject's one card needs no heading.
                     if !record.isSingleGrade {
-                        Text("Notas")
-                            .font(.title3.bold())
-                            .padding(.top, 8)
-                            .padding(.horizontal, 4)
+                        let overdue = Self.overdue(others, record: record, session: session)
+                        HStack(alignment: .firstTextBaseline) {
+                            Text("Notas")
+                                .font(.title3.bold())
+                            Spacer(minLength: 8)
+                            if let first = overdue.first {
+                                OverdueBadge(count: overdue.count) {
+                                    open(GradeTarget(partID: first.id, session: session))
+                                }
+                            }
+                        }
+                        .padding(.top, 8)
+                        .padding(.horizontal, 4)
                     }
 
                     VStack(spacing: 12) {
@@ -259,6 +268,18 @@ struct SubjectDetailView: View {
 extension SubjectDetailView {
     /// One animation in and one out: the card slides from the top while the screen behind blurs
     /// slightly and dims.
+    /// The cards with a note whose date has passed and still has no grade, once per note, in the
+    /// order they're shown: what's waiting to be written down.
+    private static func overdue(_ items: [PartItem], record: SubjectRecord, session: Convocatoria) -> [PartItem] {
+        items.flatMap { item in
+            item.node.grades.filter { grade in
+                guard let date = grade.date, date < .now else { return false }
+                return record.entry(for: grade.name, in: session) == nil
+            }
+            .map { _ in item }
+        }
+    }
+
     fileprivate func open(_ target: GradeTarget) {
         GradeEntryTip().invalidate(reason: .actionPerformed)
         withAnimation(.snappy(duration: 0.36)) { gradeTarget = target }
@@ -1007,6 +1028,26 @@ private struct PartSummary {
 
     static func display(of grade: Grade, record: SubjectRecord, session: Convocatoria) -> String {
         record.displayedEntry(for: grade, in: session)
+    }
+}
+
+/// "2 notas por apuntar", next to the Notas heading: notes whose date has passed with no grade
+/// yet. Tapping it opens the first of them.
+private struct OverdueBadge: View {
+    let count: Int
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Label("\(count) \(count == 1 ? "nota" : "notas") por apuntar", systemImage: "clock.badge.exclamationmark")
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.orange)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .background(.orange.opacity(0.15), in: .capsule)
+        }
+        .buttonStyle(.plain)
+        .accessibilityHint("Abre la primera para apuntarla")
     }
 }
 
