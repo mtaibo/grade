@@ -42,6 +42,16 @@ struct GradeApp: App {
         _library = State(initialValue: library)
         _cloud = State(initialValue: cloud)
         GradeTips.configure()
+        // Decided before the first frame, so a fresh install opens straight on the welcome instead
+        // of showing the home screen with the welcome sliding up over it.
+        if !UserDefaults.standard.bool(forKey: "tourOffered") {
+            let isEmpty = library.courses.allSatisfy(\.subjects.isEmpty) && library.archives.isEmpty
+            if isEmpty {
+                _isOnboarding = State(initialValue: true)
+            } else {
+                UserDefaults.standard.set(true, forKey: "tourOffered")
+            }
+        }
     }
 
     var body: some Scene {
@@ -67,32 +77,22 @@ struct GradeApp: App {
         #endif
     }
 
+    /// The welcome or the app, in the window's place rather than one over the other.
     private var root: some View {
-        TabView(selection: $selectedTab) {
-            Tab("Calendario", systemImage: "calendar", value: .calendar) {
-                CalendarView(isCurrentTab: selectedTab == .calendar)
-            }
-            Tab("Asignaturas", systemImage: "books.vertical", value: .subjects) {
-                HomeView(isCurrentTab: selectedTab == .subjects)
-            }
-            Tab("Cuenta", systemImage: "person.crop.circle", value: .account) {
-                AccountView(isCurrentTab: selectedTab == .account)
+        ZStack {
+            if isOnboarding {
+                OnboardingView {
+                    hasOnboarded = true
+                    library.needsOnboarding = false
+                    isOnboarding = false
+                }
+                .transition(.opacity)
+            } else {
+                tabs
+                    .transition(.opacity)
             }
         }
-        .id([appSession.uuidString, String(tipsGeneration)])
-        #if os(macOS)
-        .tabViewStyle(.sidebarAdaptable)
-        // The iPhone's grouped look, sheets included, rather than the Mac's two-column forms.
-        .formStyle(.grouped)
-        // Fields draw their own background where they need one, as on the iPhone.
-        .textFieldStyle(.plain)
-        // No bar across the top: the buttons float over the content, which scrolls under them.
-        .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
-        .background(SidebarToggleFix().id(appSession))
-        #else
-        // No scroll bars anywhere: every list, form and scroll view below (sheets included) inherits it.
-        .scrollIndicators(.hidden)
-        #endif
+        .animation(.smooth(duration: 0.4), value: isOnboarding)
         .modifier(BackupImportHost(center: backupCenter, library: library))
         .environment(library)
         .environment(backupCenter)
@@ -146,19 +146,34 @@ struct GradeApp: App {
             hasOnboarded = true
             isOnboarding = false
         }
-        .onAppear {
-            guard !hasOnboarded else { return }
-            let isEmpty = library.courses.allSatisfy(\.subjects.isEmpty) && library.archives.isEmpty
-            if isEmpty { isOnboarding = true } else { hasOnboarded = true }
-        }
-        .fullScreenCover(isPresented: $isOnboarding) {
-            OnboardingView {
-                hasOnboarded = true
-                library.needsOnboarding = false
-                isOnboarding = false
+    }
+
+    private var tabs: some View {
+        TabView(selection: $selectedTab) {
+            Tab("Calendario", systemImage: "calendar", value: .calendar) {
+                CalendarView(isCurrentTab: selectedTab == .calendar)
             }
-            .environment(library)
+            Tab("Asignaturas", systemImage: "books.vertical", value: .subjects) {
+                HomeView(isCurrentTab: selectedTab == .subjects)
+            }
+            Tab("Cuenta", systemImage: "person.crop.circle", value: .account) {
+                AccountView(isCurrentTab: selectedTab == .account)
+            }
         }
+        .id([appSession.uuidString, String(tipsGeneration)])
+        #if os(macOS)
+        .tabViewStyle(.sidebarAdaptable)
+        // The iPhone's grouped look, sheets included, rather than the Mac's two-column forms.
+        .formStyle(.grouped)
+        // Fields draw their own background where they need one, as on the iPhone.
+        .textFieldStyle(.plain)
+        // No bar across the top: the buttons float over the content, which scrolls under them.
+        .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
+        .background(SidebarToggleFix().id(appSession))
+        #else
+        // No scroll bars anywhere: every list, form and scroll view below (sheets included) inherits it.
+        .scrollIndicators(.hidden)
+        #endif
     }
 }
 

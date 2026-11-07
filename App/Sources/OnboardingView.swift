@@ -9,6 +9,7 @@ struct OnboardingView: View {
     let onFinish: () -> Void
 
     @Environment(Library.self) private var library
+    @Environment(CloudSync.self) private var cloud
     @AppStorage("selectedYear") private var selectedYear = 0
     @AppStorage("selectedTerm") private var selectedTerm = 0
     @State private var path: [Step] = []
@@ -17,6 +18,11 @@ struct OnboardingView: View {
     @State private var currentYear = 1
     @State private var isImporting = false
     @State private var importError: String?
+    @State private var isRestoring = false
+    /// Why nothing came back from iCloud, for the alert.
+    @State private var restoreProblem: String?
+    /// The start screen's visible height, so its options can sit at the bottom.
+    @State private var startHeight: CGFloat = 0
 
     private enum Step: Hashable { case start, type, years, terms, name, done }
 
@@ -74,37 +80,68 @@ struct OnboardingView: View {
 
     // MARK: How to start
 
+    /// The title and the options together in the middle of the screen, like the welcome; it
+    /// scrolls only if a large text size doesn't leave room for them.
     private var startStep: some View {
-        QuestionScreen(progress: nil, title: "¿Cómo empezamos?", subtitle: nil) {
-            VStack(spacing: 10) {
-                StartOption(
-                    symbol: "slider.horizontal.3",
-                    title: "Configurar mi curso",
-                    detail: "Unas preguntas rápidas: qué estudias, cuántos años dura y cómo se divide."
-                ) { path.append(.type) }
-                StartOption(
-                    symbol: "square.and.arrow.down",
-                    title: "Importar una copia",
-                    detail: "Carga un archivo .grade con tus asignaturas y tus notas, de otro dispositivo o de un compañero."
-                ) { isImporting = true }
-                StartOption(
-                    symbol: "checkmark.circle",
-                    title: "Por defecto",
-                    detail: "Un grado de 4 años en cuatrimestres. Lo cambias cuando quieras en Cuenta → Estudio actual."
-                ) { skipQuestions() }
+        ScrollView {
+            VStack(alignment: .leading, spacing: 24) {
+                Spacer(minLength: 0)
+                Text("¿Cómo empezamos?")
+                    .font(.system(.largeTitle, design: .rounded).bold())
+                    .fixedSize(horizontal: false, vertical: true)
+                startOptions
+                Spacer(minLength: 0)
             }
-        } footer: {
-            EmptyView()
+            .padding(.horizontal, 24)
+            .padding(.top, 8)
+            .padding(.bottom, 16)
+            .frame(minHeight: startHeight, alignment: .top)
         }
+        .scrollBounceBehavior(.basedOnSize)
+        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { startHeight = $0 }
+        .background(Color(.systemGroupedBackground))
+        .navigationBarTitleDisplayMode(.inline)
         // The welcome has said its piece: no going back to it.
         .navigationBarBackButtonHidden()
         .fileImporter(isPresented: $isImporting, allowedContentTypes: [.gradeBackup, .markBackup, .json]) { result in
             if case .success(let url) = result { importCopy(from: url) }
         }
+        .alert("No hay nada que recuperar", isPresented: Binding(get: { restoreProblem != nil }, set: { if !$0 { restoreProblem = nil } })) {
+            Button("Vale") {}
+        } message: {
+            Text(restoreProblem ?? "")
+        }
         .alert("No se ha podido importar", isPresented: Binding(get: { importError != nil }, set: { if !$0 { importError = nil } })) {
             Button("Vale") {}
         } message: {
             Text(importError ?? "")
+        }
+    }
+
+    private var startOptions: some View {
+        VStack(spacing: 10) {
+            StartOption(
+                symbol: "slider.horizontal.3",
+                title: "Configurar mi curso",
+                detail: "Unas preguntas rápidas: qué estudias, cuántos años dura y cómo se divide."
+            ) { path.append(.type) }
+            StartOption(
+                symbol: "icloud.and.arrow.down",
+                title: "Recuperar de iCloud",
+                detail: "Si ya usabas Grade con tu cuenta de iCloud, vuelven tu estudio, tus asignaturas y tus notas.",
+                isWorking: isRestoring
+            ) { Task { await restoreFromCloud() } }
+            .disabled(isRestoring)
+            StartOption(
+                symbol: "square.and.arrow.down",
+                title: "Importar una copia",
+                detail: "Carga un archivo .grade con tus asignaturas y tus notas, de otro dispositivo o de un compañero."
+            ) { isImporting = true }
+            StartOption(
+                symbol: "checkmark.circle",
+                title: "Por defecto",
+                detail: "Un grado de 4 años en cuatrimestres. Lo cambias cuando quieras en Cuenta → Estudio actual."
+            ) { skipQuestions() }
         }
     }
 
@@ -201,7 +238,7 @@ struct OnboardingView: View {
                 .accessibilityHidden(true)
             Text("Todo listo")
                 .font(.system(.largeTitle, design: .rounded).bold())
-            Text("Añade tus asignaturas y pon cómo te evalúan. La primera vez que llegues a cada pantalla te dejo un consejo de cómo funciona.")
+            Text("Ahora añade tus asignaturas y configura cómo se evalúan. Explora Grade para descubrir todo lo que puede hacer.")
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             Spacer()
@@ -247,6 +284,24 @@ struct OnboardingView: View {
         selectedYear = 1
         selectedTerm = settings.absoluteTerm(year: 1, relative: 1)
         path.append(.done)
+    }
+
+    /// Reads iCloud again now, rather than waiting for the sync to come round: a reinstall gets its
+    /// study back here (and the welcome closes by itself if it arrives first).
+    private func restoreFromCloud() async {
+        isRestoring = true
+        defer { isRestoring = false }
+        if !cloud.isEnabled { cloud.setEnabled(true) }
+        await cloud.refresh()
+        if library.hasOwnSubjects {
+            onFinish()
+            return
+        }
+        restoreProblem = switch cloud.status {
+        case .noAccount: "No hay ninguna cuenta de iCloud en este dispositivo. Inicia sesión en Ajustes y vuelve a probar."
+        case .unavailable, .quotaExceeded: "No se ha podido conectar con iCloud. Prueba de nuevo dentro de un rato."
+        default: "Tu iCloud no tiene ningún estudio de Grade. Puedes configurar tu curso o importar una copia."
+        }
     }
 
     /// A copy brings its own study, subjects and grades: nothing left to ask or to show.
@@ -334,6 +389,8 @@ private struct StartOption: View {
     let symbol: String
     let title: String
     let detail: String
+    /// Shows a spinner instead of the chevron while what it started is under way.
+    var isWorking = false
     let action: () -> Void
 
     var body: some View {
@@ -352,10 +409,14 @@ private struct StartOption: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 Spacer(minLength: 8)
-                Image(systemName: "chevron.right")
-                    .font(.footnote.weight(.semibold))
-                    .foregroundStyle(.tertiary)
-                    .accessibilityHidden(true)
+                if isWorking {
+                    ProgressView()
+                } else {
+                    Image(systemName: "chevron.right")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(.tertiary)
+                        .accessibilityHidden(true)
+                }
             }
             .padding(16)
             .frame(maxWidth: .infinity, alignment: .leading)
