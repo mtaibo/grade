@@ -1243,8 +1243,9 @@ private struct GradePopup: View {
             }
         }
         .padding(18)
-        .background(Color(.secondarySystemGroupedBackground), in: .rect(cornerRadius: 24))
-        .shadow(color: .black.opacity(0.18), radius: 20, y: 8)
+        // Plain glass, like the system's bars: no interactive effects, which made the first glass
+        // version feel slow.
+        .glassEffect(.regular, in: .rect(cornerRadius: 28))
         .macReadableWidth(560)
     }
 }

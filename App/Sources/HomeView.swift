@@ -163,11 +163,13 @@ struct HomeView: View {
     }
 
     private func showHint() {
-        isShowingHint = true
+        withAnimation(.spring(duration: 0.45, bounce: 0.3)) { isShowingHint = true }
         hintTask?.cancel()
         hintTask = Task {
             try? await Task.sleep(for: .seconds(2.5))
-            if !Task.isCancelled { isShowingHint = false }
+            if !Task.isCancelled {
+                withAnimation(.smooth(duration: 0.3)) { isShowingHint = false }
+            }
         }
     }
 
@@ -293,12 +295,16 @@ struct HomeView: View {
                     Text("Mantén pulsado el fondo para reordenar o añadir asignaturas")
                         .font(.footnote.weight(.medium))
                         .multilineTextAlignment(.center)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 10)
-                        .background(.regularMaterial, in: Capsule())
+                        .padding(.horizontal, 18)
+                        .padding(.vertical, 12)
+                        .glassEffect(.regular, in: .capsule)
                         .padding(.horizontal, 24)
                         .padding(.bottom, 12)
-                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                        // Rises with a little bounce, fades out shrinking slightly.
+                        .transition(.asymmetric(
+                            insertion: .offset(y: 16).combined(with: .scale(scale: 0.85, anchor: .bottom)).combined(with: .opacity),
+                            removal: .scale(scale: 0.95, anchor: .bottom).combined(with: .opacity)
+                        ))
                 }
             }
             .sensoryFeedback(.impact, trigger: isEditing)
