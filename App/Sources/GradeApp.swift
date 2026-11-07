@@ -16,7 +16,8 @@ struct GradeApp: App {
     @AppStorage("tourOffered") private var hasOnboarded = false
     /// A fresh install: the welcome, then how to start (a copy, your own study or the defaults).
     @State private var isOnboarding = false
-    /// «Volver a ver los consejos» bumps it: the tabs are rebuilt so every tip is asked for again.
+    /// «Volver a ver los consejos» bumps it: Asignaturas is rebuilt so its tips are asked for again
+    /// (the other screens make theirs each time they're drawn), without Cuenta jumping to the top.
     @AppStorage("tipsGeneration") private var tipsGeneration = 0
     #if os(macOS)
     @State private var menuActions = MenuActions()
@@ -155,12 +156,14 @@ struct GradeApp: App {
             }
             Tab("Asignaturas", systemImage: "books.vertical", value: .subjects) {
                 HomeView(isCurrentTab: selectedTab == .subjects)
+                    // Its tips are kept in a group made once: a new one asks for them again.
+                    .id(tipsGeneration)
             }
             Tab("Cuenta", systemImage: "person.crop.circle", value: .account) {
                 AccountView(isCurrentTab: selectedTab == .account)
             }
         }
-        .id([appSession.uuidString, String(tipsGeneration)])
+        .id(appSession)
         #if os(macOS)
         .tabViewStyle(.sidebarAdaptable)
         // The iPhone's grouped look, sheets included, rather than the Mac's two-column forms.

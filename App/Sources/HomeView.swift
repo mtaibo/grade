@@ -130,10 +130,11 @@ struct HomeView: View {
     @State private var viewportHeight: CGFloat = 0
     /// The "hold the background" tip: only shown after tapping the background itself.
     @State private var isShowingHint = false
-    /// What a tile does, then switching period, then reordering: one at a time.
+    /// The welcome, what a view is, what a tile does, then reordering: one at a time.
     @State private var tips = TipGroup(.firstAvailable) {
+        WelcomeTip()
+        ViewsTip()
         SubjectTileTip()
-        PeriodTip()
         ReorderTip()
     }
 
@@ -276,6 +277,15 @@ struct HomeView: View {
                 }
             }
             .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { viewportHeight = $0 }
+            // The welcome floats above the tab bar, over the content, like a pop-up: nothing on the
+            // screen moves for it, and the empty state stays in the middle.
+            .overlay(alignment: .bottom) {
+                bottomTip
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 12)
+                    // Eases in and out like the pop-up tips, instead of snapping into place.
+                    .animation(.spring(duration: 0.5, bounce: 0.2), value: tips.currentTip?.id)
+            }
             .overlay(alignment: .bottom) {
                 if isShowingHint && !isEditing {
                     Text("Mantén pulsado el fondo para reordenar o añadir asignaturas")
@@ -293,7 +303,8 @@ struct HomeView: View {
             .onChange(of: isEditing) {
                 if isEditing { ReorderTip().invalidate(reason: .actionPerformed) }
             }
-            .onChange(of: period) { PeriodTip().invalidate(reason: .actionPerformed) }
+            .onChange(of: period) { ViewsTip().invalidate(reason: .actionPerformed) }
+            .onChange(of: isChoosingView) { if isChoosingView { ViewsTip().invalidate(reason: .actionPerformed) } }
             .animation(.snappy, value: isEditing)
             .background(Color(.systemGroupedBackground))
             .navigationTitle("")
@@ -356,6 +367,27 @@ struct HomeView: View {
         }
     }
 
+    /// The tips about the screen as a whole rather than one thing on it, floating in glass above
+    /// the tab bar: the welcome (tips are coming, and how to turn them off) and reordering.
+    @ViewBuilder
+    private var bottomTip: some View {
+        if let welcome = tip(WelcomeTip.self) {
+            floating(TipView(welcome) { action in
+                if action.id == GradeTips.turnOff { GradeTips.setShown(false) }
+            })
+        } else if let reorder = tip(ReorderTip.self) {
+            floating(TipView(reorder))
+        }
+    }
+
+    private func floating(_ tip: some View) -> some View {
+        tip
+            .tipImageSize(CGSize(width: 28, height: 28))
+            .tipBackground(Color.clear)
+            .glassEffect(.regular, in: .rect(cornerRadius: 28))
+            .transition(.offset(y: 24).combined(with: .scale(scale: 0.94, anchor: .bottom)).combined(with: .opacity))
+    }
+
     /// The year and term as the screen's title, big enough to read at a glance.
     private var header: some View {
         let heading: (title: String, subtitle: String?) = customSelection.map(library.heading(for:))
@@ -372,7 +404,7 @@ struct HomeView: View {
         .padding(.leading, 4)
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(.isHeader)
-        .popoverTip(tip(ReorderTip.self), arrowEdge: .top)
+        .popoverTip(tip(ViewsTip.self), arrowEdge: .top)
     }
 
     /// A subject graded per term opens on the term on screen; anything else, and every subject in
@@ -408,9 +440,7 @@ struct HomeView: View {
                     SubjectTile(record: record, isCompact: layout == .list)
                 }
                 .buttonStyle(TilePressStyle())
-                .popoverTip(record.id == records.first?.id && selection == nil ? tip(SubjectTileTip.self) : nil, arrowEdge: .top) { action in
-                    if action.id == GradeTips.turnOff { GradeTips.setShown(false) }
-                }
+                .popoverTip(record.id == records.first?.id && selection == nil ? tip(SubjectTileTip.self) : nil, arrowEdge: .top)
                 .contextMenu {
                     Button("Personalizar", systemImage: "paintpalette") {
                         SubjectTileTip().invalidate(reason: .actionPerformed)
@@ -455,7 +485,6 @@ struct HomeView: View {
                     }
                     .menuIndicator(.hidden)
                     .accessibilityLabel("Cambiar de vista")
-                    .popoverTip(tip(PeriodTip.self))
                 }
                 // Keeps the two buttons as separate glass capsules instead of one joined pill.
                 ToolbarSpacer(.fixed, placement: .topBarTrailing)

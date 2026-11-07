@@ -16,7 +16,7 @@ enum GradeTips {
         setShown(true)
     }
 
-    /// «Mostrar consejos» in Cuenta, and the first tip's «No mostrar más consejos». Kept in the
+    /// «Mostrar consejos» in Cuenta, and the welcome tip's «No mostrar consejos». Kept in the
     /// defaults for the switch to read, and in `areShown` for the tips' rules.
     static let shownKey = "tipsShown"
 
@@ -32,12 +32,15 @@ enum GradeTips {
         areShown = UserDefaults.standard.object(forKey: shownKey) as? Bool ?? true
     }
 
-    /// The first tip's button that turns them all off.
+    /// The welcome tip's button that turns them all off.
     static let turnOff = "turnOffTips"
 
     /// A subject opened. Reordering is worth a tip only once a few have been.
     static let subjectOpened = Tips.Event(id: "subjectOpened")
 }
+
+// The pop-up ones are kept to about three lines: longer, and TipKit puts them in a scroll view
+// that flashes its bar as it appears.
 
 /// A tip whose id carries the current generation (see `GradeTips.generation`), shown only while
 /// tips are on.
@@ -46,6 +49,13 @@ protocol GradeTip: Tip {}
 extension GradeTip {
     var id: String { "\(Self.self)-\(GradeTips.generation)" }
 
+    /// The title with where it stands among its screen's tips («2 de 4»), so it's clear how many
+    /// more are coming. TipKit leaves no room by the ✗, so it follows the title, smaller and grey.
+    func counted(_ title: String, _ position: Int, of total: Int) -> Text {
+        let counter = Text("\(position) de \(total)").font(.subheadline).foregroundStyle(.secondary)
+        return Text("\(title)  \(counter)")
+    }
+
     var rules: [Rule] {
         [#Rule(GradeTips.$areShown) { $0 }]
     }
@@ -53,25 +63,33 @@ extension GradeTip {
 
 // MARK: Home
 
-/// Usually the first tip anyone sees, so it's the one that offers to turn them off.
-struct SubjectTileTip: GradeTip {
-    var title: Text { Text("Tu asignatura") }
-    var message: Text? { Text("Tócala para poner tus notas. Mantenla pulsada para personalizarla, moverla o editarla.") }
-    var image: Image? { Image(systemName: "hand.tap") }
+/// The first of all, a card on the home screen: says tips will come, before any does, and is
+/// where they're turned off.
+struct WelcomeTip: GradeTip {
+    var title: Text { counted("Consejos", 1, of: 4) }
+    var message: Text? { Text("La primera vez que pases por cada zona te dejaré un consejo como este. Si prefieres descubrirlo todo por tu cuenta, desactívalos aquí; puedes volver a activarlos cuando quieras en Cuenta.") }
+    var image: Image? { Image(systemName: "lightbulb") }
 
     var actions: [Action] {
-        [Action(id: GradeTips.turnOff, title: "No mostrar más consejos")]
+        [Action(id: GradeTips.turnOff, title: "No mostrar consejos")]
     }
 }
 
-struct PeriodTip: GradeTip {
-    var title: Text { Text("Cambia de periodo") }
-    var message: Text? { Text("Aquí pasas de un periodo a otro, o creas vistas con las asignaturas que quieras.") }
-    var image: Image? { Image(systemName: "calendar") }
+/// On the title, which is always there: the calendar button only is once there's more than one view.
+struct ViewsTip: GradeTip {
+    var title: Text { counted("Tus vistas", 2, of: 4) }
+    var message: Text? { Text("Lo que ves aquí: un periodo o una selección tuya de asignaturas. Créalas en «…» → Editar vistas y cambia de una a otra con el calendario.") }
+    var image: Image? { Image(systemName: "rectangle.stack") }
+}
+
+struct SubjectTileTip: GradeTip {
+    var title: Text { counted("Tu asignatura", 3, of: 4) }
+    var message: Text? { Text("Toca para apuntar tus notas. Mantén pulsado para editarla o cambiar su icono y su color.") }
+    var image: Image? { Image(systemName: "hand.tap") }
 }
 
 struct ReorderTip: GradeTip {
-    var title: Text { Text("Ordénalas a tu manera") }
+    var title: Text { counted("Ordénalas a tu manera", 4, of: 4) }
     var message: Text? { Text("Mantén pulsado el fondo para moverlas, añadir o quitar asignaturas.") }
     var image: Image? { Image(systemName: "hand.draw") }
 
@@ -86,13 +104,13 @@ struct ReorderTip: GradeTip {
 // MARK: Subject
 
 struct GradeEntryTip: GradeTip {
-    var title: Text { Text("Pon tus notas") }
-    var message: Text? { Text("Toca una parte para poner la nota que te han dado. Arriba ves lo que llevas y lo que te falta para aprobar.") }
+    var title: Text { counted("Apunta tus notas", 1, of: 2) }
+    var message: Text? { Text("Toca una sección para apuntar la nota que te han puesto. Arriba ves lo que llevas; tócalo para ver más detalles.") }
     var image: Image? { Image(systemName: "pencil") }
 }
 
 struct EvaluationTip: GradeTip {
-    var title: Text { Text("¿Se evalúa de otra forma?") }
+    var title: Text { counted("¿Se evalúa de otra forma?", 2, of: 2) }
     var message: Text? { Text("En Editar pones sus partes, los pesos y las notas mínimas, como en la guía docente.") }
     var image: Image? { Image(systemName: "slider.horizontal.3") }
 }
