@@ -985,7 +985,14 @@ struct SubjectProgress {
         // Only the final grade goes on the transcript: while grades are missing, what's secured so
         // far shows as it is (a 3,4, not a 3), and the pass line is already in `target`.
         let isFinal = !inputs.isEmpty && inputs.count == root.allLeafNames().count
-        let shown = { (value: Double) in isFinal ? rounding.apply(value) : value }
+        // A subject that's failed for a minimum or a requirement has no passing grade to show or
+        // to average, whatever its numbers add up to.
+        let failedGrade = Swift.max(threshold - 0.1, 0)
+        let shown = { (value: Double) in
+            guard isFinal else { return value }
+            let rounded = rounding.apply(value)
+            return status == .impossible ? Swift.min(rounded, failedGrade) : rounded
+        }
         self.worst = shown(root.evaluate(inputs, pendingFraction: 0))
         self.best = shown(root.evaluate(inputs, pendingFraction: 1))
         self.threshold = threshold
