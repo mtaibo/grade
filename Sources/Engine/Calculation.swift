@@ -34,8 +34,10 @@ extension Node {
     /// fraction (0 = worst, 1 = best) of *that leaf's own scale* — for any leaf that doesn't.
     /// Any unmet `.capAt` minimum below this node caps the result (see `rawValue` for the rest).
     public func evaluate(_ inputs: [String: Double], pendingFraction: Double) -> Double {
-        let value = rawValue(inputs, pendingFraction: pendingFraction)
-        return caps(inputs, pendingFraction).reduce(value, Swift.min)
+        let value = caps(inputs, pendingFraction).reduce(rawValue(inputs, pendingFraction: pendingFraction), Swift.min)
+        // Points beyond 10 can add up, but no grade goes past it.
+        if case .group(let group) = self, group.combination == .sum { return Swift.min(value, 10) }
+        return value
     }
 
     /// The value before caps: each child weighed as it is, a child under a `.voids` minimum as a 0
@@ -93,7 +95,7 @@ extension Node {
             // A hand-typed formula can divide by a grade that is still 0; a non-number would
             // otherwise reach the screen (and the JSON file) as NaN or infinity.
             let result = formula.expression.evaluate(values)
-            return result.isFinite ? result : 0
+            return result.isFinite ? Swift.min(Swift.max(result, 0), 10) : 0
         }
     }
 
@@ -226,14 +228,29 @@ extension Node {
     /// node's value to reach `target` *and* every failing minimum to be met — `nil` if that's out
     /// of reach even with full marks. "Misma nota en todos los pendientes" per the brief: later, a
     /// simulator could fix some and solve only the rest, but that's not needed yet.
+    /// Where raising a grade can lower the result, it's the lowest fraction from which every higher
+    /// one passes too: the grade that's safe to aim for.
     public func neededFraction(_ inputs: [String: Double], target: Double, tolerance: Double = 0.0001) -> Double? {
         func reaches(_ fraction: Double) -> Bool {
             passes(inputs, pendingFraction: fraction, target: target)
         }
+        if !isMonotonic {
+            let steps = 200
+            guard reaches(1) else {
+                return (0..<steps).lazy.map { Double($0) / Double(steps) }.first(where: reaches)
+            }
+            guard let failing = (0..<steps).reversed().first(where: { !reaches(Double($0) / Double(steps)) }) else { return 0 }
+            return bisect(from: Double(failing) / Double(steps), to: Double(failing + 1) / Double(steps), tolerance, reaches)
+        }
         guard reaches(1) else { return nil }
         guard !reaches(0) else { return 0 }
-        var low = 0.0
-        var high = 1.0
+        return bisect(from: 0, to: 1, tolerance, reaches)
+    }
+
+    /// The point between `low`, which fails, and `high`, which passes, where it starts passing.
+    private func bisect(from low: Double, to high: Double, _ tolerance: Double, _ reaches: (Double) -> Bool) -> Double {
+        var low = low
+        var high = high
         while high - low > tolerance {
             let mid = (low + high) / 2
             if reaches(mid) {
@@ -300,9 +317,100 @@ extension Node {
     /// A failed minimum anywhere (e.g. under 4 on an exam that needs it) also counts.
     public func status(_ inputs: [String: Double], threshold: Double? = nil) -> PassStatus {
         let threshold = threshold ?? minimumThreshold ?? 5
+        if !isMonotonic {
+            if !canEnd(passing: false, inputs, target: threshold) { return .guaranteed }
+            return canEnd(passing: true, inputs, target: threshold) ? .possible : .impossible
+        }
         if passes(inputs, pendingFraction: 0, target: threshold) { return .guaranteed }
         if !passes(inputs, pendingFraction: 1, target: threshold) { return .impossible }
         return .possible
+    }
+
+    /// Whether raising any grade can only ever raise the result. When it can't be told for sure the
+    /// answer is no, which only costs the slower search in `canEnd`.
+    var isMonotonic: Bool {
+        if case .doesNotAverage? = ownMinimum?.consequence { return false }
+        if case .formula(let formula) = self, !formula.expression.isMonotonic { return false }
+        return children.allSatisfy(\.isMonotonic)
+    }
+
+    /// Whether some way of filling in what's pending makes this pass (or fail). For trees where a 0
+    /// and a 10 on everything prove nothing: "si controles < 4, el final vale un 80 %" can pass with
+    /// a 3 and a 10 and fail with a 4. Tries each pending leaf in turn over its scale and the marks
+    /// the rules compare against, starting from all 0s and all 10s. A search rather than a proof,
+    /// which is plenty for the handful of grades a subject has pending.
+    private func canEnd(passing goal: Bool, _ inputs: [String: Double], target: Double) -> Bool {
+        let pending = Set(pendingLeaves(inputs)).sorted()
+        let scales = Dictionary(uniqueKeysWithValues: pending.map { ($0, leaf(named: $0)?.scaleMax ?? 10) })
+        let compared = comparedMarks
+        let marks = scales.mapValues { scale in
+            let grid = (0...20).map { Double($0) / 20 * scale }
+            return grid + compared.filter { $0 > 0 && $0 <= scale }.flatMap { [$0, $0 - 0.01] }
+        }
+        func holds(_ point: [String: Double]) -> Bool {
+            passes(point, pendingFraction: 0, target: target) == goal
+        }
+        func score(_ point: [String: Double]) -> Double {
+            let value = evaluate(point, pendingFraction: 0)
+            return goal ? value : -value
+        }
+        for start in [0.0, 1.0] {
+            var point = inputs
+            for name in pending { point[name] = start * (scales[name] ?? 10) }
+            if holds(point) { return true }
+            for _ in 0..<3 {
+                for name in pending {
+                    var best = point[name] ?? 0
+                    var bestScore = score(point)
+                    for mark in marks[name] ?? [] {
+                        var trial = point
+                        trial[name] = mark
+                        if holds(trial) { return true }
+                        let trialScore = score(trial)
+                        if trialScore > bestScore {
+                            best = mark
+                            bestScore = trialScore
+                        }
+                    }
+                    point[name] = best
+                }
+            }
+        }
+        return false
+    }
+
+    /// Every mark a rule below compares a grade against.
+    private var comparedMarks: [Double] {
+        var marks = ownMinimum.map { [$0.threshold] } ?? []
+        if case .formula(let formula) = self { marks += formula.expression.comparedMarks }
+        return marks + children.flatMap(\.comparedMarks)
+    }
+}
+
+private extension Expression {
+    /// Whether raising a variable can only raise the result, assuming every variable is at least 0.
+    var isMonotonic: Bool {
+        switch self {
+        case .constant(let value): value >= 0
+        case .variable: true
+        case .add(let lhs, let rhs), .multiply(let lhs, let rhs), .min(let lhs, let rhs), .max(let lhs, let rhs):
+            lhs.isMonotonic && rhs.isMonotonic
+        case .divide(let lhs, .constant(let divisor)) where divisor > 0: lhs.isMonotonic
+        case .subtract, .divide, .ifGreaterOrEqual: false
+        }
+    }
+
+    /// The numbers this expression's conditions compare against.
+    var comparedMarks: [Double] {
+        switch self {
+        case .constant, .variable: []
+        case .add(let lhs, let rhs), .subtract(let lhs, let rhs), .multiply(let lhs, let rhs),
+             .divide(let lhs, let rhs), .min(let lhs, let rhs), .max(let lhs, let rhs):
+            lhs.comparedMarks + rhs.comparedMarks
+        case .ifGreaterOrEqual(let lhs, let rhs, let then, let otherwise):
+            [lhs, rhs].compactMap { if case .constant(let value) = $0 { value } else { nil } }
+                + lhs.comparedMarks + rhs.comparedMarks + then.comparedMarks + otherwise.comparedMarks
+        }
     }
 }
 
