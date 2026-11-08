@@ -103,13 +103,13 @@ private extension VerticalAlignment {
 }
 
 /// "Calendario": a compact month with a coloured dot on every day something is due, and below it the
-/// next six things, three more at a time with "Ver más". It opens on the list alone: unfolding the
-/// month (from the chevron by its title) folds the list, and a day picked on it shows that day's
-/// dates above the list. In a wide window (the Mac) the month and the list sit side by side instead,
+/// next six things, three more at a time with "Ver más". On the iPhone it opens on the month alone
+/// (in a narrow Mac window, on the list alone): unfolding one from the chevron by its title folds the
+/// other, and a day picked on the month shows that day's dates above the list. In a wide window (the Mac) the month and the list sit side by side instead,
 /// both always shown, the month level with the middle of the list's first page and the picked day under it.
 /// The filter at the top right picks which kinds show.
 struct CalendarView: View {
-    /// Whether the Calendario tab is the one on screen: leaving it folds the month and opens the list,
+    /// Whether the Calendario tab is the one on screen: leaving it puts the month and the list back as they open,
     /// with "Ver más" back to the start.
     let isCurrentTab: Bool
     @Environment(Library.self) private var library
@@ -120,12 +120,20 @@ struct CalendarView: View {
     @State private var viewportSize: CGSize = .zero
     /// How many upcoming dates the list shows; "Ver más" adds `pageSize` more.
     @State private var upcomingCount = CalendarView.initialCount
-    @State private var isMonthShown = false
-    @State private var isListShown = true
+    @State private var isMonthShown = CalendarView.opensOnMonth
+    @State private var isListShown = !CalendarView.opensOnMonth
     @ScaledMetric(relativeTo: .largeTitle) private var titleSize = 40
     /// Per-device: which kinds are hidden, as their raw values — so a kind added later starts shown.
     @AppStorage("calendarHiddenKinds") private var hiddenKinds = ""
 
+    /// What the single column opens on: the month on the iPhone, the list on the Mac.
+    private static var opensOnMonth: Bool {
+        #if os(iOS)
+        true
+        #else
+        false
+        #endif
+    }
     private static let initialCount = 6
     private static let pageSize = 3
     /// From this width on (a wide Mac window) the month and the list sit side by side.
@@ -369,12 +377,12 @@ struct CalendarView: View {
             }
             .onChange(of: isCurrentTab) {
                 guard !isCurrentTab else { return }
-                // Out of sight, so no fold to watch: back to the list alone, from its first few.
+                // Out of sight, so no fold to watch: back to how it opens, with the list at its first few.
                 var transaction = Transaction()
                 transaction.disablesAnimations = true
                 withTransaction(transaction) {
-                    isMonthShown = false
-                    isListShown = true
+                    isMonthShown = Self.opensOnMonth
+                    isListShown = !Self.opensOnMonth
                     selectedDay = nil
                     upcomingCount = Self.initialCount
                 }
