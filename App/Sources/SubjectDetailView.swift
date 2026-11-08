@@ -57,6 +57,10 @@ struct SubjectDetailView: View {
                         .background(.orange.opacity(0.14), in: Capsule())
                         .frame(maxWidth: .infinity, alignment: .trailing)
                         .accessibilityLabel("Simulador: no se guarda nada")
+                        #if os(macOS)
+                        // Level with the close button floating at the other corner.
+                        .padding(.top, 22)
+                        #endif
                 }
                 Text(record.subject.name)
                     .font(.largeTitle.bold())
@@ -132,6 +136,11 @@ struct SubjectDetailView: View {
         #if os(macOS)
         // Without one the bar shows the app's name. The subject's own is at the top of the screen.
         .navigationTitle("")
+        // A sheet here: its bars would be a strip across the top and another across the bottom.
+        .toolbar(isSimulating ? .hidden : .automatic, for: .windowToolbar)
+        .overlay(alignment: .topLeading) {
+            if isSimulating { macSimulatorClose }
+        }
         #endif
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(isSimulating)
@@ -142,11 +151,14 @@ struct SubjectDetailView: View {
             if isEditing { EvaluationTip().invalidate(reason: .actionPerformed) }
         }
         .toolbar {
+            #if os(iOS)
             if isSimulating {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Salir del simulador", systemImage: "xmark") { dismiss() }
                 }
-            } else {
+            }
+            #endif
+            if !isSimulating {
             ToolbarItem(placement: .primaryAction) {
                 Menu {
                     Button("Editar", systemImage: "slider.horizontal.3") { isEditing = true }
@@ -260,6 +272,23 @@ struct SubjectDetailView: View {
 }
 
 extension SubjectDetailView {
+    #if os(macOS)
+    /// Floats over the content, level with the "Simulador" label; Esc closes too.
+    private var macSimulatorClose: some View {
+        Button { dismiss() } label: {
+            Image(systemName: "xmark")
+                .font(.body.weight(.semibold))
+                .frame(width: 24, height: 24)
+        }
+        .buttonStyle(.glass)
+        .buttonBorderShape(.circle)
+        .controlSize(.large)
+        .keyboardShortcut(.cancelAction)
+        .accessibilityLabel("Salir del simulador")
+        .padding(16)
+    }
+    #endif
+
     /// One animation in and one out: the card slides from the top while the screen behind blurs
     /// slightly and dims.
     /// The cards with a note whose date has passed and still has no grade, once per note, in the
