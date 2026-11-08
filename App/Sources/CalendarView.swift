@@ -250,7 +250,10 @@ struct CalendarView: View {
     }
 
     private func deadlineRow(_ deadline: Deadline) -> some View {
-        NavigationLink(value: deadline.recordID) {
+        // Carries its destination, like the tiles in Asignaturas: see `HomeView.grid`.
+        NavigationLink {
+            SubjectDetailView(recordID: deadline.recordID)
+        } label: {
             DeadlineRow(deadline: deadline)
         }
         .buttonStyle(.plain)
@@ -363,9 +366,6 @@ struct CalendarView: View {
                         }
                     }
                 }
-            }
-            .navigationDestination(for: SubjectRecord.ID.self) { id in
-                SubjectDetailView(recordID: id)
             }
             .onChange(of: isCurrentTab) {
                 guard !isCurrentTab else { return }

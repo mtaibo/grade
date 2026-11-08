@@ -323,12 +323,6 @@ struct HomeView: View {
             #if os(macOS)
             .onChange(of: menuActions.newSubjectRequests) { add(in: newSubjectPeriod) }
             #endif
-            .navigationDestination(for: SubjectRecord.ID.self) { id in
-                SubjectDetailView(recordID: id)
-            }
-            .navigationDestination(for: SubjectRoute.self) { route in
-                SubjectDetailView(recordID: route.id, term: route.term)
-            }
             .navigationDestination(isPresented: $isChoosingView) {
                 HomeViewsScreen(periods: periods, current: currentSelection) { selection in
                     withAnimation(.snappy) {
@@ -419,9 +413,8 @@ struct HomeView: View {
 
     /// A subject graded per term opens on the term on screen; anything else, and every subject in
     /// a custom view, opens whole.
-    private func route(to record: SubjectRecord, in selection: CustomSelection?) -> SubjectRoute {
-        let term = selection == nil && record.isPerTerm ? period.term.map(library.degree.relativeTerm) : nil
-        return SubjectRoute(id: record.id, term: term)
+    private func openingTerm(of record: SubjectRecord, in selection: CustomSelection?) -> Int? {
+        selection == nil && record.isPerTerm ? period.term.map(library.degree.relativeTerm) : nil
     }
 
     /// `selection` set for a custom view: dragging reorders the view itself, not the subjects'
@@ -446,7 +439,11 @@ struct HomeView: View {
             },
             onDelete: { deleting = $0 },
             normal: { record in
-                NavigationLink(value: route(to: record, in: selection)) {
+                // Carries its destination: a value link stops working on the Mac once another tab has
+                // been on screen, because SwiftUI loses this stack's `navigationDestination(for:)`.
+                NavigationLink {
+                    SubjectDetailView(recordID: record.id, term: openingTerm(of: record, in: selection))
+                } label: {
                     SubjectTile(record: record, isCompact: layout == .list)
                 }
                 .buttonStyle(TilePressStyle())

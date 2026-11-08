@@ -6,12 +6,6 @@ import TipKit
 /// One subject, as a few calm cards: where you stand (folded until you want the detail), the final
 /// exam with its two sittings, and one card per other part showing its grade. Nothing here edits
 /// the structure or the dates — that lives in the "…" menu; tapping a card opens just its grade.
-/// A subject to open, and for one graded per term, the term of its year (1-based) it's opened from.
-struct SubjectRoute: Hashable {
-    let id: SubjectRecord.ID
-    var term: Int?
-}
-
 struct SubjectDetailView: View {
     let recordID: SubjectRecord.ID
     /// Set for a subject graded per term opened from one of its terms: only that term's parts show.
