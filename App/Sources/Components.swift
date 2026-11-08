@@ -43,6 +43,26 @@ extension View {
         self
         #endif
     }
+
+    /// Room above a screen's title, which the top of a window would crowd; level with Cuenta's.
+    @ViewBuilder
+    func macTopMargin() -> some View {
+        #if os(macOS)
+        padding(.top, 20)
+        #else
+        self
+        #endif
+    }
+
+    /// One width for every row's icon, so their text lines up. The iPhone's lists already do this.
+    @ViewBuilder
+    func macRowIcon() -> some View {
+        #if os(macOS)
+        frame(width: 24)
+        #else
+        self
+        #endif
+    }
 }
 
 /// A pushed screen that takes a binding, for the destination of a `NavigationLink`. On the Mac a

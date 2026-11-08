@@ -93,10 +93,21 @@ extension Library {
     }
 }
 
+private extension VerticalAlignment {
+    private enum FirstPageCenter: AlignmentID {
+        static func defaultValue(in context: ViewDimensions) -> CGFloat { context[VerticalAlignment.center] }
+    }
+
+    /// The middle of the upcoming list's first page, which the month in a wide window sits level with.
+    static var firstPageCenter: VerticalAlignment { VerticalAlignment(FirstPageCenter.self) }
+}
+
 /// "Calendario": a compact month with a coloured dot on every day something is due, and below it the
 /// next six things, three more at a time with "Ver más". It opens on the list alone: unfolding the
 /// month (from the chevron by its title) folds the list, and a day picked on it shows that day's
-/// dates above the list. The filter at the top right picks which kinds show.
+/// dates above the list. In a wide window (the Mac) the month and the list sit side by side instead,
+/// both always shown, the month level with the middle of the list's first page and the picked day under it.
+/// The filter at the top right picks which kinds show.
 struct CalendarView: View {
     /// Whether the Calendario tab is the one on screen: leaving it folds the month and opens the list,
     /// with "Ver más" back to the start.
@@ -104,8 +115,9 @@ struct CalendarView: View {
     @Environment(Library.self) private var library
     @State private var selectedDay: CalendarDay?
     @State private var isFiltering = false
-    /// The scroll view's height, so the empty state can sit in the middle of the screen.
-    @State private var viewportHeight: CGFloat = 0
+    /// The scroll view's size: its height lets the empty state sit in the middle of the screen, and
+    /// its width decides whether the month and the list fit side by side.
+    @State private var viewportSize: CGSize = .zero
     /// How many upcoming dates the list shows; "Ver más" adds `pageSize` more.
     @State private var upcomingCount = CalendarView.initialCount
     @State private var isMonthShown = false
@@ -116,6 +128,11 @@ struct CalendarView: View {
 
     private static let initialCount = 6
     private static let pageSize = 3
+    /// From this width on (a wide Mac window) the month and the list sit side by side.
+    private static let wideWidth: CGFloat = 800
+    private static let monthWidth: CGFloat = 360
+    /// The month and the list together, margins included, so a wide window keeps some air at the sides.
+    private static let wideContentWidth: CGFloat = 860
 
     private var calendar: Calendar { .current }
 
@@ -170,6 +187,75 @@ struct CalendarView: View {
         hiddenKinds = GradeCategory.allCases.filter { !kinds.contains($0) }.map(\.rawValue).joined(separator: ",")
     }
 
+    /// The dates of the day picked on the month, with a × to unpick it.
+    private func daySection(_ day: CalendarDay, deadlines: [Deadline]) -> some View {
+        let dayDeadlines = deadlines.filter { CalendarDay($0.date, calendar: calendar) == day }
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text(title(of: day))
+                    .font(.title3.bold())
+                    .accessibilityAddTraits(.isHeader)
+                Spacer()
+                Button { selectedDay = nil } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.title3)
+                        .symbolRenderingMode(.hierarchical)
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Quitar el día")
+            }
+            .padding(.horizontal, 4)
+
+            if dayDeadlines.isEmpty {
+                Text("Nada este día.")
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 4)
+            } else {
+                ForEach(dayDeadlines) { deadlineRow($0) }
+            }
+        }
+        .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .top)))
+    }
+
+    /// The next few dates and "Ver más", or why there are none.
+    private func upcomingRows(_ visible: [Deadline], hasMore: Bool, isFilteredOut: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            if visible.isEmpty {
+                Text(isFilteredOut ? "Nada con estos filtros." : "No queda nada pendiente. 🎉")
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 4)
+            } else {
+                VStack(alignment: .leading, spacing: 10) {
+                    ForEach(visible.prefix(Self.initialCount)) { deadlineRow($0) }
+                }
+                .alignmentGuide(.firstPageCenter) { $0[VerticalAlignment.center] }
+                ForEach(visible.dropFirst(Self.initialCount)) { deadlineRow($0) }
+                if hasMore {
+                    Button {
+                        withAnimation { upcomingCount += Self.pageSize }
+                    } label: {
+                        Label("Ver más", systemImage: "chevron.down")
+                            .labelStyle(TrailingIconLabelStyle())
+                            .font(.subheadline.weight(.medium))
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 6)
+                            .contentShape(.rect)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.tint)
+                }
+            }
+        }
+    }
+
+    private func deadlineRow(_ deadline: Deadline) -> some View {
+        NavigationLink(value: deadline.recordID) {
+            DeadlineRow(deadline: deadline)
+        }
+        .buttonStyle(.plain)
+    }
+
     var body: some View {
         // Worked out once per redraw: every subject's grades go into it.
         let allDeadlines = library.deadlines
@@ -178,11 +264,48 @@ struct CalendarView: View {
         let upcoming = upcoming(deadlines)
         let visible = Array(upcoming.prefix(upcomingCount))
         let hasMore = upcoming.count > visible.count
+        let isWide = viewportSize.width >= Self.wideWidth
         return NavigationStack {
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 20) {
-                    // Nothing dated yet: only the empty state, with no title, month, list or filter.
-                    if !allDeadlines.isEmpty {
+                    if allDeadlines.isEmpty {
+                        // Nothing dated yet: only the empty state, with no title, month, list or filter.
+                        ContentUnavailableView(
+                            "Sin fechas todavía",
+                            systemImage: "calendar.badge.plus",
+                            description: Text("Pon la fecha del examen en la ficha de cada asignatura, o la de una entrega desde Editar.")
+                        )
+                        // Takes the rest of the screen and sits in its middle.
+                        .frame(maxHeight: .infinity)
+                    } else if isWide {
+                        // Room for both: the month on the left with the picked day under it, the list on
+                        // the right, neither of them folding.
+                        VStack(alignment: .leading, spacing: 28) {
+                            Text("Calendario")
+                                .font(.system(size: titleSize, weight: .bold, design: .rounded))
+                                .accessibilityAddTraits(.isHeader)
+                                .padding(.leading, 4)
+
+                            // Lined up on the list's first page alone, so "Ver más" only makes the list longer
+                            // and a picked day only adds to the column: the month stays where it is.
+                            HStack(alignment: .firstPageCenter, spacing: 28) {
+                                VStack(alignment: .leading, spacing: 20) {
+                                    MonthCalendar(dayKinds: dayKinds(deadlines), selection: $selectedDay)
+                                        .card(padding: 4)
+                                        .alignmentGuide(.firstPageCenter) { $0[VerticalAlignment.center] }
+                                    if let day = selectedDay {
+                                        daySection(day, deadlines: deadlines)
+                                    }
+                                }
+                                .frame(width: Self.monthWidth)
+
+                                upcomingRows(visible, hasMore: hasMore, isFilteredOut: isFiltered && deadlines.isEmpty)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .accessibilityElement(children: .contain)
+                                    .accessibilityLabel("Próximas fechas")
+                            }
+                        }
+                    } else {
                         VStack(alignment: .leading, spacing: 0) {
                             FoldingHeader(title: "Calendario", isExpanded: isMonthShown) { showList(isMonthShown) }
                                 .font(.system(size: titleSize, weight: .bold, design: .rounded))
@@ -195,89 +318,19 @@ struct CalendarView: View {
                                 .padding(.top, 28)
                                 .folded(!isMonthShown)
                         }
-                    }
 
-                    if let day = selectedDay {
-                        let dayDeadlines = deadlines.filter { CalendarDay($0.date, calendar: calendar) == day }
-                        VStack(alignment: .leading, spacing: 10) {
-                            HStack {
-                                Text(title(of: day))
-                                    .font(.title3.bold())
-                                    .accessibilityAddTraits(.isHeader)
-                                Spacer()
-                                Button { selectedDay = nil } label: {
-                                    Image(systemName: "xmark.circle.fill")
-                                        .font(.title3)
-                                        .symbolRenderingMode(.hierarchical)
-                                        .foregroundStyle(.secondary)
-                                }
-                                .buttonStyle(.plain)
-                                .accessibilityLabel("Quitar el día")
-                            }
-                            .padding(.horizontal, 4)
-
-                            if dayDeadlines.isEmpty {
-                                Text("Nada este día.")
-                                    .foregroundStyle(.secondary)
-                                    .padding(.horizontal, 4)
-                            } else {
-                                ForEach(dayDeadlines) { deadline in
-                                    NavigationLink(value: deadline.recordID) {
-                                        DeadlineRow(deadline: deadline)
-                                    }
-                                    .buttonStyle(.plain)
-                                }
-                            }
+                        if let day = selectedDay {
+                            daySection(day, deadlines: deadlines)
                         }
-                        .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .top)))
-                    }
 
-                    if !allDeadlines.isEmpty {
                         VStack(alignment: .leading, spacing: 10) {
                             FoldingHeader(title: "Próximas fechas", isExpanded: isListShown) { showList(!isListShown) }
                                 .font(.title3.bold())
                                 .padding(.horizontal, 4)
 
-                            VStack(alignment: .leading, spacing: 10) {
-                                if visible.isEmpty {
-                                    Text(isFiltered && deadlines.isEmpty ? "Nada con estos filtros." : "No queda nada pendiente. 🎉")
-                                        .foregroundStyle(.secondary)
-                                        .padding(.horizontal, 4)
-                                } else {
-                                    ForEach(visible) { deadline in
-                                        NavigationLink(value: deadline.recordID) {
-                                            DeadlineRow(deadline: deadline)
-                                        }
-                                        .buttonStyle(.plain)
-                                    }
-                                    if hasMore {
-                                        Button {
-                                            withAnimation { upcomingCount += Self.pageSize }
-                                        } label: {
-                                            Label("Ver más", systemImage: "chevron.down")
-                                                .labelStyle(TrailingIconLabelStyle())
-                                                .font(.subheadline.weight(.medium))
-                                                .frame(maxWidth: .infinity)
-                                                .padding(.vertical, 6)
-                                                .contentShape(.rect)
-                                        }
-                                        .buttonStyle(.plain)
-                                        .foregroundStyle(.tint)
-                                    }
-                                }
-                            }
-                            .folded(!isListShown)
+                            upcomingRows(visible, hasMore: hasMore, isFilteredOut: isFiltered && deadlines.isEmpty)
+                                .folded(!isListShown)
                         }
-                    }
-
-                    if allDeadlines.isEmpty {
-                        ContentUnavailableView(
-                            "Sin fechas todavía",
-                            systemImage: "calendar.badge.plus",
-                            description: Text("Pon la fecha del examen en la ficha de cada asignatura, o la de una entrega desde Editar.")
-                        )
-                        // Takes the rest of the screen and sits in its middle.
-                        .frame(maxHeight: .infinity)
                     }
                 }
                 .animation(.smooth(duration: 0.4), value: isMonthShown)
@@ -285,10 +338,11 @@ struct CalendarView: View {
                 .animation(.smooth(duration: 0.3), value: selectedDay)
                 .padding(.horizontal)
                 .padding(.bottom, 24)
-                .macReadableWidth()
-                .frame(maxWidth: .infinity, minHeight: viewportHeight, alignment: .top)
+                .macTopMargin()
+                .macReadableWidth(isWide ? Self.wideContentWidth : 760)
+                .frame(maxWidth: .infinity, minHeight: viewportSize.height, alignment: .top)
             }
-            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { viewportHeight = $0 }
+            .onGeometryChange(for: CGSize.self) { $0.size } action: { viewportSize = $0 }
             .background(Color(.systemGroupedBackground))
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
@@ -579,6 +633,22 @@ private struct MonthCalendar: View {
         withAnimation(.snappy) { selection = selection == key ? nil : key }
     }
 
+    private func monthArrow(_ symbol: String, label: String, step: Int) -> some View {
+        Button { move(step) } label: {
+            Image(systemName: symbol)
+                #if os(macOS)
+                .frame(width: 32, height: 28)
+                .contentShape(.rect)
+                #endif
+        }
+        #if os(macOS)
+        // Bare and blue as on the iPhone, not a grey push button in the Mac's accent colour.
+        .buttonStyle(.plain)
+        .foregroundStyle(.blue)
+        #endif
+        .accessibilityLabel(label)
+    }
+
     var body: some View {
         VStack(spacing: 14) {
             HStack(spacing: 24) {
@@ -586,10 +656,8 @@ private struct MonthCalendar: View {
                     .font(.system(.headline, design: .rounded))
                     .contentTransition(.numericText())
                 Spacer()
-                Button { move(-1) } label: { Image(systemName: "chevron.left") }
-                    .accessibilityLabel("Mes anterior")
-                Button { move(1) } label: { Image(systemName: "chevron.right") }
-                    .accessibilityLabel("Mes siguiente")
+                monthArrow("chevron.left", label: "Mes anterior", step: -1)
+                monthArrow("chevron.right", label: "Mes siguiente", step: 1)
             }
             .font(.title3.weight(.semibold))
             .padding(.horizontal, 10)
