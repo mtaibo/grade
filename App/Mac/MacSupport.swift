@@ -29,7 +29,19 @@ struct List<Content: View>: View {
 
     var body: some View {
         Form { content }
+    }
+}
+
+/// Stands in for SwiftUI's `Form` in this target: grouped, and on the same background as the screens
+/// that aren't forms, where SwiftUI's would paint a grey of its own.
+struct Form<Content: View>: View {
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        SwiftUI.Form { content }
             .formStyle(.grouped)
+            .scrollContentBackground(.hidden)
+            .background(Color(.systemGroupedBackground))
     }
 }
 

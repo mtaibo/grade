@@ -12,6 +12,9 @@ struct AccountView: View {
     /// Tips just turned back on from here: this screen's own waits until Cuenta is opened again,
     /// instead of popping up under the finger that asked for them.
     @AppStorage("accountTipWaits") private var accountTipWaits = false
+    #if os(macOS)
+    @State private var isTipDisplayable = false
+    #endif
     /// Same size as the other tabs' titles.
     @ScaledMetric(relativeTo: .largeTitle) private var titleSize = 40
 
@@ -35,19 +38,11 @@ struct AccountView: View {
                     .accessibilityAddTraits(.isHeader)
                     .listRowBackground(Color.clear)
                     .listRowInsets(EdgeInsets(top: 8, leading: 4, bottom: 0, trailing: 4))
+
+                tipSection
                 #endif
 
-                // A card of its own, like the sections below, not a second card inside one.
-                if !accountTipWaits {
-                    Section {
-                        TipView(AccountTip())
-                            .tipBackground(Color.clear)
-                            .tipImageSize(CGSize(width: 28, height: 28))
-                            .listRowInsets(EdgeInsets(top: 2, leading: 4, bottom: 2, trailing: 4))
-                    }
-                }
-
-                Section("Estudios") {
+                Section {
                     NavigationLink {
                         CurrentStudyView()
                     } label: {
@@ -68,7 +63,26 @@ struct AccountView: View {
                             )
                         }
                     }
+                } header: {
+                    #if os(macOS)
+                    // In the first header: a form's row would put the title inside a card, and a
+                    // section of its own would upset the next one's header.
+                    VStack(alignment: .leading, spacing: 28) {
+                        Text("Cuenta")
+                            .font(.system(size: titleSize, weight: .bold, design: .rounded))
+                            .accessibilityAddTraits(.isHeader)
+                        Text("Estudios")
+                            .font(.headline)
+                    }
+                    .foregroundStyle(.primary)
+                    #else
+                    Text("Estudios")
+                    #endif
                 }
+
+                #if os(macOS)
+                tipSection
+                #endif
 
                 Section {
                     // Only a current study has numbers of its own; archived ones are inside.
@@ -78,7 +92,12 @@ struct AccountView: View {
                     NavigationLink {
                         RecordView()
                     } label: {
-                        Label("Ver expediente", systemImage: "chart.bar.doc.horizontal")
+                        Label {
+                            Text("Ver expediente")
+                        } icon: {
+                            Image(systemName: "chart.bar.doc.horizontal")
+                                .macRowIcon()
+                        }
                     }
                 } header: {
                     Text("Expediente")
@@ -114,6 +133,10 @@ struct AccountView: View {
                         AccountRow(title: "Volver a ver los consejos", detail: "Salen otra vez en cada pantalla", symbol: "lightbulb")
                     }
                     .foregroundStyle(.primary)
+                    #if os(macOS)
+                    // A row like the rest, not a grey push button in the middle of the card.
+                    .buttonStyle(.plain)
+                    #endif
                     Toggle(isOn: Binding(get: { tipsShown }, set: { shown in
                         if shown { accountTipWaits = true }
                         GradeTips.setShown(shown)
@@ -148,7 +171,35 @@ struct AccountView: View {
             .onChange(of: isCurrentTab) {
                 if !isCurrentTab { accountTipWaits = false }
             }
+            #if os(macOS)
+            // Started again when the tips come back: they do so under a new id.
+            .task(id: accountTipWaits) {
+                for await displays in AccountTip().shouldDisplayUpdates { isTipDisplayable = displays }
+            }
+            #endif
         }
+    }
+
+    /// A card of its own, like the sections below, not a second card inside one.
+    @ViewBuilder
+    private var tipSection: some View {
+        if showsTip {
+            Section {
+                TipView(AccountTip())
+                    .tipBackground(Color.clear)
+                    .tipImageSize(CGSize(width: 28, height: 28))
+                    .listRowInsets(EdgeInsets(top: 2, leading: 4, bottom: 2, trailing: 4))
+            }
+        }
+    }
+
+    private var showsTip: Bool {
+        #if os(macOS)
+        // A form on the Mac draws the header after an empty section inside its card.
+        !accountTipWaits && isTipDisplayable
+        #else
+        !accountTipWaits
+        #endif
     }
 }
 
@@ -170,6 +221,7 @@ struct AccountRow: View {
             // Tinted even in a button row, whose text is the primary colour.
             Image(systemName: symbol)
                 .foregroundStyle(.tint)
+                .macRowIcon()
         }
     }
 }

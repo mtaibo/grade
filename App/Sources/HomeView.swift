@@ -265,6 +265,8 @@ struct HomeView: View {
                     }
                     .padding(.horizontal, 16)
                     .padding(.bottom, 24)
+                    .macTopMargin()
+                    .macReadableWidth()
 
                     }
                     // Fills the screen so a tap on the empty space can end editing.
