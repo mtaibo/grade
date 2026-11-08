@@ -350,8 +350,8 @@ extension Subject {
                     name: "Pruebas de respuesta breve",
                     combination: .weightedAverage,
                     children: [
-                        WeightedChild(weight: 1, node: .grade(Grade(name: "Prueba 1", recovery: .savedForExtraordinary))),
-                        WeightedChild(weight: 1, node: .grade(Grade(name: "Prueba 2", recovery: .savedForExtraordinary))),
+                        WeightedChild(weight: 1 / 2, node: .grade(Grade(name: "Prueba 1", recovery: .savedForExtraordinary))),
+                        WeightedChild(weight: 1 / 2, node: .grade(Grade(name: "Prueba 2", recovery: .savedForExtraordinary))),
                     ]
                 ))),
                 WeightedChild(weight: 0.10, node: .grade(Grade(name: "Solución de problemas", recovery: .savedForExtraordinary))),
@@ -359,8 +359,8 @@ extension Subject {
                     name: "Prueba objetiva",
                     combination: .weightedAverage,
                     children: [
-                        WeightedChild(weight: 0.55, node: .grade(Grade(name: "Examen de teoría", isFinalExam: true))),
-                        WeightedChild(weight: 0.20, node: .grade(Grade(name: "Examen de prácticas", isFinalExam: true))),
+                        WeightedChild(weight: 0.55 / 0.75, node: .grade(Grade(name: "Examen de teoría", isFinalExam: true))),
+                        WeightedChild(weight: 0.20 / 0.75, node: .grade(Grade(name: "Examen de prácticas", isFinalExam: true))),
                     ]
                 ))),
             ],

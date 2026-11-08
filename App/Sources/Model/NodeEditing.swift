@@ -466,3 +466,22 @@ extension SubjectRecord {
         isPerTerm = true
     }
 }
+
+extension Node {
+    /// The weighted averages under this node whose weights don't add up to 100 %: the engine would
+    /// share them out quietly and every grade would come out wrong. The top one goes by `rootName`.
+    func sectionsWithOffWeights(rootName: String) -> [String] {
+        switch self {
+        case .group(let group):
+            let total = group.children.reduce(0) { $0 + $1.weight }
+            let isOff = group.combination == .weightedAverage && !group.children.isEmpty && abs(total - 1) > 0.001
+            return (isOff ? [rootName] : []) + group.children.flatMap { $0.node.sectionsWithOffWeights(rootName: $0.node.title) }
+        case .alternatives(let alternatives):
+            return alternatives.branches.flatMap { $0.node.sectionsWithOffWeights(rootName: $0.node.title) }
+        case .formula(let formula):
+            return formula.variables.keys.sorted().flatMap { formula.variables[$0]?.sectionsWithOffWeights(rootName: $0) ?? [] }
+        case .grade, .bonus, .requirement:
+            return []
+        }
+    }
+}

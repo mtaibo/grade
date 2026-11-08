@@ -2,7 +2,7 @@ import Engine
 import Testing
 @testable import AppModel
 
-/// What a failed subject shows and averages.
+/// What a failed subject shows and averages, and weights that don't add up.
 struct GradeRulesTests {
     private func record(minimum: Minimum? = nil, _ entries: [String: GradeEntry]) -> SubjectRecord {
         var record = SubjectRecord(subject: Subject(name: "Física", ectsCredits: 6, root: .group(Group(name: "Física", combination: .weightedAverage, children: [
@@ -38,5 +38,25 @@ struct GradeRulesTests {
 
     @Test func aFailedGradeBelowTheLineKeepsItsNumber() {
         #expect(abs(SubjectProgress(record(["P": entry(2), "E": entry(2)])).worst - 2) < 0.0001)
+    }
+
+    @Test func weightsThatDoNotAddUpAreFound() {
+        let inner = Node.group(Group(name: "Prácticas", combination: .weightedAverage, children: [
+            WeightedChild(weight: 0.5, node: .grade(Grade(name: "A"))),
+            WeightedChild(weight: 0.4, node: .grade(Grade(name: "B"))),
+        ]))
+        let root = Node.group(Group(name: "x", combination: .weightedAverage, children: [
+            WeightedChild(weight: 0.6, node: inner),
+            WeightedChild(weight: 0.3, node: .grade(Grade(name: "E"))),
+        ]))
+        #expect(root.sectionsWithOffWeights(rootName: "Física") == ["Física", "Prácticas"])
+    }
+
+    @Test func aSumAndEveryBundledSubjectHaveNothingToFix() {
+        let sum = Node.group(Group(name: "x", combination: .sum, children: [WeightedChild(weight: 1.1, node: .grade(Grade(name: "E")))]))
+        #expect(sum.sectionsWithOffWeights(rootName: "x").isEmpty)
+        for subject in Subject.all {
+            #expect(subject.root.sectionsWithOffWeights(rootName: subject.name).isEmpty, "\(subject.name)")
+        }
     }
 }

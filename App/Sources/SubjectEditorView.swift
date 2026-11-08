@@ -132,6 +132,16 @@ struct SubjectEditorView: View {
 
     private var canSave: Bool {
         !draft.subject.name.trimmingCharacters(in: .whitespaces).isEmpty && duplicateLeafNames.isEmpty && untypedLeafNames.isEmpty
+            && sectionsWithOffWeights.isEmpty
+    }
+
+    private var sectionsWithOffWeights: [String] {
+        guard !draft.isUndecided else { return [] }
+        let name = draft.subject.name
+        var seen: Set<String> = []
+        return ([draft.subject.root] + [draft.extraordinaryRoot].compactMap { $0 })
+            .flatMap { $0.sectionsWithOffWeights(rootName: name) }
+            .filter { seen.insert($0).inserted }
     }
 
     var body: some View {
@@ -181,6 +191,16 @@ struct SubjectEditorView: View {
                         Section {
                             Label(
                                 "Hay notas con el mismo nombre (\(duplicateLeafNames.formatted(.list(type: .and)))). Cambia uno para poder guardar.",
+                                systemImage: "exclamationmark.triangle.fill"
+                            )
+                            .foregroundStyle(.orange)
+                        }
+                    }
+
+                    if !sectionsWithOffWeights.isEmpty {
+                        Section {
+                            Label(
+                                "Los porcentajes de \(sectionsWithOffWeights.formatted(.list(type: .and))) no suman 100\u{00A0}%. Corrígelos para poder guardar.",
                                 systemImage: "exclamationmark.triangle.fill"
                             )
                             .foregroundStyle(.orange)
@@ -622,8 +642,9 @@ private struct GroupSections: View {
 
     private var totalWeight: Double { group.children.reduce(0) { $0 + $1.weight } }
 
-    /// A weighted average should share out exactly 100 %, and the subject's own sum exactly its 10
-    /// points. A sum inside another part can add up to anything: its parent scales it.
+    /// A weighted average should share out exactly 100 %, and the subject's own sum at least its 10
+    /// points (past them are extra points, and the grade stops at 10). A sum inside another part can
+    /// add up to anything: its parent scales it.
     /// `nil` when there's nothing to check, `.some(nil)` when it adds up, else what's off.
     private var check: String?? {
         guard !group.children.isEmpty, !isUndecided else { return nil }
@@ -632,7 +653,7 @@ private struct GroupSections: View {
         case .weightedAverage:
             return .some(isOff ? "Los porcentajes suman \(formatted(totalWeight * 100))\u{00A0}%; deberían sumar 100\u{00A0}%." : nil)
         case .sum where isRoot:
-            return .some(isOff ? "Los puntos suman \(formatted(totalWeight * 10)); deberían sumar 10." : nil)
+            return .some(totalWeight < 1 - 0.001 ? "Los puntos suman \(formatted(totalWeight * 10)); deberían sumar 10." : nil)
         default:
             return nil
         }
