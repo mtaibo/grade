@@ -6,9 +6,9 @@ import Foundation
 /// survives the app being closed.
 struct SyncSchedule: Codable, Equatable {
     /// The pause after a change that means it's finished: a grade typed digit by digit saves on each key.
-    static let delay: TimeInterval = 2
+    static let delay: TimeInterval = 0.3
     /// Nothing waits longer than this after its change, however busy the app stays.
-    static let longestWait: TimeInterval = 15
+    static let longestWait: TimeInterval = 2
 
     private(set) var firstChange: Date?
     private var lastChange: Date?
@@ -44,6 +44,8 @@ struct SyncItem: Equatable {
     let content: Content
 
     static let studyName = "study"
+    /// CloudKit allows 1 MB for a record's own fields; anything near that goes as a file.
+    static let largestInline = 512 * 1024
 
     static func subjectName(_ id: UUID) -> String { "subject-\(id.uuidString)" }
     static func archiveName(_ id: UUID) -> String { "archive-\(id.uuidString)" }
@@ -59,6 +61,12 @@ struct SyncItem: Equatable {
         self.name = name
         self.version = version
         content = .file(file)
+    }
+
+    /// The contents, when they're small enough to go inside the record.
+    var inlineData: Data? {
+        guard case .data(let data) = content, data.count <= Self.largestInline else { return nil }
+        return data
     }
 }
 

@@ -38,6 +38,20 @@ struct SyncScheduleTests {
     }
 }
 
+/// How much of an item travels inside its record.
+struct SyncItemTests {
+    @Test func whatIsSmallGoesInsideTheRecord() {
+        let data = Data(repeating: 1, count: SyncItem.largestInline)
+        #expect(SyncItem(name: "study", data: data).inlineData == data)
+    }
+
+    @Test func whatIsLargeOrAFileDoesNot() {
+        let tooBig = Data(repeating: 1, count: SyncItem.largestInline + 1)
+        #expect(SyncItem(name: "archive", data: tooBig).inlineData == nil)
+        #expect(SyncItem(name: "guide", file: URL(filePath: "/guide.pdf"), version: "1").inlineData == nil)
+    }
+}
+
 /// Two devices through iCloud, with what's in iCloud played by a plain dictionary.
 @MainActor
 struct CloudMergeTests {

@@ -23,6 +23,8 @@ struct GradeApp: App {
     @State private var menuActions = MenuActions()
     @State private var pushes = MacPushCount()
     @NSApplicationDelegateAdaptor private var appDelegate: MacAppDelegate
+    #else
+    @UIApplicationDelegateAdaptor private var appDelegate: PhoneAppDelegate
     #endif
     /// Changed after "Borrar todos los datos" so every tab starts over, Cuenta's pushed screens too.
     @State private var appSession = UUID()
@@ -73,6 +75,7 @@ struct GradeApp: App {
         #else
         WindowGroup {
             root
+                .onAppear { appDelegate.cloud = cloud }
         }
         .backgroundTask(.appRefresh(CloudSync.backgroundTask)) {
             await cloud.runBackgroundSync()
@@ -104,11 +107,12 @@ struct GradeApp: App {
         #endif
         .environment(cloud)
         // iCloud announces changes with a push, which can come late or not at all: while the app is
-        // on screen it also asks, so what's done on another device shows up on its own.
+        // on screen it also asks, so what's done on another device shows up on its own. On screen
+        // includes not being in front: a Mac window behind another one is still being looked at.
         .task(id: scenePhase) {
-            guard scenePhase == .active else { return }
+            guard scenePhase != .background else { return }
             while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(15))
+                try? await Task.sleep(for: cloud.pollInterval)
                 guard !Task.isCancelled else { return }
                 await cloud.refresh()
             }

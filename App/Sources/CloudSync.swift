@@ -39,6 +39,8 @@ final class CloudSync: NSObject {
     private(set) var nextSync: Date?
     var isEnabled: Bool { state.isEnabled }
     var hasPendingChanges: Bool { state.schedule.hasPendingChanges }
+    /// How long to wait between asks while on screen; there's no point insisting if iCloud isn't answering.
+    var pollInterval: Duration { status == .unavailable ? .seconds(15) : .seconds(3) }
 
     @ObservationIgnored private let library: Library
     /// Development builds and TestFlight or App Store ones see different iClouds, so what one knows
@@ -167,7 +169,6 @@ final class CloudSync: NSObject {
         reachedSend = true
         do {
             try await engine.sendChanges()
-            await fetch()
             // Only if every record really went up: a save can fail without the send itself failing.
             guard status == .syncing else { return }
             status = state.schedule.hasPendingChanges ? .waiting : .upToDate
@@ -212,10 +213,12 @@ final class CloudSync: NSObject {
         guard let engine else { return false }
         do {
             try await engine.fetchChanges()
+            let isFirstFetch = !state.ledger.hasFetched
             state.ledger.hasFetched = true
             state.lastSync = .now
             lastSync = state.lastSync
-            persist()
+            // Not on every poll: what really changed is saved when it comes in.
+            if isFirstFetch { persist() }
             return true
         } catch {
             Self.log.error("Fetch failed: \(error)")
@@ -312,29 +315,43 @@ final class CloudSync: NSObject {
         return CKRecord(recordType: Self.recordType, recordID: CKRecord.ID(recordName: name, zoneID: Self.zoneID))
     }
 
-    /// The item's current contents as a record, written to a file: assets can be any size.
+    /// The item's current contents as a record. What's small goes inside it, which is much quicker
+    /// than an asset (uploaded and downloaded apart from the record); the rest goes as a file.
     private func filledRecord(for item: SyncItem) -> CKRecord? {
         let record = record(named: item.name)
-        let url: URL
-        switch item.content {
-        case .file(let file):
-            url = file
-        case .data(let data):
-            url = uploads.appending(path: "\(item.name)-\(item.version).json")
-            do {
-                try FileManager.default.createDirectory(at: uploads, withIntermediateDirectories: true)
-                try data.write(to: url, options: .atomic)
-            } catch {
-                return nil
+        if let data = item.inlineData {
+            record["payloadData"] = data as NSData
+            record["payload"] = nil
+        } else {
+            let url: URL
+            switch item.content {
+            case .file(let file):
+                url = file
+            case .data(let data):
+                url = uploads.appending(path: "\(item.name)-\(item.version).json")
+                do {
+                    try FileManager.default.createDirectory(at: uploads, withIntermediateDirectories: true)
+                    try data.write(to: url, options: .atomic)
+                } catch {
+                    return nil
+                }
             }
+            record["payload"] = CKAsset(fileURL: url)
+            record["payloadData"] = nil
         }
-        record["payload"] = CKAsset(fileURL: url)
         record["modifiedAt"] = (state.ledger.lastChange ?? .now) as NSDate
         inFlight[item.name] = item.version
         return record
     }
 
     // MARK: Coming down
+
+    /// What a record holds, whichever way it went up. The asset goes first: every save here clears
+    /// the other field, and a device still on an older version only ever writes the asset.
+    private func payload(of record: CKRecord) -> Data? {
+        if let url = (record["payload"] as? CKAsset)?.fileURL { return try? Data(contentsOf: url) }
+        return record["payloadData"] as? Data
+    }
 
     private func apply(_ modifications: [CKRecord], deletions: [String]) {
         let items = (try? library.syncItems()) ?? [:]
@@ -346,7 +363,7 @@ final class CloudSync: NSObject {
             let accepts = state.ledger.acceptsRemoteSave(
                 of: name, modifiedAt: record["modifiedAt"] as? Date, items: items, hasOwnSubjects: library.hasOwnSubjects
             )
-            guard accepts, let url = (record["payload"] as? CKAsset)?.fileURL, let data = try? Data(contentsOf: url) else {
+            guard accepts, let data = payload(of: record) else {
                 // This one's newer and stays: its next save goes over what's just come down.
                 state.ledger.entries[name, default: .init(version: "", systemFields: nil)].systemFields = fields
                 continue

@@ -10,6 +10,15 @@ final class MacAppDelegate: NSObject, NSApplicationDelegate {
     var cloud: CloudSync?
     private var hasReplied = false
 
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        NSApp.registerForRemoteNotifications()
+    }
+
+    /// Left to itself, `CKSyncEngine` answers a push whenever the system's scheduler gets round to it.
+    func application(_ application: NSApplication, didReceiveRemoteNotification userInfo: [String: Any]) {
+        Task { await cloud?.refresh() }
+    }
+
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         guard let cloud, cloud.hasPendingChanges else { return .terminateNow }
         Task {
