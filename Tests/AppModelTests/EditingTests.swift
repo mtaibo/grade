@@ -128,3 +128,67 @@ struct PartWeightTests {
         #expect(parts["T"]?.weightPercent == 0 && parts["T"]?.lowestPercent == nil)
     }
 }
+
+/// Sections that hand their weight to another, as the editor and the subject's screen see them.
+struct WeightRuleEditingTests {
+    private let labs = UUID(), task = UUID(), exam = UUID()
+
+    private func group(task taskChild: WeightedChild? = nil, labsMinimum: Minimum? = nil) -> Engine.Group {
+        Engine.Group(name: "Nota", combination: .weightedAverage, children: [
+            WeightedChild(id: labs, weight: 0.2, node: .grade(Grade(name: "P", minimum: labsMinimum))),
+            taskChild ?? WeightedChild(id: task, weight: 0.2, node: .grade(Grade(name: "T"))),
+            WeightedChild(id: exam, weight: 0.6, node: .grade(Grade(name: "E", isFinalExam: true))),
+        ])
+    }
+
+    private func absorbing() -> Engine.Group {
+        group(task: WeightedChild(id: task, weight: 0.2, node: .grade(Grade(name: "T")), absorbedBy: exam))
+    }
+
+    private func shares(_ group: Engine.Group) -> [UUID: PartItem] {
+        Dictionary(uniqueKeysWithValues: PartItem.items(of: .group(group)).compactMap { item in UUID(uuidString: item.id).map { ($0, item) } })
+    }
+
+    @Test func absorbingShowsTheSameRangesAsTheGuide() {
+        let parts = shares(absorbing())
+        #expect(abs((parts[labs]?.weightPercent ?? 0) - 20) < 1e-9 && parts[labs]?.lowestPercent == nil)
+        #expect(abs((parts[task]?.weightPercent ?? 0) - 20) < 1e-9 && parts[task]?.lowestPercent == 0)
+        #expect(abs((parts[exam]?.weightPercent ?? 0) - 80) < 1e-9 && abs((parts[exam]?.lowestPercent ?? 0) - 60) < 1e-9)
+    }
+
+    @Test func whenAnotherDecidesEverythingTheRestCanCountForNothing() {
+        let parts = shares(group(labsMinimum: Minimum(threshold: 5, consequence: .everythingGoesTo(exam))))
+        #expect(abs((parts[exam]?.weightPercent ?? 0) - 100) < 1e-9 && abs((parts[exam]?.lowestPercent ?? 0) - 60) < 1e-9)
+        #expect(abs((parts[task]?.weightPercent ?? 0) - 20) < 1e-9 && parts[task]?.lowestPercent == 0)
+    }
+
+    @Test func noRulesKeepOneFigure() {
+        let parts = shares(group())
+        #expect(parts.values.allSatisfy { $0.lowestPercent == nil })
+    }
+
+    @Test func deletingTheSectionTakesItsRulesWithIt() {
+        var group = group(task: WeightedChild(id: task, weight: 0.2, node: .grade(Grade(name: "T")), absorbedBy: exam), labsMinimum: Minimum(threshold: 5, consequence: .weightGoesTo(exam)))
+        group.children.removeAll { $0.id == exam }
+        group.forgetMissingSections()
+        #expect(group.children.allSatisfy { $0.absorbedBy == nil && $0.node.ownMinimum == nil })
+    }
+
+    @Test(arguments: [0, 1, 2])
+    func aFormulaSaysTheSameAsTheRules(rule: Int) throws {
+        let source: Engine.Group = switch rule {
+        case 0: absorbing()
+        case 1: group(labsMinimum: Minimum(threshold: 5, consequence: .weightGoesTo(exam)))
+        default: group(labsMinimum: Minimum(threshold: 5, consequence: .everythingGoesTo(exam)))
+        }
+        let formula = Node.formula(try #require(source.asFormula()))
+        for p in stride(from: 0.0, through: 10, by: 2.5) {
+            for t in stride(from: 0.0, through: 10, by: 2.5) {
+                for e in stride(from: 0.0, through: 10, by: 2.5) {
+                    let inputs = ["P": p, "T": t, "E": e]
+                    #expect(abs(Node.group(source).evaluate(inputs, pendingFraction: 0) - formula.evaluate(inputs, pendingFraction: 0)) < 1e-4)
+                }
+            }
+        }
+    }
+}

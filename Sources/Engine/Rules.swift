@@ -1,7 +1,10 @@
+import Foundation
+
 /// A minimum a node's grade must reach, with what happens when it isn't met.
 ///
 /// Can live on any node. `fails`, `capAt` and `sendsToExtraordinary` act on the whole subject;
-/// `voids` and `doesNotAverage` only on the node itself, inside its parent.
+/// `voids` and `doesNotAverage` only on the node itself, inside its parent; `weightGoesTo` and
+/// `everythingGoesTo` on the parent's other sections (a weighted average or a sum).
 public struct Minimum: Sendable, Equatable, Codable {
     public enum Consequence: Sendable, Equatable, Codable {
         /// The node is left out of its parent's average and the rest share out its weight
@@ -16,6 +19,18 @@ public struct Minimum: Sendable, Equatable, Codable {
         /// The ordinary sitting is failed and everything is played in the extraordinary one, where
         /// this minimum no longer applies.
         case sendsToExtraordinary
+        /// The node stops counting and its whole weight goes to this section beside it.
+        case weightGoesTo(UUID)
+        /// The parent's grade is this section's alone: all the others stop counting.
+        case everythingGoesTo(UUID)
+
+        /// The section this hands its weight to, if it does.
+        public var section: UUID? {
+            switch self {
+            case .weightGoesTo(let id), .everythingGoesTo(let id): id
+            case .doesNotAverage, .capAt, .fails, .voids, .sendsToExtraordinary: nil
+            }
+        }
     }
 
     public var threshold: Double

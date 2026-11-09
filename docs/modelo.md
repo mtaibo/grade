@@ -16,7 +16,7 @@ Siguen los 5 nodos de `guide/proyect.md` §4, como un `indirect enum Node` con u
 - **`Bonus`**: puntos que se suman al padre, con un tope.
 - **`Requirement`**: condición sin nota que bloquea el aprobado (p. ej. asistencia mínima).
 
-`Minimum` (umbral + consecuencia: `doesNotAverage` / `capAt` / `fails` / `voids` / `sendsToExtraordinary`) y `Recovery` viven como
+`Minimum` (umbral + consecuencia: `doesNotAverage` / `capAt` / `fails` / `voids` / `sendsToExtraordinary` / `weightGoesTo` / `everythingGoesTo`) y `Recovery` viven como
 reglas en cualquier nodo, no como tipos de nodo propios — así lo describe el brief.
 
 ## Decisión: nodo `Formula` con `Expression` (no estaba en el brief)
@@ -88,6 +88,16 @@ opcional (sobre su propia escala) y, si la hay, una "Consecuencia" — las cinco
 | `voids` | Se anula la sección | La sección cuenta como un 0 en su padre |
 | `doesNotAverage` | No hace media | La sección sale de la media de su padre y las demás se reparten su peso |
 | `sendsToExtraordinary` | Vas a la extraordinaria | Suspendes la ordinaria; en la extraordinaria ese mínimo ya no cuenta (`Node.forExtraordinary`) y las notas de esa sección no se arrastran (`leavesSentToExtraordinary`), hay que repetirla |
+| `weightGoesTo(id)` | Su peso pasa a otra sección | La sección deja de contar y todo su peso se suma al de la sección `id`, a su lado |
+| `everythingGoesTo(id)` | Todo depende de otra sección | La nota del padre sale solo de la sección `id`; las demás dejan de contar |
+
+`WeightedChild.absorbedBy` («Lo que falte lo absorbe») no necesita mínimo: con un 7, la sección se
+queda el 70 % de su peso y el 30 % restante va por la nota de la otra sección. Es la forma sin
+fórmula de «se consolida hasta un 20 % y lo que no, pasa al examen». Estas tres reglas solo actúan
+en medias ponderadas y sumas, en una sola pasada (lo recibido no se reenvía, así que dos secciones
+que se apuntan entre sí no dan vueltas) y las ignora el motor si la sección de destino ya no está.
+`asFormula()` las escribe en la fórmula, y `weightGoesTo` y `everythingGoesTo` no son monótonas, igual
+que `doesNotAverage`.
 
 `fails`, `capAt` y `sendsToExtraordinary` actúan sobre la asignatura; `voids` y `doesNotAverage`
 solo sobre la sección dentro de su padre (en una fórmula, la variable vale 0). El umbral se compara

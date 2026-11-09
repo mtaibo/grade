@@ -47,9 +47,9 @@ struct PartItem: Identifiable {
         if case .group(let group) = root, group.combination == .undecided {
             return group.children.map { PartItem(id: $0.id.uuidString, node: $0.node, weightPercent: nil) }
         } else if case .group(let group) = root {
-            let total = group.combination == .weightedAverage ? group.children.reduce(0) { $0 + $1.weight } : 1
             return group.children.map { child in
-                PartItem(id: child.id.uuidString, node: child.node, weightPercent: total > 0 ? child.weight / total * 100 : nil)
+                let share = group.sharePercent(of: child)
+                return PartItem(id: child.id.uuidString, node: child.node, weightPercent: share?.highest, lowestPercent: share?.lowest)
             }
         } else if case .formula(let formula) = root {
             let keys = formula.expression.variableOrder.filter { formula.variables[$0] != nil }
@@ -73,6 +73,35 @@ extension Formula {
         let range = contributionRange(of: key)
         let low = max(0, range.lowerBound) * 10, high = max(0, range.upperBound) * 10
         return (high - low < 0.5 ? nil : low, high)
+    }
+}
+
+extension Engine.Group {
+    /// How much of this group's grade a section accounts for, in percent: `lowest` is only there when
+    /// a rule can hand its weight to another section or bring it another's. `nil` with no weights.
+    func sharePercent(of child: WeightedChild) -> (lowest: Double?, highest: Double)? {
+        let allWeights = children.reduce(0) { $0 + $1.weight }
+        let scale = combination == .weightedAverage ? allWeights : 1
+        guard scale > 0 else { return nil }
+        let percent = { (weight: Double) in weight / scale * 100 }
+        guard combination == .weightedAverage || combination == .sum else { return (nil, percent(child.weight)) }
+
+        let ids = Set(children.map(\.id))
+        let moving = children.filter { section in
+            let consequence = section.node.ownMinimum?.consequence.section
+            return [consequence, section.absorbedBy].contains { $0 != section.id && $0.map(ids.contains) == true }
+        }
+        let givesAll = { (section: WeightedChild) -> UUID? in
+            if case .everythingGoesTo(let id)? = section.node.ownMinimum?.consequence, id != section.id, ids.contains(id) { return id }
+            return nil
+        }
+        let received = moving.filter { givesAll($0) == nil && ($0.absorbedBy == child.id || $0.node.ownMinimum?.consequence.section == child.id) }
+        var highest = percent(child.weight + received.reduce(0) { $0 + $1.weight })
+        if moving.contains(where: { givesAll($0) == child.id }) { highest = percent(allWeights) }
+        // Handing its own weight away, or left out when another section decides everything.
+        let canLoseIt = moving.contains { $0.id == child.id || (givesAll($0) != nil && givesAll($0) != child.id) }
+        let lowest = canLoseIt ? 0 : percent(child.weight)
+        return (highest - lowest < 0.5 ? nil : lowest, highest)
     }
 }
 

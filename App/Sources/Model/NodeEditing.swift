@@ -246,6 +246,7 @@ extension Node {
                 if !(weight.isFinite && weight >= 0) { group.children[index].weight = 0 }
                 group.children[index].node.sanitize()
             }
+            group.forgetMissingSections()
             self = .group(group)
         case .formula(var formula):
             for key in formula.variables.keys { formula.variables[key]?.sanitize() }
@@ -424,23 +425,63 @@ extension Engine.Group {
         let total = children.reduce(0) { $0 + $1.weight }
         guard total > 0 else { return nil }
         var variables: [String: Node] = [:]
-        var terms: [Engine.Expression] = []
+        var keys: [UUID: String] = [:]
         let alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".map(String.init)
-        for child in children where child.node.scaleMax > 0 {
+        let counted = children.filter { $0.node.scaleMax > 0 }
+        for child in counted {
             let initial = child.node.title.first.map { String($0).uppercased() }
             let key = [initial].compactMap { $0 }.first { variables[$0] == nil && $0.first?.isLetter == true }
                 ?? alphabet.first { variables[$0] == nil }
                 ?? "V\(variables.count + 1)"
-            variables[key] = child.node
-            let share = combination == .sum ? child.weight : child.weight / total
+            var node = child.node
+            // Spelled out in the formula below.
+            if node.ownMinimum?.consequence.section != nil { node.minimum = nil }
+            variables[key] = node
+            keys[child.id] = key
+        }
+        /// `weight`, out of the total, going by this section's grade.
+        func term(_ weight: Double, of child: WeightedChild) -> Engine.Expression {
+            let share = combination == .sum ? weight : weight / total
             let coefficient = share * 10 / child.node.scaleMax
-            terms.append(abs(coefficient - 1) < 1e-9
-                ? .variable(key)
-                : .multiply(.constant((coefficient * 1_000_000).rounded() / 1_000_000), .variable(key)))
+            let variable = Engine.Expression.variable(keys[child.id] ?? "")
+            return abs(coefficient - 1) < 1e-9 ? variable : .multiply(.constant((coefficient * 1_000_000).rounded() / 1_000_000), variable)
+        }
+        func section(_ id: UUID?, besides child: WeightedChild) -> WeightedChild? {
+            id == child.id ? nil : counted.first { $0.id == id }
+        }
+        var terms: [Engine.Expression] = []
+        for child in counted {
+            let key = keys[child.id] ?? ""
+            let own = term(child.weight, of: child)
+            if let minimum = child.node.ownMinimum, case .weightGoesTo(let id) = minimum.consequence, let target = section(id, besides: child) {
+                terms.append(.ifGreaterOrEqual(lhs: .variable(key), rhs: .constant(minimum.threshold), then: own, otherwise: term(child.weight, of: target)))
+            } else if let target = section(child.absorbedBy, besides: child) {
+                let unearned = Engine.Expression.subtract(.constant(1), .divide(.variable(key), .constant(child.node.scaleMax)))
+                terms.append(.add(own, .multiply(unearned, term(child.weight, of: target))))
+            } else {
+                terms.append(own)
+            }
         }
         guard var expression = terms.first else { return nil }
         for term in terms.dropFirst() { expression = .add(expression, term) }
+        // The first section that decides everything goes outermost, as it does in the engine.
+        for child in counted.reversed() {
+            guard let minimum = child.node.ownMinimum, case .everythingGoesTo(let id) = minimum.consequence,
+                  let target = section(id, besides: child) else { continue }
+            expression = .ifGreaterOrEqual(lhs: .variable(keys[child.id] ?? ""), rhs: .constant(minimum.threshold), then: expression, otherwise: term(total, of: target))
+        }
         return Formula(name: name, expression: expression, variables: variables, minimum: minimum)
+    }
+}
+
+extension Engine.Group {
+    /// Rules that name a section no longer here go with it.
+    mutating func forgetMissingSections() {
+        let ids = Set(children.map(\.id))
+        for index in children.indices {
+            if let target = children[index].absorbedBy, !ids.contains(target) { children[index].absorbedBy = nil }
+            if let target = children[index].node.ownMinimum?.consequence.section, !ids.contains(target) { children[index].node.minimum = nil }
+        }
     }
 }
 

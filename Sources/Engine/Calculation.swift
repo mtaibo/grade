@@ -1,3 +1,5 @@
+import Foundation
+
 /// The calculation engine from the brief's §5: current grade, projected/needed grade, and status.
 /// Works by evaluating a `Node` twice — once assuming every ungraded leaf scores 0 (worst case)
 /// and once assuming it scores its max (best case) — and binary-searching between them for
@@ -47,26 +49,27 @@ extension Node {
         case .grade(let grade):
             return inputs[grade.name] ?? pendingFraction * grade.scaleMax
         case .group(let group):
-            // (weight, fraction of its own max) for every child that still counts.
-            let parts: [(weight: Double, fraction: Double)] = group.children.compactMap { child in
+            // Every child that still counts, with the fraction of its own max it has.
+            let parts: [Part] = group.children.compactMap { child in
                 let max = child.node.scaleMax
-                guard max > 0 else { return (child.weight, 0) }
+                guard max > 0 else { return Part(child, fraction: 0) }
                 let value = child.node.rawValue(inputs, pendingFraction: pendingFraction)
-                switch child.node.standing(value) {
+                var unmet: Minimum.Consequence?
+                if let minimum = child.node.ownMinimum, value < minimum.threshold { unmet = minimum.consequence }
+                switch unmet {
+                case .voids?: return Part(child, fraction: 0)
+                case .doesNotAverage?: return nil
                 // A value no scale can hold (a hand-edited file) counts as a 0, never as a NaN.
-                case .counts: return (child.weight, (value / max).isFinite ? value / max : 0)
-                case .voided: return (child.weight, 0)
-                case .left: return nil
+                default: return Part(child, fraction: (value / max).isFinite ? value / max : 0, unmet: unmet)
                 }
             }
             let fractions = parts.map(\.fraction)
             switch group.combination {
             case .weightedAverage:
-                let totalWeight = parts.reduce(0) { $0 + $1.weight }
-                let weighted = parts.reduce(0) { $0 + $1.weight * $1.fraction }
+                let (totalWeight, weighted) = Self.tally(parts)
                 return totalWeight > 0 ? (weighted / totalWeight) * 10 : 0
             case .sum:
-                return parts.reduce(0) { $0 + $1.weight * $1.fraction } * 10
+                return Self.tally(parts).weighted * 10
             case .max:
                 return (fractions.max() ?? 0) * 10
             case .min:
@@ -101,13 +104,70 @@ extension Node {
 
     private enum Standing { case counts, voided, left }
 
+    /// Only what the sharing out needs: this is built on every step of the searches.
+    private struct Part {
+        let id: UUID
+        let weight: Double
+        let absorbedBy: UUID?
+        let fraction: Double
+        /// What its minimum does, when it hasn't been reached.
+        let unmet: Minimum.Consequence?
+
+        init(_ child: WeightedChild, fraction: Double, unmet: Minimum.Consequence? = nil) {
+            id = child.id
+            weight = child.weight
+            absorbedBy = child.absorbedBy
+            self.fraction = fraction
+            self.unmet = unmet
+        }
+    }
+
+    /// Each part's weight and the fraction it goes by, once the rules that hand weight to another
+    /// section are applied. In one pass: what a section receives isn't handed on, so sections that
+    /// point at each other can't go round in circles, and the weights still add up to the same.
+    /// A rule naming a section that's gone or doesn't count is ignored.
+    private static func sharedOut(_ parts: [Part]) -> [(weight: Double, fraction: Double)] {
+        func target(_ id: UUID?, of part: Part) -> Part? {
+            id == part.id ? nil : parts.first { $0.id == id }
+        }
+        for part in parts {
+            if case .everythingGoesTo(let id)? = part.unmet, let decider = target(id, of: part) {
+                return [(parts.reduce(0) { $0 + $1.weight }, decider.fraction)]
+            }
+        }
+        return parts.flatMap { part -> [(weight: Double, fraction: Double)] in
+            if case .weightGoesTo(let id)? = part.unmet, let receiver = target(id, of: part) {
+                return [(part.weight, receiver.fraction)]
+            }
+            if let absorber = target(part.absorbedBy, of: part) {
+                let earned = Swift.min(Swift.max(part.fraction, 0), 1)
+                return [(part.weight * earned, 1), (part.weight * (1 - earned), absorber.fraction)]
+            }
+            return [(part.weight, part.fraction)]
+        }
+    }
+
+    /// The parts' total weight and what they add up to, handing weight over only if a rule says so.
+    private static func tally(_ parts: [Part]) -> (total: Double, weighted: Double) {
+        var total = 0.0, weighted = 0.0
+        var hasRule = false
+        for part in parts {
+            if part.absorbedBy != nil || part.unmet?.section != nil { hasRule = true }
+            total += part.weight
+            weighted += part.weight * part.fraction
+        }
+        guard hasRule else { return (total, weighted) }
+        let shares = sharedOut(parts)
+        return (shares.reduce(0) { $0 + $1.weight }, shares.reduce(0) { $0 + $1.weight * $1.fraction })
+    }
+
     /// How this node counts in its parent given its own `value`: as it is, as a 0, or not at all.
     private func standing(_ value: Double) -> Standing {
         guard let minimum = ownMinimum, value < minimum.threshold else { return .counts }
         switch minimum.consequence {
         case .voids: return .voided
         case .doesNotAverage: return .left
-        case .capAt, .fails, .sendsToExtraordinary: return .counts
+        case .capAt, .fails, .sendsToExtraordinary, .weightGoesTo, .everythingGoesTo: return .counts
         }
     }
 
@@ -330,6 +390,8 @@ extension Node {
     /// answer is no, which only costs the slower search in `canEnd`.
     var isMonotonic: Bool {
         if case .doesNotAverage? = ownMinimum?.consequence { return false }
+        // Reaching the minimum can take the weight back from a section that was doing better.
+        if ownMinimum?.consequence.section != nil { return false }
         if case .formula(let formula) = self, !formula.expression.isMonotonic { return false }
         return children.allSatisfy(\.isMonotonic)
     }

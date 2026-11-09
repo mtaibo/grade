@@ -662,23 +662,27 @@ private struct GroupSections: View {
             ForEach($group.children) { $child in
                 NavigationLink {
                     StableDestination(value: child) {
-                        ComponentEditorView(child: $child, combination: group.combination, onDelete: {
+                        ComponentEditorView(child: $child, combination: group.combination, siblings: group.children.filter { $0.id != child.id }, onDelete: {
                             group.children.removeAll { $0.id == child.id }
+                            group.forgetMissingSections()
                         })
                     }
                     // Set on the first screen, which a screen pushed in the Mac's window doesn't inherit.
                     .environment(\.isUndecidedEvaluation, isUndecided)
                 } label: {
-                    ComponentRow(title: child.node.title, subtitle: child.node.rowSubtitle, value: isUndecided ? "" : share(of: child))
+                    ComponentRow(title: child.node.title, subtitle: subtitle(of: child), value: isUndecided ? "" : share(of: child))
                 }
             }
-            .onDelete { group.children.remove(atOffsets: $0) }
+            .onDelete {
+                group.children.remove(atOffsets: $0)
+                group.forgetMissingSections()
+            }
 
             // Opens the new section straight away; it only joins the list once its required
             // fields are filled and it's confirmed. Going back discards it.
             NavigationLink {
                 StableDestination(value: group.combination) {
-                    NewSectionView(child: newChild(), combination: group.combination) { group.children.append($0) }
+                    NewSectionView(child: newChild(), combination: group.combination, siblings: group.children) { group.children.append($0) }
                 }
                 .environment(\.isUndecidedEvaluation, isUndecided)
             } label: {
@@ -698,6 +702,11 @@ private struct GroupSections: View {
                 ? "Personaliza las secciones en las que se divide la nota final."
                 : "Personaliza las subsecciones en las que se divide esta sección.")
         }
+    }
+
+    private func subtitle(of child: WeightedChild) -> String {
+        guard let absorber = group.children.first(where: { $0.id == child.absorbedBy }) else { return child.node.rowSubtitle }
+        return "\(child.node.rowSubtitle) · lo absorbe \(absorber.node.title)"
     }
 
     /// What a section counts for, in the group's own terms: its percentage or its points.
@@ -1180,6 +1189,8 @@ private struct ComponentEditorView: View {
     @Binding var child: WeightedChild
     /// How the parent combines its parts: a sum counts each in points, anything else in percent.
     let combination: Engine.Group.Combination
+    /// The other sections beside this one, which can take over its weight.
+    var siblings: [WeightedChild] = []
     /// Removes this section from its parent; called once the screen has gone, so nothing here
     /// reads the removed child.
     var onDelete: () -> Void = {}
@@ -1192,6 +1203,15 @@ private struct ComponentEditorView: View {
     @State private var isDeleting = false
 
     private var isPoints: Bool { combination == .sum }
+
+    /// The sections its weight can go to: only where there are weights to hand over.
+    private var receivers: [WeightedChild] {
+        !isUndecided && (combination == .weightedAverage || combination == .sum) ? siblings : []
+    }
+
+    private var absorberName: String? {
+        receivers.first { $0.id == child.absorbedBy }?.node.title
+    }
 
     /// Named, and every note inside has its type.
     private var isComplete: Bool {
@@ -1239,13 +1259,22 @@ private struct ComponentEditorView: View {
                      : "Lo que cuenta esta sección en la nota y en cuántas subsecciones se divide.")
             }
 
+            if !receivers.isEmpty {
+                Section {
+                    SectionMenuRow(title: "Lo que falte lo absorbe", selection: $child.absorbedBy, sections: receivers, noneLabel: "Ninguna")
+                } footer: {
+                    Text(absorberName.map { "Lo que no consigas aquí lo decide «\($0)»: con la mitad de la nota, la otra mitad del peso de esta sección va por esa nota." }
+                         ?? "Opcional. Si la guía dice que lo que no consigas aquí se añade a otra sección, elige cuál.")
+                }
+            }
+
             if child.node.asGroup != nil || child.node.asFormula != nil {
-                if !isUndecided { MinimumSection(node: $child.node) }
+                if !isUndecided { MinimumSection(node: $child.node, sections: receivers) }
                 RecoverySection(node: $child.node)
                 NodeContentsSections(node: $child.node)
             } else if let grade = Binding(unwrapping: $child.node.asGrade) {
                 GradeInputSections(grade: grade)
-                if !isUndecided { MinimumSection(node: $child.node) }
+                if !isUndecided { MinimumSection(node: $child.node, sections: receivers) }
                 RecoverySection(node: $child.node)
                 GradeDateSection(grade: grade)
             }
@@ -1302,16 +1331,18 @@ private struct NoteCountSection: View {
 private struct NewSectionView: View {
     @State private var child: WeightedChild
     let combination: Engine.Group.Combination
+    let siblings: [WeightedChild]
     let onAdd: (WeightedChild) -> Void
 
-    init(child: WeightedChild, combination: Engine.Group.Combination, onAdd: @escaping (WeightedChild) -> Void) {
+    init(child: WeightedChild, combination: Engine.Group.Combination, siblings: [WeightedChild], onAdd: @escaping (WeightedChild) -> Void) {
         _child = State(initialValue: child)
         self.combination = combination
+        self.siblings = siblings
         self.onAdd = onAdd
     }
 
     var body: some View {
-        ComponentEditorView(child: $child, combination: combination, onAdd: {
+        ComponentEditorView(child: $child, combination: combination, siblings: siblings, onAdd: {
             onAdd(child)
         })
     }
@@ -1732,6 +1763,17 @@ private enum InputStyleKind: String, CaseIterable, Identifiable {
 /// what missing it does — the dependencies between parts that a syllabus spells out.
 private struct MinimumSection: View {
     @Binding var node: Node
+    /// The sections that can take over from this one; none where there are no weights to hand over.
+    var sections: [WeightedChild] = []
+
+    /// The exam if it's there: it's where a guide nearly always sends what's left.
+    private var likeliestSection: UUID? {
+        (sections.first { $0.node.isFinalExamPart } ?? sections.first)?.id
+    }
+
+    private var kinds: [ConsequenceKind] {
+        ConsequenceKind.allCases.filter { !$0.needsSection || !sections.isEmpty }
+    }
 
     private var threshold: Binding<Double?> {
         Binding(
@@ -1751,7 +1793,18 @@ private struct MinimumSection: View {
             get: { node.minimum.map { ConsequenceKind($0.consequence) } ?? .fails },
             set: { kind in
                 guard let minimum = node.minimum else { return }
-                node.minimum = Minimum(threshold: minimum.threshold, consequence: kind.consequence(keeping: minimum.consequence))
+                node.minimum = Minimum(threshold: minimum.threshold, consequence: kind.consequence(keeping: minimum.consequence, section: likeliestSection))
+            }
+        )
+    }
+
+    private var section: Binding<UUID?> {
+        Binding(
+            get: { node.minimum?.consequence.section },
+            set: { id in
+                guard let id, let minimum = node.minimum else { return }
+                let kind = ConsequenceKind(minimum.consequence)
+                node.minimum = Minimum(threshold: minimum.threshold, consequence: kind == .everythingGoesTo ? .everythingGoesTo(id) : .weightGoesTo(id))
             }
         )
     }
@@ -1783,7 +1836,7 @@ private struct MinimumSection: View {
                 LabeledContent("Consecuencia") {
                     Menu {
                         Picker("Consecuencia", selection: consequence) {
-                            ForEach(ConsequenceKind.allCases) { kind in
+                            ForEach(kinds) { kind in
                                 Text(kind.label).tag(kind)
                             }
                         }
@@ -1796,6 +1849,9 @@ private struct MinimumSection: View {
                         .foregroundStyle(.secondary)
                     }
                     .menuIndicator(.hidden)
+                }
+                if kind.needsSection {
+                    SectionMenuRow(title: "Sección", selection: section, sections: sections)
                 }
                 if kind == .capAt {
                     LabeledContent("Nota tope") {
@@ -1817,11 +1873,13 @@ private struct MinimumSection: View {
 
 /// `Minimum.Consequence` without the cap, for a `Picker`.
 private enum ConsequenceKind: CaseIterable, Identifiable {
-    case fails, capAt, voids, doesNotAverage, sendsToExtraordinary
+    case fails, capAt, voids, doesNotAverage, sendsToExtraordinary, weightGoesTo, everythingGoesTo
 
     static let defaultCap = 4.5
 
     var id: Self { self }
+
+    var needsSection: Bool { self == .weightGoesTo || self == .everythingGoesTo }
 
     init(_ consequence: Minimum.Consequence) {
         switch consequence {
@@ -1830,11 +1888,13 @@ private enum ConsequenceKind: CaseIterable, Identifiable {
         case .voids: self = .voids
         case .doesNotAverage: self = .doesNotAverage
         case .sendsToExtraordinary: self = .sendsToExtraordinary
+        case .weightGoesTo: self = .weightGoesTo
+        case .everythingGoesTo: self = .everythingGoesTo
         }
     }
 
-    /// The consequence this picks, keeping the cap if it already was one.
-    func consequence(keeping current: Minimum.Consequence) -> Minimum.Consequence {
+    /// The consequence this picks, keeping the cap or the section if it already had one.
+    func consequence(keeping current: Minimum.Consequence, section: UUID?) -> Minimum.Consequence {
         switch self {
         case .fails: return .fails
         case .capAt:
@@ -1843,6 +1903,8 @@ private enum ConsequenceKind: CaseIterable, Identifiable {
         case .voids: return .voids
         case .doesNotAverage: return .doesNotAverage
         case .sendsToExtraordinary: return .sendsToExtraordinary
+        case .weightGoesTo: return (current.section ?? section).map { .weightGoesTo($0) } ?? current
+        case .everythingGoesTo: return (current.section ?? section).map { .everythingGoesTo($0) } ?? current
         }
     }
 
@@ -1853,6 +1915,8 @@ private enum ConsequenceKind: CaseIterable, Identifiable {
         case .voids: "Se anula la sección"
         case .doesNotAverage: "No hace media"
         case .sendsToExtraordinary: "Vas a la extraordinaria"
+        case .weightGoesTo: "Su peso pasa a otra sección"
+        case .everythingGoesTo: "Todo depende de otra sección"
         }
     }
 
@@ -1863,6 +1927,40 @@ private enum ConsequenceKind: CaseIterable, Identifiable {
         case .voids: "Si no llegas, esta sección cuenta como un 0."
         case .doesNotAverage: "Si no llegas, esta sección no cuenta y las demás se reparten su peso."
         case .sendsToExtraordinary: "Si no llegas, suspendes la ordinaria y esta sección se vuelve a hacer en la extraordinaria."
+        case .weightGoesTo: "Si no llegas, esta sección deja de contar y su peso se suma al de la sección elegida."
+        case .everythingGoesTo: "Si no llegas, las demás secciones dejan de contar y la nota sale solo de la sección elegida."
+        }
+    }
+}
+
+/// A row that picks one of the other sections beside this one.
+private struct SectionMenuRow: View {
+    let title: String
+    @Binding var selection: UUID?
+    let sections: [WeightedChild]
+    /// What choosing none reads as, when none can be chosen.
+    var noneLabel: String?
+
+    var body: some View {
+        LabeledContent(title) {
+            Menu {
+                Picker(title, selection: $selection) {
+                    if let noneLabel {
+                        Text(noneLabel).tag(UUID?.none)
+                    }
+                    ForEach(sections) { section in
+                        Text(section.node.title).tag(UUID?.some(section.id))
+                    }
+                }
+            } label: {
+                HStack(spacing: 4) {
+                    Text(sections.first { $0.id == selection }?.node.title ?? noneLabel ?? "Elegir")
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.caption.weight(.semibold))
+                }
+                .foregroundStyle(.secondary)
+            }
+            .menuIndicator(.hidden)
         }
     }
 }

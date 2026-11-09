@@ -1191,7 +1191,7 @@ private struct PartCard: View {
     /// a practical worth a third of a 10 % part reads 3,33 %. Only when the subject is a weighted
     /// average and the part splits by fixed weights (an average or a sum); empty otherwise.
     private func absoluteShares(of group: Engine.Group) -> [WeightedChild.ID: Double] {
-        guard record.subject.root.asGroup?.combination == .weightedAverage, let partPercent = item.weightPercent,
+        guard record.subject.root.asGroup?.combination == .weightedAverage, let partPercent = item.weightPercent, item.lowestPercent == nil,
               group.combination == .weightedAverage || group.combination == .sum else { return [:] }
         let total = group.children.reduce(0) { $0 + $1.weight }
         guard total > 0 else { return [:] }

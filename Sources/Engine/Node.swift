@@ -111,11 +111,16 @@ public struct WeightedChild: Sendable, Equatable, Codable, Identifiable {
     public var id: UUID
     public var weight: Double
     public var node: Node
+    /// The section beside this one that decides what this one doesn't earn ("lo que no saques lo
+    /// absorbe el examen"): a 7 here keeps 70 % of the weight and the other 30 % goes by that
+    /// section's grade. Only in a weighted average or a sum; `nil` for most, and in older files.
+    public var absorbedBy: UUID?
 
-    public init(id: UUID = UUID(), weight: Double, node: Node) {
+    public init(id: UUID = UUID(), weight: Double, node: Node, absorbedBy: UUID? = nil) {
         self.id = id
         self.weight = weight
         self.node = node
+        self.absorbedBy = absorbedBy
     }
 }
 
