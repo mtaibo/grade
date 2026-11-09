@@ -58,8 +58,6 @@ struct SubjectRecord: Identifiable, Codable, Equatable {
     var extraordinaryNotPresented = false
     /// "Matrícula de honor" on the final grade.
     var hasHonors = false
-    /// Conditions with no grade, like compulsory attendance: one not met fails the subject.
-    var requirements: [SubjectRequirement] = []
     /// How the final grade goes on the transcript: each subject's guide says its own.
     var rounding = GradeRounding.standard
 
@@ -88,16 +86,12 @@ struct SubjectRecord: Identifiable, Codable, Equatable {
         ordinaryNotPresented = try container.decodeIfPresent(Bool.self, forKey: .ordinaryNotPresented) ?? false
         extraordinaryNotPresented = try container.decodeIfPresent(Bool.self, forKey: .extraordinaryNotPresented) ?? false
         hasHonors = try container.decodeIfPresent(Bool.self, forKey: .hasHonors) ?? false
-        requirements = try container.decodeIfPresent([SubjectRequirement].self, forKey: .requirements) ?? []
         rounding = (try? container.decodeIfPresent(GradeRounding.self, forKey: .rounding)) ?? .standard
     }
 
     func isNotPresented(in session: Convocatoria) -> Bool {
         session == .ordinary ? ordinaryNotPresented : extraordinaryNotPresented
     }
-
-    /// Whether a requirement is marked as not met.
-    var missesARequirement: Bool { requirements.contains { $0.isMet == false } }
 
     /// Evaluated with continuous or single-exam schemes.
     var hasSchemes: Bool {
@@ -952,8 +946,6 @@ struct SubjectProgress {
     let isUndecided: Bool
     /// "No presentado" in this sitting: no grade, not a fail.
     let isNotPresented: Bool
-    /// A requirement (attendance…) marked as not met: failed whatever the grades.
-    let missesARequirement: Bool
     /// "Matrícula de honor", only once the final grade is in.
     let hasHonors: Bool
     /// What the engine aims at: the pass mark, lowered to what rounds up to it when the
@@ -978,15 +970,14 @@ struct SubjectProgress {
         self.session = session
         let threshold = root.minimumThreshold ?? 5
         let target = rounding.lowestPassing(threshold)
-        var status = root.status(inputs, threshold: target)
-        if record.missesARequirement { status = .impossible }
+        let status = root.status(inputs, threshold: target)
 
         self.inputs = inputs
         // Only the final grade goes on the transcript: while grades are missing, what's secured so
         // far shows as it is (a 3,4, not a 3), and the pass line is already in `target`.
         let isFinal = !inputs.isEmpty && inputs.count == root.allLeafNames().count
-        // A subject that's failed for a minimum or a requirement has no passing grade to show or
-        // to average, whatever its numbers add up to.
+        // A subject that's failed for a minimum has no passing grade to show or to average,
+        // whatever its numbers add up to.
         let failedGrade = Swift.max(threshold - 0.1, 0)
         let shown = { (value: Double) in
             guard isFinal else { return value }
@@ -1003,7 +994,6 @@ struct SubjectProgress {
         self.leafCount = root.allLeafNames().count
         self.isUndecided = record.isUndecided
         self.isNotPresented = record.isNotPresented(in: session)
-        self.missesARequirement = record.missesARequirement
         self.hasHonors = part == nil && record.hasHonors && leafCount > 0 && enteredCount == leafCount
     }
 
@@ -1022,12 +1012,4 @@ struct SubjectProgress {
             result[name] = min(Swift.max(entry.value / entry.outOf * max, 0), max)
         }
     }
-}
-
-/// A condition with no grade (compulsory attendance, handing in every lab…): failing one fails the
-/// subject. `isMet` is `nil` until it's known.
-struct SubjectRequirement: Identifiable, Codable, Equatable {
-    var id = UUID()
-    var name: String
-    var isMet: Bool?
 }

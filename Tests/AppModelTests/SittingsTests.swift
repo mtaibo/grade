@@ -4,7 +4,7 @@ import Testing
 @testable import AppModel
 
 /// What carries over to the extraordinary sitting, a sitting with its own evaluation, "no
-/// presentado", "matrícula de honor", requirements and how the transcript rounds.
+/// presentado", "matrícula de honor" and how the transcript rounds.
 struct SittingsTests {
     /// Labs 40 % (two lab notes) and a final exam 60 %.
     static func record(labs: Recovery? = nil, lab1: Recovery? = nil) -> SubjectRecord {
@@ -112,17 +112,6 @@ struct SittingsTests {
         #expect(!SubjectProgress(record).hasHonors)
     }
 
-    @Test func aMissedRequirementFailsWhateverTheGrades() {
-        var record = Self.record()
-        record.entries = ["P1": GradeEntry(value: 10, outOf: 10), "P2": GradeEntry(value: 10, outOf: 10), "Examen": GradeEntry(value: 10, outOf: 10)]
-        record.requirements = [SubjectRequirement(name: "Asistencia al 80 %")]
-        #expect(SubjectProgress(record).status == .guaranteed)
-        record.requirements[0].isMet = false
-        #expect(SubjectProgress(record).status == .impossible)
-        record.requirements[0].isMet = true
-        #expect(SubjectProgress(record).status == .guaranteed)
-    }
-
     /// 0,4 · 4,875 + 0,6 · 5 = 4,95: a pass only where the transcript rounds.
     @Test func roundingDecidesAPassAtTheLine() {
         var record = Self.record()
@@ -161,12 +150,11 @@ struct SittingsTests {
         record.extraordinaryRoot = record.subject.root
         record.ordinaryNotPresented = true
         record.hasHonors = true
-        record.requirements = [SubjectRequirement(name: "Asistencia", isMet: false)]
         let decoded = try JSONDecoder().decode(SubjectRecord.self, from: JSONEncoder().encode(record))
         #expect(decoded == record)
         let old = #"{"id":"\#(UUID().uuidString)","subject":{"name":"A","ectsCredits":6,"root":{"grade":{"_0":{"name":"Examen","scaleMax":10}}}}}"#
         let plain = try JSONDecoder().decode(SubjectRecord.self, from: Data(old.utf8))
-        #expect(plain.extraordinaryRoot == nil && plain.requirements.isEmpty && !plain.hasHonors)
+        #expect(plain.extraordinaryRoot == nil && !plain.hasHonors)
         #expect(plain.rounding == .standard)
         // What development builds saved while whole numbers were the default reads as the default.
         let developmentDefault = old.dropLast() + #","rounding":"unit"}"#

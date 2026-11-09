@@ -87,10 +87,6 @@ struct SubjectDetailView: View {
                     )
                 }
 
-                if !record.requirements.isEmpty {
-                    RequirementsCard(record: record) { library.update($0) }
-                }
-
                 if !others.isEmpty {
                     // A single-grade subject's one card needs no heading.
                     if !record.isSingleGrade {
@@ -470,45 +466,6 @@ private struct UndecidedCard: View {
     }
 }
 
-/// Conditions with no grade (attendance…), each marked met, not met or still unknown; one not
-/// met fails the subject.
-private struct RequirementsCard: View {
-    let record: SubjectRecord
-    let onChange: (SubjectRecord) -> Void
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Requisitos")
-                .font(.headline)
-            ForEach(record.requirements) { requirement in
-                HStack {
-                    Text(requirement.name)
-                        .font(.subheadline)
-                    Spacer(minLength: 8)
-                    Picker(requirement.name, selection: Binding(
-                        get: { requirement.isMet },
-                        set: { value in
-                            var changed = record
-                            if let index = changed.requirements.firstIndex(where: { $0.id == requirement.id }) {
-                                changed.requirements[index].isMet = value
-                            }
-                            onChange(changed)
-                        }
-                    )) {
-                        Text("Pendiente").tag(Bool?.none)
-                        Text("Cumplido").tag(Bool?.some(true))
-                        Text("No cumplido").tag(Bool?.some(false))
-                    }
-                    .labelsHidden()
-                    .tint(requirement.isMet == false ? .red : requirement.isMet == true ? .green : .secondary)
-                }
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .card()
-    }
-}
-
 /// The grade up front with its bar; tap to unfold what's secured, what's still reachable, the pass
 /// mark and what's needed.
 private struct GradeCard: View {
@@ -529,7 +486,6 @@ private struct GradeCard: View {
     /// For the verdict sentence: a sure pass or a lost one get a colour of their own.
     private var tint: Color {
         if progress.isNotPresented { return .secondary }
-        if progress.missesARequirement { return .red }
         guard hasGrades else { return .secondary }
         switch progress.status {
         case .guaranteed: return .green
@@ -638,9 +594,6 @@ private struct GradeCard: View {
     private var verdict: LocalizedStringKey? {
         if progress.isNotPresented {
             return "No presentado en la \(session.label.lowercased()): no cuenta como suspenso ni entra en la media."
-        }
-        if progress.missesARequirement {
-            return "No cumples un requisito de la asignatura, así que no apruebas aunque las notas lleguen."
         }
         guard hasGrades else { return nil }
         switch progress.status {
@@ -786,8 +739,6 @@ private struct ProgressPill: View {
     var body: some View {
         let (text, icon, tint): (String, String?, Color) = if progress.isNotPresented {
             ("No presentado", nil, .secondary)
-        } else if progress.missesARequirement {
-            ("No llega", "xmark.circle.fill", .red)
         } else if !hasGrades {
             ("Sin notas", nil, .secondary)
         } else {

@@ -212,7 +212,7 @@ private struct RecordGrade: View {
                 .foregroundStyle(GradeBand.color(for: progress.worst))
                 .fixedSize()
         } else {
-            Text(progress.missesARequirement ? "Suspensa" : progress.isUndecided ? "Por definir" : "En curso")
+            Text(progress.isUndecided ? "Por definir" : "En curso")
                 .foregroundStyle(.secondary)
                 .fixedSize()
         }

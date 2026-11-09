@@ -69,7 +69,6 @@ private struct SummaryCard: View {
 
     private var verdict: (text: String, tint: Color)? {
         if progress.isNotPresented { return ("No presentado", .secondary) }
-        if progress.missesARequirement { return ("No cumples un requisito", .red) }
         guard hasGrades else { return nil }
         switch progress.status {
         case .guaranteed:

@@ -234,7 +234,7 @@ struct SubjectEditorView: View {
                     Section {
                         NavigationLink {
                             StableDestination(value: draft) {
-                                AdvancedSubjectView(subject: $draft.subject, requirements: $draft.requirements, rounding: $draft.rounding, showsCredits: library.degree.usesCredits)
+                                AdvancedSubjectView(subject: $draft.subject, rounding: $draft.rounding, showsCredits: library.degree.usesCredits)
                             }
                         } label: {
                             Label("Avanzado", systemImage: "slider.horizontal.3")
@@ -305,9 +305,6 @@ struct SubjectEditorView: View {
         record.moveExamGradeDates()
         record.extraordinaryRoot?.sanitize()
         record.reassignGrades(openingIDs: openingIDs, openingExtraordinaryIDs: openingExtraordinaryIDs)
-        record.requirements = record.requirements
-            .map { var requirement = $0; requirement.name = requirement.name.trimmingCharacters(in: .whitespaces); return requirement }
-            .filter { !$0.name.isEmpty }
         library.update(record)
         dismiss()
     }
@@ -325,7 +322,6 @@ private extension EnvironmentValues {
 /// What rarely changes once a subject is set up: its credits and the grade it takes to pass.
 private struct AdvancedSubjectView: View {
     @Binding var subject: Subject
-    @Binding var requirements: [SubjectRequirement]
     @Binding var rounding: GradeRounding
     /// Off when the study has no credits.
     let showsCredits: Bool
@@ -355,7 +351,6 @@ private struct AdvancedSubjectView: View {
             } footer: {
                 Text("Cómo se pone la nota final en el acta. A la unidad, un 4,5 es un 5 y apruebas; a una décima, un 4,95 es un 5,0; truncando, un 4,99 se queda en 4,9. Suele decirlo la guía docente.")
             }
-            RequirementsSection(requirements: $requirements)
         }
         .navigationTitle("Avanzado")
         .navigationBarTitleDisplayMode(.inline)
@@ -1496,28 +1491,6 @@ private struct RecoverySection: View {
             }
         } footer: {
             Text("Si su nota de la ordinaria pasa a la extraordinaria. «Como siempre»: se guarda todo menos el examen final, salvo que la sección de arriba diga otra cosa. «No se puede recuperar»: se queda la de la ordinaria y no se cambia.")
-        }
-    }
-}
-
-/// "Requisitos": conditions with no grade, like compulsory attendance; one not met fails.
-private struct RequirementsSection: View {
-    @Binding var requirements: [SubjectRequirement]
-
-    var body: some View {
-        Section {
-            ForEach($requirements) { $requirement in
-                TextField("Asistencia mínima del 80 %", text: $requirement.name)
-                    .labelsHidden()
-            }
-            .onDelete { requirements.remove(atOffsets: $0) }
-            Button("Añadir requisito", systemImage: "plus.circle.fill") {
-                requirements.append(SubjectRequirement(name: ""))
-            }
-        } header: {
-            Text("Requisitos")
-        } footer: {
-            Text("Condiciones sin nota que hay que cumplir para aprobar, como la asistencia o entregar todas las prácticas. Se marcan en la asignatura; si una no se cumple, no apruebas.")
         }
     }
 }

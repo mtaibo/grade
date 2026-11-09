@@ -22,14 +22,6 @@ struct GradeRulesTests {
         #expect(abs(progress.worst - 4.9) < 0.0001)
     }
 
-    @Test func aMissedRequirementDoesNotAverageAsAPass() {
-        var record = record(["P": entry(8), "E": entry(8)])
-        record.requirements = [SubjectRequirement(name: "Asistencia", isMet: false)]
-        let summary = RecordSummary([Course(year: 1, subjects: [record])], degree: DegreeSettings())
-        #expect(abs((summary.average ?? 0) - 4.9) < 0.0001)
-        #expect(summary.passed.isEmpty)
-    }
-
     @Test func roundingDoesNotLiftAFailedSubjectBackToAPass() {
         var record = record(minimum: Minimum(threshold: 4, consequence: .fails), ["P": entry(10), "E": entry(3)])
         record.rounding = .unit
