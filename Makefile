@@ -1,4 +1,4 @@
-.PHONY: build test generate open clean todo device mac testflight web
+.PHONY: build test generate open clean device mac testflight web
 
 build:
 	swift build
@@ -15,9 +15,6 @@ open: generate
 clean:
 	swift package clean
 	rm -rf App/Grade.xcodeproj
-
-todo:
-	python3 scripts/todo_server.py
 
 # Builds the app, installs it on the first connected iPhone and opens it. Needs DEVELOPMENT_TEAM in
 # App/Config/Local.xcconfig and the iPhone paired (by cable, or on the same Wi-Fi once paired),
