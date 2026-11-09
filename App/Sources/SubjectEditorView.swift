@@ -960,9 +960,8 @@ private struct FormulaSections: View {
     /// How much of the final grade a variable can account for, estimated from the formula: one
     /// percentage for a fixed weight, a range when its weight moves with other grades.
     private func share(of key: String) -> String {
-        let range = formula.contributionRange(of: key)
-        let low = max(0, range.lowerBound) * 10, high = max(0, range.upperBound) * 10
-        return high - low < 0.5 ? "\(formatted(high))\u{00A0}%" : "\(formatted(low))–\(formatted(high))\u{00A0}%"
+        let share = formula.sharePercent(of: key)
+        return PartItem.percentText(lowest: share.lowest, highest: share.highest)
     }
 
     private func formatted(_ value: Double) -> String {

@@ -128,11 +128,7 @@ private struct PartSection: View {
 
     private var notes: [Grade] { item.node.grades }
 
-    private var weight: String? {
-        guard let percent = item.weightPercent else { return nil }
-        let text = percent.formatted(.number.precision(.fractionLength(0...1)))
-        return item.isMaximum ? "hasta \(text) %" : "\(text) %"
-    }
+    private var weight: String? { item.weightText }
 
     var body: some View {
         if notes.count == 1, let grade = notes.first {

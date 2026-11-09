@@ -103,3 +103,28 @@ struct EditingTests {
         #expect(node.asGrade?.id == nil && node.asGrade?.name == "Examen")
     }
 }
+
+/// The percentage shown on each part of a subject.
+struct PartWeightTests {
+    private static func parts(_ text: String, keys: Set<String>) throws -> [String: PartItem] {
+        let formula = Formula(
+            name: "Nota final",
+            expression: try Engine.Expression.parse(text, variables: keys),
+            variables: Dictionary(uniqueKeysWithValues: keys.map { ($0, Node.grade(Grade(name: $0))) })
+        )
+        return Dictionary(uniqueKeysWithValues: PartItem.items(of: .formula(formula)).map { ($0.id, $0) })
+    }
+
+    @Test func aWeightThatMovesWithAnotherGradeIsARange() throws {
+        // Paradigmas: the task consolidates up to 20 % and the exam is what's left up to 80 %.
+        let parts = try Self.parts("0,2 * P + 0,2 * T + (0,8 - T / 10 * 0,2) * E", keys: ["P", "T", "E"])
+        #expect(abs((parts["P"]?.weightPercent ?? 0) - 20) < 1e-9 && parts["P"]?.lowestPercent == nil)
+        #expect(abs((parts["T"]?.weightPercent ?? 0) - 20) < 1e-9 && abs((parts["T"]?.lowestPercent ?? 1)) < 1e-9)
+        #expect(abs((parts["E"]?.weightPercent ?? 0) - 80) < 1e-9 && abs((parts["E"]?.lowestPercent ?? 0) - 60) < 1e-9)
+    }
+
+    @Test func aPartThatNeverAddsDoesNotClaimAShare() throws {
+        let parts = try Self.parts("0,2 * P + (0,2 - T / 10 * 0,2) * T + (0,8 - T / 10 * 0,2) * E", keys: ["P", "T", "E"])
+        #expect(parts["T"]?.weightPercent == 0 && parts["T"]?.lowestPercent == nil)
+    }
+}

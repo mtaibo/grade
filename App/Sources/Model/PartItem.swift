@@ -6,10 +6,17 @@ struct PartItem: Identifiable {
     let id: String
     let node: Node
     let weightPercent: Double?
-    /// True when the share is a ceiling ("hasta 80 %") because the formula decides the real one.
-    var isMaximum = false
+    /// The least it can carry, when a formula moves its share with other grades ("60–80 %").
+    var lowestPercent: Double?
 
     var isExam: Bool { node.isFinalExamPart }
+
+    var weightText: String? { weightPercent.map { Self.percentText(lowest: lowestPercent, highest: $0) } }
+
+    static func percentText(lowest: Double?, highest: Double) -> String {
+        let number = { (value: Double) in value.formatted(.number.precision(.fractionLength(0...1))) }
+        return "\(lowest.map { "\(number($0))–" } ?? "")\(number(highest))\u{00A0}%"
+    }
 
     /// The cards for a sitting: the parts of its tree (the extraordinary's own, if it has one). With
     /// continuous and single-exam schemes, the chosen one's parts, or both's when the best counts
@@ -49,12 +56,23 @@ struct PartItem: Identifiable {
                 + formula.variables.keys.sorted().filter { !formula.expression.variableOrder.contains($0) }
             return keys.compactMap { key in
                 formula.variables[key].map {
-                    PartItem(id: key, node: $0, weightPercent: formula.maxShare(of: key) * 10, isMaximum: true)
+                    let share = formula.sharePercent(of: key)
+                    return PartItem(id: key, node: $0, weightPercent: share.highest, lowestPercent: share.lowest)
                 }
             }
         } else {
             return [PartItem(id: "root", node: root, weightPercent: nil)]
         }
+    }
+}
+
+extension Formula {
+    /// How much of the final grade a variable accounts for, in percent: `lowest` is only there when
+    /// its weight moves with other grades.
+    func sharePercent(of key: String) -> (lowest: Double?, highest: Double) {
+        let range = contributionRange(of: key)
+        let low = max(0, range.lowerBound) * 10, high = max(0, range.upperBound) * 10
+        return (high - low < 0.5 ? nil : low, high)
     }
 }
 

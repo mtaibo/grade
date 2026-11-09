@@ -822,8 +822,8 @@ private struct ExamCard: View {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text(exam?.node.title ?? "Examen")
                     .font(.headline)
-                if let weightPercent = exam?.weightPercent {
-                    WeightChip(percent: weightPercent, isMaximum: exam?.isMaximum == true)
+                if let weight = exam?.weightText {
+                    WeightChip(text: weight)
                 }
             }
             .padding(.bottom, 6)
@@ -1085,11 +1085,10 @@ private struct DueDateLabel: View {
 }
 
 private struct WeightChip: View {
-    let percent: Double
-    var isMaximum = false
+    let text: String
 
     var body: some View {
-        Text("\(isMaximum ? "hasta " : "")\(percent.formatted(.number.precision(.fractionLength(0...1)))) %")
+        Text(text)
             .font(.caption.weight(.semibold))
             .foregroundStyle(.secondary)
             .padding(.horizontal, 7)
@@ -1112,8 +1111,8 @@ private struct PartCard: View {
                 Text(item.node.title)
                     .font(.headline)
                     .multilineTextAlignment(.leading)
-                if let weightPercent = item.weightPercent {
-                    WeightChip(percent: weightPercent, isMaximum: item.isMaximum)
+                if let weight = item.weightText {
+                    WeightChip(text: weight)
                 }
                 Spacer(minLength: 8)
                 if let date = item.node.asGrade?.date {
@@ -1174,7 +1173,8 @@ private struct PartCard: View {
     private func accessibilityText(_ summary: PartSummary) -> String {
         var parts = [item.node.title]
         if let weight = item.weightPercent {
-            parts.append("\(item.isMaximum ? "hasta " : "")\(weight.formatted(.number.precision(.fractionLength(0...1)))) por ciento")
+            let number = { (value: Double) in value.formatted(.number.precision(.fractionLength(0...1))) }
+            parts.append(item.lowestPercent.map { "entre \(number($0)) y \(number(weight)) por ciento" } ?? "\(number(weight)) por ciento")
         }
         parts.append(summary.hasAnyGrade ? summary.text : "sin notas")
         if let group = item.node.asGroup, group.children.allSatisfy({ $0.node.asGrade != nil }) {
