@@ -113,6 +113,8 @@ targets:
       - path: Watch
       - path: Sources/Model
       - path: Sources/Shared
+      # The model it shares reads the guides' file dates, which Apple asks each app to declare.
+      - path: Sources/PrivacyInfo.xcprivacy
     configFiles:
       Debug: Config/Shared.xcconfig
       Release: Config/Shared.xcconfig
