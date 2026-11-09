@@ -152,7 +152,6 @@ struct SubjectEditorView: View {
                         InlineField("Nombre") {
                             TextField("Nombre", text: $draft.subject.name)
                                 .multilineTextAlignment(.trailing)
-                                .foregroundStyle(.secondary)
                         }
                     } footer: {
                         Text("Nombre de la asignatura. \(Device.tap) para cambiarlo.")
@@ -231,17 +230,7 @@ struct SubjectEditorView: View {
                         }
                     }
 
-                    Section {
-                        NavigationLink {
-                            StableDestination(value: draft) {
-                                AdvancedSubjectView(subject: $draft.subject, rounding: $draft.rounding, showsCredits: library.degree.usesCredits)
-                            }
-                        } label: {
-                            Label("Avanzado", systemImage: "slider.horizontal.3")
-                        }
-                    } footer: {
-                        Text("Opciones extra para personalizar la asignatura.")
-                    }
+                    SubjectOptionsSections(subject: $draft.subject, rounding: $draft.rounding, showsCredits: library.degree.usesCredits)
                 }
                 .environment(\.revealFormulaField) {
                     withAnimation(.snappy) { proxy.scrollTo(FormulaSections.fieldID, anchor: UnitPoint(x: 0.5, y: 0.25)) }
@@ -319,41 +308,38 @@ private extension EnvironmentValues {
     @Entry var revealFormulaField: (() -> Void)?
 }
 
-/// What rarely changes once a subject is set up: its credits and the grade it takes to pass.
-private struct AdvancedSubjectView: View {
+/// What rarely changes once a subject is set up: its credits, the grade it takes to pass and how
+/// the final grade is rounded.
+private struct SubjectOptionsSections: View {
     @Binding var subject: Subject
     @Binding var rounding: GradeRounding
     /// Off when the study has no credits.
     let showsCredits: Bool
 
     var body: some View {
-        Form {
-            if showsCredits {
-                Section {
-                    Stepper(value: $subject.ectsCredits, in: 0...30, step: 0.5) {
-                        LabeledContent("Créditos ECTS", value: subject.ectsCredits.formatted())
-                    }
-                } footer: {
-                    Text("Los créditos de la asignatura: pesan en la media del expediente y cuentan en los créditos superados.")
-                }
-            }
+        if showsCredits {
             Section {
-                Stepper(value: $subject.root.passThreshold, in: 0...10, step: 0.5) {
-                    LabeledContent("Nota para aprobar", value: subject.root.passThreshold.formatted())
+                Stepper(value: $subject.ectsCredits, in: 0...30, step: 0.5) {
+                    LabeledContent("Créditos ECTS", value: subject.ectsCredits.formatted())
                 }
             } footer: {
-                Text("La nota final con la que se aprueba, sobre 10. Casi siempre un 5.")
-            }
-            Section {
-                Picker("Redondeo", selection: $rounding) {
-                    ForEach(GradeRounding.allCases) { Text($0.label).tag($0) }
-                }
-            } footer: {
-                Text("Cómo se pone la nota final en el acta. A la unidad, un 4,5 es un 5 y apruebas; a una décima, un 4,95 es un 5,0; truncando, un 4,99 se queda en 4,9. Suele decirlo la guía docente.")
+                Text("Los créditos de la asignatura: pesan en la media del expediente y cuentan en los créditos superados.")
             }
         }
-        .navigationTitle("Avanzado")
-        .navigationBarTitleDisplayMode(.inline)
+        Section {
+            Stepper(value: $subject.root.passThreshold, in: 0...10, step: 0.5) {
+                LabeledContent("Nota para aprobar", value: subject.root.passThreshold.formatted())
+            }
+        } footer: {
+            Text("La nota final con la que se aprueba, sobre 10. Casi siempre un 5.")
+        }
+        Section {
+            Picker("Redondeo", selection: $rounding) {
+                ForEach(GradeRounding.allCases) { Text($0.label).tag($0) }
+            }
+        } footer: {
+            Text("Cómo se pone la nota final en el acta. A la unidad, un 4,5 es un 5 y apruebas; a una décima, un 4,95 es un 5,0; truncando, un 4,99 se queda en 4,9. Suele decirlo la guía docente.")
+        }
     }
 }
 
