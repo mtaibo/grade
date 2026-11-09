@@ -98,7 +98,7 @@ private extension VerticalAlignment {
         static func defaultValue(in context: ViewDimensions) -> CGFloat { context[VerticalAlignment.center] }
     }
 
-    /// The middle of the upcoming list's first page, which the month in a wide window sits level with.
+    /// The middle of the upcoming list, which the month in a wide window sits level with.
     static var firstPageCenter: VerticalAlignment { VerticalAlignment(FirstPageCenter.self) }
 }
 
@@ -106,7 +106,7 @@ private extension VerticalAlignment {
 /// next six things, three more at a time with "Ver más". On the iPhone it opens on the month alone
 /// (in a narrow Mac window, on the list alone): unfolding one from the chevron by its title folds the
 /// other, and a day picked on the month shows that day's dates above the list. In a wide window (the Mac) the month and the list sit side by side instead,
-/// both always shown, the month level with the middle of the list's first page and the picked day under it.
+/// both always shown, the month level with the middle of the list, which has its own scroll, and the picked day under the month.
 /// The filter at the top right picks which kinds show.
 struct CalendarView: View {
     /// Whether the Calendario tab is the one on screen: leaving it puts the month and the list back as they open,
@@ -118,6 +118,8 @@ struct CalendarView: View {
     /// The scroll view's size: its height lets the empty state sit in the middle of the screen, and
     /// its width decides whether the month and the list fit side by side.
     @State private var viewportSize: CGSize = .zero
+    /// How tall a date is in the wide layout's list, which is sized in dates.
+    @State private var rowHeight: CGFloat = 72
     /// How many upcoming dates the list shows; "Ver más" adds `pageSize` more.
     @State private var upcomingCount = CalendarView.initialCount
     @State private var isMonthShown = CalendarView.opensOnMonth
@@ -139,6 +141,11 @@ struct CalendarView: View {
     /// From this width on (a wide Mac window) the month and the list sit side by side.
     private static let wideWidth: CGFloat = 800
     private static let monthWidth: CGFloat = 360
+    /// What the wide layout takes up above and below the list: its margins and the title.
+    private static let wideChromeHeight: CGFloat = 124
+    /// The dates the wide layout's list shows whole; half of the next one peeks in below them.
+    private static let fullRows = 5
+    private static let rowSpacing: CGFloat = 10
     /// The month and the list together, margins included, so a wide window keeps some air at the sides.
     private static let wideContentWidth: CGFloat = 860
 
@@ -234,11 +241,7 @@ struct CalendarView: View {
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 4)
             } else {
-                VStack(alignment: .leading, spacing: 10) {
-                    ForEach(visible.prefix(Self.initialCount)) { deadlineRow($0) }
-                }
-                .alignmentGuide(.firstPageCenter) { $0[VerticalAlignment.center] }
-                ForEach(visible.dropFirst(Self.initialCount)) { deadlineRow($0) }
+                ForEach(visible) { deadlineRow($0) }
                 if hasMore {
                     Button {
                         withAnimation { upcomingCount += Self.pageSize }
@@ -255,6 +258,35 @@ struct CalendarView: View {
                 }
             }
         }
+    }
+
+    /// The wide layout's list: its own scroll, with room for five dates and half of the next, so
+    /// it's plain there are more. Each scroll stops on a row and the month beside it stays where it
+    /// is. In a short window it's shorter, so the page always fits: a page with room to scroll
+    /// would take over the scroll when the list reaches its end.
+    private func upcomingScroll(_ upcoming: [Deadline]) -> some View {
+        let rows = min(upcoming.count, Self.fullRows)
+        let height = CGFloat(rows) * rowHeight + CGFloat(max(rows - 1, 0)) * Self.rowSpacing
+            + (upcoming.count > rows ? Self.rowSpacing + rowHeight / 2 : 0)
+        return ScrollView {
+            VStack(spacing: Self.rowSpacing) {
+                ForEach(upcoming) { deadline in
+                    deadlineRow(deadline)
+                        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in
+                            if deadline.id == upcoming.first?.id { rowHeight = height }
+                        }
+                }
+            }
+            // Room for the scroll bar, which goes over the content.
+            .padding(.trailing, 16)
+            .scrollTargetLayout()
+            .macThinScrollBar()
+        }
+        .scrollIndicators(.visible)
+        .scrollBounceBehavior(.always, axes: .vertical)
+        .scrollTargetBehavior(.viewAligned)
+        .frame(height: min(height, max(viewportSize.height - Self.wideChromeHeight, 200)))
+        .alignmentGuide(.firstPageCenter) { $0[VerticalAlignment.center] }
     }
 
     private func deadlineRow(_ deadline: Deadline) -> some View {
@@ -297,8 +329,8 @@ struct CalendarView: View {
                                 .accessibilityAddTraits(.isHeader)
                                 .padding(.leading, 4)
 
-                            // Lined up on the list's first page alone, so "Ver más" only makes the list longer
-                            // and a picked day only adds to the column: the month stays where it is.
+                            // Lined up on the list, whose height never changes, so a picked day only adds to the column: the
+                            // month stays where it is.
                             HStack(alignment: .firstPageCenter, spacing: 28) {
                                 VStack(alignment: .leading, spacing: 20) {
                                     MonthCalendar(dayKinds: dayKinds(deadlines), selection: $selectedDay)
@@ -310,10 +342,16 @@ struct CalendarView: View {
                                 }
                                 .frame(width: Self.monthWidth)
 
-                                upcomingRows(visible, hasMore: hasMore, isFilteredOut: isFiltered && deadlines.isEmpty)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                    .accessibilityElement(children: .contain)
-                                    .accessibilityLabel("Próximas fechas")
+                                Group {
+                                    if upcoming.isEmpty {
+                                        upcomingRows([], hasMore: false, isFilteredOut: isFiltered && deadlines.isEmpty)
+                                    } else {
+                                        upcomingScroll(upcoming)
+                                    }
+                                }
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .accessibilityElement(children: .contain)
+                                .accessibilityLabel("Próximas fechas")
                             }
                         }
                     } else {
@@ -353,6 +391,8 @@ struct CalendarView: View {
                 .macReadableWidth(isWide ? Self.wideContentWidth : 760)
                 .frame(maxWidth: .infinity, minHeight: viewportSize.height, alignment: .top)
             }
+            // In a wide window only the list bounces, unless the page really has somewhere to go.
+            .scrollBounceBehavior(isWide ? .basedOnSize : .automatic, axes: .vertical)
             .onGeometryChange(for: CGSize.self) { $0.size } action: { viewportSize = $0 }
             .background(Color(.systemGroupedBackground))
             .navigationTitle("")

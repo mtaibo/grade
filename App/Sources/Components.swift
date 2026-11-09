@@ -54,6 +54,16 @@ extension View {
         #endif
     }
 
+    /// A thinner scroll bar for the `ScrollView` holding this view. Goes on its content.
+    @ViewBuilder
+    func macThinScrollBar() -> some View {
+        #if os(macOS)
+        background(ThinScrollBar())
+        #else
+        self
+        #endif
+    }
+
     /// One width for every row's icon, so their text lines up. The iPhone's lists already do this.
     @ViewBuilder
     func macRowIcon() -> some View {

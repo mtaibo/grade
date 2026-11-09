@@ -45,6 +45,23 @@ struct Form<Content: View>: View {
     }
 }
 
+/// The system's scroll bar at its small size, shown for a moment so it's clear the list goes on.
+struct ThinScrollBar: NSViewRepresentable {
+    func makeNSView(context: Context) -> FixView { FixView() }
+    func updateNSView(_ view: FixView, context: Context) {}
+
+    final class FixView: NSView {
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            DispatchQueue.main.async { [weak self] in
+                guard let scrollView = self?.enclosingScrollView else { return }
+                scrollView.verticalScroller?.controlSize = .small
+                scrollView.flashScrollers()
+            }
+        }
+    }
+}
+
 /// Keeps the sidebar's toggle beside the traffic lights, which SwiftUI has no modifier for. The toolbar
 /// moves it into a » menu on the far side of the window when the sidebar is too narrow for it, and when
 /// the window opens with the sidebar folded. Goes in the background of the tabs; rebuilt tabs need a new one.
