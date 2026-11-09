@@ -19,6 +19,7 @@ struct AccountView: View {
     @ScaledMetric(relativeTo: .largeTitle) private var titleSize = 40
 
     static let website = URL(string: "https://www.migueltaibo.com")!
+    static let privacyPolicy = URL(string: "https://grade.migueltaibo.com/privacidad/")!
 
     private var version: String {
         let info = Bundle.main.infoDictionary
@@ -159,6 +160,8 @@ struct AccountView: View {
                         }
                     }
                     .foregroundStyle(.primary)
+                    Link("Política de privacidad", destination: Self.privacyPolicy)
+                        .foregroundStyle(.primary)
                     NavigationLink {
                         RoadmapView()
                     } label: {
