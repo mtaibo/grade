@@ -6,7 +6,7 @@
 
 <br/>
 
-![Status](https://img.shields.io/badge/status-prototype-orange)
+![Version](https://img.shields.io/badge/version-1.0-brightgreen)
 ![Made with](https://img.shields.io/badge/made%20with-Swift-orange)
 ![Platform](https://img.shields.io/badge/platform-iOS%20%C2%B7%20macOS%20%C2%B7%20watchOS-lightgrey)
 
