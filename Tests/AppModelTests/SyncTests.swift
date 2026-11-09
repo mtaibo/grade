@@ -38,6 +38,30 @@ struct SyncScheduleTests {
     }
 }
 
+/// What the app sends on opening, when a save failed and nothing is waiting any more.
+struct SyncLedgerDifferenceTests {
+    private let item = SyncItem(name: "study", data: Data([1]))
+
+    private func ledger(_ versions: [String: String]) -> SyncLedger {
+        var ledger = SyncLedger()
+        ledger.entries = versions.mapValues { .init(version: $0, systemFields: nil) }
+        return ledger
+    }
+
+    @Test func aConfirmedItemDoesNotDiffer() {
+        #expect(!ledger(["study": item.version]).differs(from: ["study": item]))
+    }
+
+    @Test func aSaveThatNeverWasConfirmedDiffers() {
+        #expect(ledger(["study": "older"]).differs(from: ["study": item]))
+        #expect(ledger([:]).differs(from: ["study": item]))
+    }
+
+    @Test func aDeleteThatNeverWentUpDiffers() {
+        #expect(ledger(["study": item.version, "subject-gone": "1"]).differs(from: ["study": item]))
+    }
+}
+
 /// How much of an item travels inside its record.
 struct SyncItemTests {
     @Test func whatIsSmallGoesInsideTheRecord() {

@@ -121,7 +121,7 @@ struct GradeApp: App {
             switch phase {
             case .active:
                 library.reloadIfNeeded()
-                Task { await cloud.refresh() }
+                Task { await cloud.refreshOnOpening() }
             case .background:
                 cloud.syncBeforeSuspension()
             default:

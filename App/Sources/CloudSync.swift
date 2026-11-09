@@ -57,6 +57,9 @@ final class CloudSync: NSObject {
     /// The version of each record on its way up, recorded once it's confirmed.
     @ObservationIgnored private var inFlight: [String: String] = [:]
     @ObservationIgnored private var isSyncing = false
+    /// iCloud refused a save that uses `payloadData`: until the app closes, everything goes as an
+    /// asset, which every schema has. Not stored, so each launch tries the quick way again.
+    @ObservationIgnored private var sendsOnlyAssets = false
 
     init(library: Library) {
         self.library = library
@@ -103,7 +106,7 @@ final class CloudSync: NSObject {
         if state.engine == nil {
             engine.state.add(pendingDatabaseChanges: [.saveZone(CKRecordZone(zoneID: Self.zoneID))])
         }
-        Task { await refresh() }
+        Task { await refreshOnOpening() }
     }
 
     // MARK: Going up
@@ -206,6 +209,14 @@ final class CloudSync: NSObject {
         if state.ledger.hasFetched, state.schedule.hasPendingChanges || state.ledger.entries.isEmpty {
             schedulePending()
         }
+    }
+
+    /// The app has come on screen. A save that failed left nothing waiting in `SyncSchedule`, so
+    /// whatever still differs from iCloud goes up now rather than with the next change.
+    func refreshOnOpening() async {
+        await refresh()
+        guard status == .upToDate, let items = try? library.syncItems(), state.ledger.differs(from: items) else { return }
+        await syncNow()
     }
 
     @discardableResult
@@ -319,7 +330,7 @@ final class CloudSync: NSObject {
     /// than an asset (uploaded and downloaded apart from the record); the rest goes as a file.
     private func filledRecord(for item: SyncItem) -> CKRecord? {
         let record = record(named: item.name)
-        if let data = item.inlineData {
+        if !sendsOnlyAssets, let data = item.inlineData {
             record["payloadData"] = data as NSData
             record["payload"] = nil
         } else {
@@ -337,7 +348,8 @@ final class CloudSync: NSObject {
                 }
             }
             record["payload"] = CKAsset(fileURL: url)
-            record["payloadData"] = nil
+            // Not even to clear it: a schema that doesn't have the field can refuse that too.
+            if !sendsOnlyAssets { record["payloadData"] = nil }
         }
         record["modifiedAt"] = (state.ledger.lastChange ?? .now) as NSDate
         inFlight[item.name] = item.version
@@ -346,8 +358,9 @@ final class CloudSync: NSObject {
 
     // MARK: Coming down
 
-    /// What a record holds, whichever way it went up. The asset goes first: every save here clears
-    /// the other field, and a device still on an older version only ever writes the asset.
+    /// What a record holds, whichever way it went up. The asset goes first: a save inside the record
+    /// clears it, while one as an asset can leave the other field behind (an older version of the
+    /// app, or `sendsOnlyAssets`).
     private func payload(of record: CKRecord) -> Data? {
         if let url = (record["payload"] as? CKAsset)?.fileURL { return try? Data(contentsOf: url) }
         return record["payloadData"] as? Data
@@ -400,6 +413,8 @@ final class CloudSync: NSObject {
         for id in event.deletedRecordIDs { state.ledger.entries[id.recordName] = nil }
         var retries: [CKSyncEngine.PendingRecordZoneChange] = []
         var pendingZone = false
+        // Decided before the loop: every record of the batch was refused for the same reason.
+        let canFallBack = !sendsOnlyAssets
         for failure in event.failedRecordSaves {
             let name = failure.record.recordID.recordName
             inFlight[name] = nil
@@ -426,6 +441,13 @@ final class CloudSync: NSObject {
                 retries.append(.saveRecord(failure.record.recordID))
             case .quotaExceeded:
                 status = .quotaExceeded
+            case .invalidArguments where canFallBack, .serverRejectedRequest where canFallBack:
+                // Most likely a Production schema that doesn't have `payloadData` yet. Asked for
+                // once, like a change: `syncNow` picks it up as soon as this send ends.
+                Self.log.error("Going back to assets, iCloud refused \(name): \(failure.error)")
+                sendsOnlyAssets = true
+                state.schedule.recordChange(at: .now)
+                retries.append(.saveRecord(failure.record.recordID))
             case .networkFailure, .networkUnavailable, .zoneBusy, .serviceUnavailable, .notAuthenticated, .operationCancelled, .requestRateLimited:
                 // The engine tries these again by itself.
                 break

@@ -115,6 +115,12 @@ struct SyncLedger: Codable, Equatable {
         return (saves.sorted(), deletes.sorted())
     }
 
+    /// Whether anything here isn't in iCloud yet, whatever happened to the change that caused it.
+    func differs(from items: [String: SyncItem]) -> Bool {
+        let pending = pendingChanges(for: items)
+        return !pending.saves.isEmpty || !pending.deletes.isEmpty
+    }
+
     func isModifiedHere(_ name: String, in items: [String: SyncItem]) -> Bool {
         items[name]?.version != entries[name]?.version
     }
