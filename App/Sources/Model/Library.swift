@@ -58,6 +58,8 @@ struct SubjectRecord: Identifiable, Codable, Equatable {
     var extraordinaryNotPresented = false
     /// "Matrícula de honor" on the final grade.
     var hasHonors = false
+    /// Free text the student keeps with the subject.
+    var annotations = ""
     /// How the final grade goes on the transcript: each subject's guide says its own.
     var rounding = GradeRounding.standard
 
@@ -86,6 +88,7 @@ struct SubjectRecord: Identifiable, Codable, Equatable {
         ordinaryNotPresented = try container.decodeIfPresent(Bool.self, forKey: .ordinaryNotPresented) ?? false
         extraordinaryNotPresented = try container.decodeIfPresent(Bool.self, forKey: .extraordinaryNotPresented) ?? false
         hasHonors = try container.decodeIfPresent(Bool.self, forKey: .hasHonors) ?? false
+        annotations = try container.decodeIfPresent(String.self, forKey: .annotations) ?? ""
         rounding = (try? container.decodeIfPresent(GradeRounding.self, forKey: .rounding)) ?? .standard
     }
 
@@ -467,6 +470,10 @@ final class Library {
             case .extraordinary: record.extraordinaryEntries[leaf] = entry
             }
         }
+    }
+
+    func setAnnotations(_ text: String, in recordID: SubjectRecord.ID) {
+        mutateRecord(recordID) { $0.annotations = text }
     }
 
     func setExamDate(_ date: Date?, for session: Convocatoria, in recordID: SubjectRecord.ID) {

@@ -150,11 +150,12 @@ struct SittingsTests {
         record.extraordinaryRoot = record.subject.root
         record.ordinaryNotPresented = true
         record.hasHonors = true
+        record.annotations = "Preguntar por la práctica 2"
         let decoded = try JSONDecoder().decode(SubjectRecord.self, from: JSONEncoder().encode(record))
         #expect(decoded == record)
         let old = #"{"id":"\#(UUID().uuidString)","subject":{"name":"A","ectsCredits":6,"root":{"grade":{"_0":{"name":"Examen","scaleMax":10}}}}}"#
         let plain = try JSONDecoder().decode(SubjectRecord.self, from: Data(old.utf8))
-        #expect(plain.extraordinaryRoot == nil && !plain.hasHonors)
+        #expect(plain.extraordinaryRoot == nil && plain.annotations.isEmpty && !plain.hasHonors)
         #expect(plain.rounding == .standard)
         // What development builds saved while whole numbers were the default reads as the default.
         let developmentDefault = old.dropLast() + #","rounding":"unit"}"#

@@ -116,11 +116,16 @@ struct SubjectDetailView: View {
                     }
                     .popoverTip(isSimulating ? nil : tips.currentTip as? GradeEntryTip, arrowEdge: .bottom)
                 }
+
+                if !isSimulating {
+                    AnnotationsSection(recordID: recordID, stored: record.annotations)
+                }
             }
             .padding(.horizontal)
             .padding(.bottom, 24)
             .macReadableWidth()
         }
+        .scrollDismissesKeyboard(.interactively)
         // Just enough blur to set the card apart, animated together with it; the content only, so
         // the background stays solid out to the screen's edges.
         .blur(radius: gradeTarget == nil ? 0 : 2.5)
@@ -463,6 +468,55 @@ private struct UndecidedCard: View {
                 .foregroundStyle(.secondary)
         }
         .card()
+    }
+}
+
+/// "Anotaciones": anything the student wants to keep with the subject. Saved shortly after they
+/// stop typing, so a keystroke doesn't rewrite the library and send it to iCloud.
+private struct AnnotationsSection: View {
+    let recordID: SubjectRecord.ID
+    let stored: String
+
+    @Environment(Library.self) private var library
+    @State private var text = ""
+    @FocusState private var isFocused: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Anotaciones")
+                .font(.title3.bold())
+                .padding(.top, 8)
+                .padding(.horizontal, 4)
+            TextField("Escribe lo que quieras", text: $text, axis: .vertical)
+                .lineLimit(3...)
+                .focused($isFocused)
+                .accessibilityLabel("Anotaciones")
+                .card()
+        }
+        .toolbar {
+            #if os(iOS)
+            // A multi-line field keeps the return key for new lines.
+            if isFocused {
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("Hecho") { isFocused = false }
+                }
+            }
+            #endif
+        }
+        .onAppear { text = stored }
+        // From another device, unless it would pull the text from under the cursor.
+        .onChange(of: stored) { if !isFocused { text = stored } }
+        .task(id: text) {
+            try? await Task.sleep(for: .milliseconds(600))
+            if !Task.isCancelled { save() }
+        }
+        .onChange(of: isFocused) { if !isFocused { save() } }
+        .onDisappear(perform: save)
+    }
+
+    private func save() {
+        if text != stored { library.setAnnotations(text, in: recordID) }
     }
 }
 
