@@ -7,6 +7,12 @@ options:
     watchOS: "26.0"
     macOS: "27.0"
 
+# Not set for us: Debug and Release builds keep their iCloud state apart with it (see CloudSync).
+settings:
+  configs:
+    Debug:
+      SWIFT_ACTIVE_COMPILATION_CONDITIONS: DEBUG
+
 packages:
   grade:
     path: ..
