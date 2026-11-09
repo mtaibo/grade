@@ -348,10 +348,17 @@ struct HomeView: View {
                 }
                 .macSheetSize(height: 420)
             }
+            #if os(macOS)
+            .navigationDestination(isPresented: Binding(get: { editing != nil }, set: { if !$0 { editing = nil } })) {
+                StableDestination(value: editing?.id, isCounted: false) {
+                    if let editing { SubjectEditorView(record: editing) }
+                }
+            }
+            #else
             .sheet(item: $editing) { record in
                 SubjectEditorView(record: record)
-                    .macSheetSize(width: 640, height: 760)
             }
+            #endif
             .sheet(item: $customizing) { record in
                 CustomizeSubjectView(record: record)
                     .macSheetSize()

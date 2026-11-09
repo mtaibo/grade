@@ -57,10 +57,6 @@ struct SubjectDetailView: View {
                         .background(.orange.opacity(0.14), in: Capsule())
                         .frame(maxWidth: .infinity, alignment: .trailing)
                         .accessibilityLabel("Simulador: no se guarda nada")
-                        #if os(macOS)
-                        // Level with the close button floating at the other corner.
-                        .padding(.top, 22)
-                        #endif
                 }
                 Text(record.subject.name)
                     .font(.largeTitle.bold())
@@ -137,11 +133,6 @@ struct SubjectDetailView: View {
         #if os(macOS)
         // Without one the bar shows the app's name. The subject's own is at the top of the screen.
         .navigationTitle("")
-        // A sheet here: its bars would be a strip across the top and another across the bottom.
-        .toolbar(isSimulating ? .hidden : .automatic, for: .windowToolbar)
-        .overlay(alignment: .topLeading) {
-            if isSimulating { macSimulatorClose }
-        }
         #endif
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(isSimulating)
@@ -152,13 +143,11 @@ struct SubjectDetailView: View {
             if isEditing { EvaluationTip().invalidate(reason: .actionPerformed) }
         }
         .toolbar {
-            #if os(iOS)
             if isSimulating {
-                ToolbarItem(placement: .cancellationAction) {
+                ToolbarItem(placement: .closeAction) {
                     Button("Salir del simulador", systemImage: "xmark") { dismiss() }
                 }
             }
-            #endif
             if !isSimulating {
             ToolbarItem(placement: .primaryAction) {
                 Menu {
@@ -228,7 +217,24 @@ struct SubjectDetailView: View {
             }
             }
         }
-        .fullScreenCover(isPresented: Binding(get: { simulation != nil }, set: { if !$0 { simulation = nil } })) {
+        #if os(macOS)
+        // Pushed in the window, like the other menus: only its bar shows buttons at the top.
+        .navigationDestination(isPresented: isSimulatorOpen) {
+            StableDestination(value: recordID, isCounted: false) {
+                if let simulation {
+                    SubjectDetailView(recordID: recordID, term: term)
+                        .environment(simulation)
+                        .environment(\.isSimulating, true)
+                }
+            }
+        }
+        .navigationDestination(isPresented: $isEditing) {
+            StableDestination(value: recordID, isCounted: false) {
+                SubjectEditorView(record: record, term: scope == nil ? nil : term)
+            }
+        }
+        #else
+        .fullScreenCover(isPresented: isSimulatorOpen) {
             if let simulation {
                 NavigationStack {
                     SubjectDetailView(recordID: recordID, term: term)
@@ -240,8 +246,8 @@ struct SubjectDetailView: View {
         .sheet(isPresented: $isEditing) {
             // Opened from a term, the editor starts on that term's evaluation.
             SubjectEditorView(record: record, term: scope == nil ? nil : term)
-                .macSheetSize(width: 640, height: 760)
         }
+        #endif
         .sheet(isPresented: $isEditingDates) {
             DatesSheet(recordID: recordID)
                 .macSheetSize()
@@ -273,22 +279,9 @@ struct SubjectDetailView: View {
 }
 
 extension SubjectDetailView {
-    #if os(macOS)
-    /// Floats over the content, level with the "Simulador" label; Esc closes too.
-    private var macSimulatorClose: some View {
-        Button { dismiss() } label: {
-            Image(systemName: "xmark")
-                .font(.body.weight(.semibold))
-                .frame(width: 24, height: 24)
-        }
-        .buttonStyle(.glass)
-        .buttonBorderShape(.circle)
-        .controlSize(.large)
-        .keyboardShortcut(.cancelAction)
-        .accessibilityLabel("Salir del simulador")
-        .padding(16)
+    private var isSimulatorOpen: Binding<Bool> {
+        Binding(get: { simulation != nil }, set: { if !$0 { simulation = nil } })
     }
-    #endif
 
     /// One animation in and one out: the card slides from the top while the screen behind blurs
     /// slightly and dims.

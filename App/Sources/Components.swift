@@ -72,15 +72,91 @@ extension View {
 /// So its parent only rebuilds it when `value`, what the screen shows and edits, has changed.
 struct StableDestination<Value: Equatable, Content: View>: View, Equatable {
     let value: Value
+    /// Whether it's one of the editor's inner screens, which need the way back.
+    var isCounted = true
     @ViewBuilder let content: () -> Content
 
-    var body: some View { content() }
+    #if os(macOS)
+    @Environment(MacPushCount.self) private var pushes: MacPushCount?
+    #endif
+
+    var body: some View {
+        content()
+            #if os(macOS)
+            .onAppear { if isCounted { pushes?.open += 1 } }
+            .onDisappear { if isCounted { pushes?.open -= 1 } }
+            #endif
+    }
 
     static func == (lhs: Self, rhs: Self) -> Bool {
         #if os(macOS)
         lhs.value == rhs.value
         #else
         false
+        #endif
+    }
+}
+
+#if os(macOS)
+/// Counts the `StableDestination`s open above the editor, which hides the way back for its own ✗:
+/// on the Mac that reaches the screens pushed from it too, and its `onDisappear` doesn't fire when
+/// one is pushed. Lives at the root because pushed screens inherit from the window's stack, not
+/// from the screen they were pushed from.
+@Observable
+final class MacPushCount {
+    var open = 0
+}
+#endif
+
+/// The ✗ and the blue ✓ of a screen that edits something. The roles draw them on the iPhone; on
+/// the Mac they come out as the words «Cerrar» and «Aceptar».
+struct CloseToolbarButton: View {
+    let action: () -> Void
+
+    var body: some View {
+        #if os(macOS)
+        Button("Cerrar", systemImage: "xmark", action: action)
+            .labelStyle(.iconOnly)
+            .keyboardShortcut(.cancelAction)
+        #else
+        Button(role: .close, action: action)
+        #endif
+    }
+}
+
+struct SaveToolbarButton: View {
+    let action: () -> Void
+
+    var body: some View {
+        #if os(macOS)
+        Button("Guardar", systemImage: "checkmark", action: action)
+            .labelStyle(.iconOnly)
+            .buttonStyle(.glassProminent)
+            .buttonBorderShape(.circle)
+            .tint(.blue)
+        #else
+        Button(role: .confirm, action: action)
+            .tint(.blue)
+        #endif
+    }
+}
+
+extension ToolbarItemPlacement {
+    /// Where those two go: a sheet's places on the iPhone; on the Mac,
+    /// where a sheet would put them in a strip along its bottom, the window's bar.
+    static var closeAction: ToolbarItemPlacement {
+        #if os(macOS)
+        .navigation
+        #else
+        .cancellationAction
+        #endif
+    }
+
+    static var saveAction: ToolbarItemPlacement {
+        #if os(macOS)
+        .primaryAction
+        #else
+        .confirmationAction
         #endif
     }
 }

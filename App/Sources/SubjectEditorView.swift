@@ -135,6 +135,21 @@ struct SubjectEditorView: View {
             && sectionsWithOffWeights.isEmpty
     }
 
+    #if os(macOS)
+    @Environment(MacPushCount.self) private var pushes: MacPushCount?
+    #endif
+
+    /// Its own stack where it's a sheet; on the Mac it's pushed in the window's, like the other
+    /// menus, because only the window's bar shows buttons at the top.
+    @ViewBuilder
+    private func stack<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+        #if os(macOS)
+        content()
+        #else
+        NavigationStack { content() }
+        #endif
+    }
+
     private var sectionsWithOffWeights: [String] {
         guard !draft.isUndecided else { return [] }
         let name = draft.subject.name
@@ -145,7 +160,7 @@ struct SubjectEditorView: View {
     }
 
     var body: some View {
-        NavigationStack {
+        stack {
             ScrollViewReader { proxy in
                 Form {
                     Section {
@@ -239,13 +254,15 @@ struct SubjectEditorView: View {
             .dismissesKeyboardOnBackgroundTap()
             .navigationTitle("Editar asignatura")
             .navigationBarTitleDisplayMode(.inline)
+            #if os(macOS)
+            .navigationBarBackButtonHidden((pushes?.open ?? 0) == 0)
+            #endif
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button(role: .close) { dismiss() }
+                ToolbarItem(placement: .closeAction) {
+                    CloseToolbarButton { dismiss() }
                 }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button(role: .confirm, action: save)
-                        .tint(.blue)
+                ToolbarItem(placement: .saveAction) {
+                    SaveToolbarButton(action: save)
                         .disabled(!canSave)
                         .accessibilityLabel("Guardar")
                 }
@@ -649,6 +666,8 @@ private struct GroupSections: View {
                             group.children.removeAll { $0.id == child.id }
                         })
                     }
+                    // Set on the first screen, which a screen pushed in the Mac's window doesn't inherit.
+                    .environment(\.isUndecidedEvaluation, isUndecided)
                 } label: {
                     ComponentRow(title: child.node.title, subtitle: child.node.rowSubtitle, value: isUndecided ? "" : share(of: child))
                 }
@@ -661,6 +680,7 @@ private struct GroupSections: View {
                 StableDestination(value: group.combination) {
                     NewSectionView(child: newChild(), combination: group.combination) { group.children.append($0) }
                 }
+                .environment(\.isUndecidedEvaluation, isUndecided)
             } label: {
                 Label("Añadir", systemImage: "plus.circle.fill")
                     .foregroundStyle(.tint)
@@ -1249,12 +1269,11 @@ private struct ComponentEditorView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             if let onAdd {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button(role: .confirm) {
+                ToolbarItem(placement: .saveAction) {
+                    SaveToolbarButton {
                         onAdd()
                         dismiss()
                     }
-                    .tint(.blue)
                     .disabled(!isComplete)
                 }
             }

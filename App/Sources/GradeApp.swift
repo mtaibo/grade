@@ -21,6 +21,7 @@ struct GradeApp: App {
     @AppStorage("tipsGeneration") private var tipsGeneration = 0
     #if os(macOS)
     @State private var menuActions = MenuActions()
+    @State private var pushes = MacPushCount()
     @NSApplicationDelegateAdaptor private var appDelegate: MacAppDelegate
     #endif
     /// Changed after "Borrar todos los datos" so every tab starts over, Cuenta's pushed screens too.
@@ -61,6 +62,7 @@ struct GradeApp: App {
         Window("Grade", id: "main") {
             root
                 .frame(minWidth: 820, minHeight: 560)
+                .environment(pushes)
                 .onAppear { appDelegate.cloud = cloud }
         }
         .defaultSize(width: 1120, height: 780)
