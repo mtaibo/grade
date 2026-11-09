@@ -5,8 +5,9 @@ import UIKit
 extension View {
     /// Lowers the keyboard on a tap anywhere that isn't a text field or a control, and when the
     /// content is dragged. Covers every screen pushed inside, since it listens on the window.
-    func dismissesKeyboardOnBackgroundTap() -> some View {
-        background(KeyboardDismissTap()).scrollDismissesKeyboard(.interactively)
+    /// `isActive` limits it to while one field is being written in.
+    func dismissesKeyboardOnBackgroundTap(isActive: Bool = true) -> some View {
+        background { if isActive { KeyboardDismissTap() } }.scrollDismissesKeyboard(.interactively)
     }
 }
 

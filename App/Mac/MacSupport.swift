@@ -12,7 +12,7 @@ extension View {
     func navigationBarTitleDisplayMode(_ mode: TitleDisplayModeShim) -> some View { self }
     func keyboardType(_ type: KeyboardTypeShim) -> some View { self }
     func textInputAutocapitalization(_ style: AutocapitalizationShim?) -> some View { self }
-    func dismissesKeyboardOnBackgroundTap() -> some View { self }
+    func dismissesKeyboardOnBackgroundTap(isActive: Bool = true) -> some View { self }
 
     /// The Mac has no full-screen covers: a sheet, the same size as the window it comes from.
     func fullScreenCover<Content: View>(isPresented: Binding<Bool>, @ViewBuilder content: @escaping () -> Content) -> some View {

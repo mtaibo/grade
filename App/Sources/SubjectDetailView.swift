@@ -472,31 +472,49 @@ private struct AnnotationsSection: View {
 
     @Environment(Library.self) private var library
     @State private var text = ""
+    @State private var fieldHeight: CGFloat = 0
     @FocusState private var isFocused: Bool
 
+    private static let endID = "annotations-end"
+    /// Room left between the end of the field and the keyboard.
+    private static let keyboardGap: CGFloat = 24
+    /// Past this the field doesn't fit over the keyboard, and showing its end would take the
+    /// student away from the line they tapped: there the system follows the cursor.
+    private static let tallestRevealed: CGFloat = 240
+
+    /// Spaces, tabs and new lines alone aren't a note.
+    private var written: String {
+        text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "" : text
+    }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Anotaciones")
-                .font(.title3.bold())
-                .padding(.top, 8)
-                .padding(.horizontal, 4)
-            TextField("Escribe lo que quieras", text: $text, axis: .vertical)
-                .lineLimit(3...)
-                .focused($isFocused)
-                .accessibilityLabel("Anotaciones")
-                .card()
-        }
-        .toolbar {
-            #if os(iOS)
-            // A multi-line field keeps the return key for new lines.
-            if isFocused {
-                ToolbarItemGroup(placement: .keyboard) {
-                    Spacer()
-                    Button("Hecho") { isFocused = false }
-                }
+        ScrollViewReader { proxy in
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Anotaciones")
+                    .font(.title3.bold())
+                    .padding(.top, 8)
+                    .padding(.horizontal, 4)
+                TextField("Escribe lo que quieras", text: $text, axis: .vertical)
+                    .lineLimit(3...)
+                    .focused($isFocused)
+                    .accessibilityLabel("Anotaciones")
+                    .card()
+                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in
+                        fieldHeight = height
+                        // A new line, keeping the room below it.
+                        if isFocused { reveal(with: proxy) }
+                    }
             }
-            #endif
+            .padding(.bottom, isFocused ? Self.keyboardGap : 0)
+            .id(Self.endID)
+            .task(id: isFocused) {
+                guard isFocused else { return }
+                // Once the keyboard is up: until then the scroll view doesn't know it's there.
+                try? await Task.sleep(for: .milliseconds(350))
+                if !Task.isCancelled { reveal(with: proxy) }
+            }
         }
+        .dismissesKeyboardOnBackgroundTap(isActive: isFocused)
         .onAppear { text = stored }
         // From another device, unless it would pull the text from under the cursor.
         .onChange(of: stored) { if !isFocused { text = stored } }
@@ -504,12 +522,23 @@ private struct AnnotationsSection: View {
             try? await Task.sleep(for: .milliseconds(600))
             if !Task.isCancelled { save() }
         }
-        .onChange(of: isFocused) { if !isFocused { save() } }
+        .onChange(of: isFocused) {
+            guard !isFocused else { return }
+            text = written
+            save()
+        }
         .onDisappear(perform: save)
     }
 
+    private func reveal(with proxy: ScrollViewProxy) {
+        #if os(iOS)
+        guard fieldHeight <= Self.tallestRevealed else { return }
+        withAnimation(.snappy) { proxy.scrollTo(Self.endID, anchor: .bottom) }
+        #endif
+    }
+
     private func save() {
-        if text != stored { library.setAnnotations(text, in: recordID) }
+        if written != stored { library.setAnnotations(written, in: recordID) }
     }
 }
 
