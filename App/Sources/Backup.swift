@@ -62,6 +62,8 @@ final class BackupImportCenter {
     func confirm(_ pending: Pending, into library: Library, replacing: Bool) {
         if replacing {
             library.restore(pending.backup)
+            // Only with the whole study: a classmate's subjects added to yours shouldn't repaint the app.
+            pending.backup.appearance?.apply()
         } else {
             library.merge(pending.backup)
         }
@@ -115,6 +117,7 @@ struct BackupImportHost: ViewModifier {
         if backup.scope != nil {
             return text + ". Se suman a las tuyas y sustituyen las que ya estaban en la copia. Como es solo una parte del estudio, no puede sustituir el tuyo entero. No se puede deshacer."
         }
-        return text + ". «Añadir» las suma a las tuyas y sustituye las que ya estaban en la copia; «Sustituir» cambia tu estudio actual por el de la copia. Los estudios archivados se conservan. No se puede deshacer."
+        let appearance = backup.appearance == nil ? "" : " y pone su \(AppearanceBackup.summaryName)"
+        return text + ". «Añadir» las suma a las tuyas y sustituye las que ya estaban en la copia; «Sustituir» cambia tu estudio actual por el de la copia\(appearance). Los estudios archivados se conservan. No se puede deshacer."
     }
 }

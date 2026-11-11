@@ -1,0 +1,49 @@
+{
+ "fill": {
+  "solid": "srgb:1.00000,1.00000,1.00000,1.00000"
+ },
+ "groups": [
+  {
+   "layers": [
+    {
+     "image-name": "tick.png",
+     "name": "tick",
+     "glass": true,
+     "fill-specializations": [
+      {
+       "value": {
+        "automatic-gradient": "srgb:0.00000,0.00000,0.00000,1.00000"
+       }
+      },
+      {
+       "appearance": "dark",
+       "value": {
+        "automatic-gradient": "srgb:1.00000,1.00000,1.00000,1.00000"
+       }
+      },
+      {
+       "appearance": "tinted",
+       "value": {
+        "solid": "srgb:1.00000,1.00000,1.00000,1.00000"
+       }
+      }
+     ]
+    }
+   ],
+   "shadow": {
+    "kind": "neutral",
+    "opacity": 0.5
+   },
+   "translucency": {
+    "enabled": true,
+    "value": 0.15
+   },
+   "specular": true
+  }
+ ],
+ "supported-platforms": {
+  "squares": [
+   "iOS"
+  ]
+ }
+}

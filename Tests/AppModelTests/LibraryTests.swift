@@ -388,6 +388,19 @@ struct LibraryTests {
         #expect(other.record(id: kept) != nil)
     }
 
+    @Test func aCopyKeepsTheAppearanceAndOlderCopiesHaveNone() throws {
+        let library = Sandbox().open()
+        library.addSubject(Self.subject(), year: 1, term: 1)
+        var backup = library.backupContents()
+        #expect(backup.appearance == nil)
+        backup.appearance = AppearanceBackup(accent: "custom", customAccent: "#FF8800", icon: "AppIcon-Tree")
+        let read = try GradeBackup.decode(GradeBackup.encoder.encode(backup))
+        #expect(read.appearance == backup.appearance)
+        // A copy made before the key existed still reads.
+        let old = try GradeBackup.decode(library.backupData())
+        #expect(old.appearance == nil)
+    }
+
     @Test func importingTheSameCopyTwiceDuplicatesNothing() throws {
         let library = Sandbox().open()
         let id = library.addSubject(Self.subject(), year: 1, term: 1)

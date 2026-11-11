@@ -43,7 +43,8 @@ struct BackupView: View {
     /// Gathers the copy here and writes it in the background, so the spinner keeps turning.
     private func export() {
         isExporting = true
-        let backup = library.backupContents(options)
+        var backup = library.backupContents(options)
+        if options.includesAppearance { backup.appearance = .current() }
         let name = library.backupFileName(options)
         Task {
             defer { isExporting = false }
@@ -75,6 +76,7 @@ struct BackupView: View {
                 if !library.selections.isEmpty {
                     Toggle("Vistas personalizadas", isOn: $options.includesViews)
                 }
+                Toggle(AppearanceBackup.toggleTitle, isOn: $options.includesAppearance)
             } header: {
                 Text("Qué guardar")
             } footer: {

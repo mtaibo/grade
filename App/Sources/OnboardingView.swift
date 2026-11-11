@@ -310,7 +310,9 @@ struct OnboardingView: View {
         defer { if scoped { url.stopAccessingSecurityScopedResource() } }
         do {
             guard let data = try? Data(contentsOf: url) else { throw BackupError.unreadable }
-            library.restore(try GradeBackup.decode(data))
+            let backup = try GradeBackup.decode(data)
+            library.restore(backup)
+            backup.appearance?.apply()
             onFinish()
         } catch {
             importError = error.localizedDescription

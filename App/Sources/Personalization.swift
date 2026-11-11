@@ -94,6 +94,51 @@ extension Color {
     }
 }
 
+// MARK: - Backups
+
+extension AppearanceBackup {
+    #if os(iOS)
+    static let toggleTitle = "Color e icono"
+    static let summaryName = "color e icono"
+    #else
+    static let toggleTitle = "Color de la app"
+    static let summaryName = "color"
+    #endif
+
+    /// What this device has now.
+    @MainActor static func current() -> AppearanceBackup {
+        let defaults = UserDefaults.standard
+        var backup = AppearanceBackup(
+            accent: defaults.string(forKey: AccentChoice.storageKey) ?? AccentChoice.blue.rawValue,
+            customAccent: defaults.string(forKey: AccentChoice.customAccentKey)
+        )
+        #if os(iOS)
+        backup.icon = UIApplication.shared.alternateIconName
+        #endif
+        return backup
+    }
+
+    /// Puts the copy's colour and icon on this device; anything this version doesn't know is skipped.
+    /// The icon change brings up iOS's own alert.
+    @MainActor func apply() {
+        let defaults = UserDefaults.standard
+        if let accent, let choice = AccentChoice(rawValue: accent) {
+            if choice != .custom {
+                defaults.set(choice.rawValue, forKey: AccentChoice.storageKey)
+            } else if let customAccent, Color(hex: customAccent) != nil {
+                defaults.set(customAccent, forKey: AccentChoice.customAccentKey)
+                defaults.set(choice.rawValue, forKey: AccentChoice.storageKey)
+            }
+        }
+        #if os(iOS)
+        let icon = AppIconChoice(alternateName: icon)
+        guard icon.alternateName == self.icon, icon.alternateName != UIApplication.shared.alternateIconName,
+              UIApplication.shared.supportsAlternateIcons else { return }
+        UIApplication.shared.setAlternateIconName(icon.alternateName)
+        #endif
+    }
+}
+
 // MARK: - Screens
 
 /// Cuenta → Personalización → Color.
@@ -134,22 +179,13 @@ struct PersonalizationSection: View {
             NavigationLink {
                 AppIconView(store: icons)
             } label: {
-                Label {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Icono")
-                        Text(icons.current.name)
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                    }
-                } icon: {
-                    AppIconPreview(icon: icons.current, size: 26)
-                }
+                AccountRow(title: "Icono", detail: "El de Grade en tu pantalla de inicio", symbol: "app.badge")
             }
             #endif
             NavigationLink {
                 AccentColorView()
             } label: {
-                AccountRow(title: "Color", detail: choice.name, symbol: "paintpalette")
+                AccountRow(title: "Color", detail: "El color de acento de la app", symbol: "paintpalette")
             }
         }
     }
@@ -340,6 +376,7 @@ final class AppIconStore {
 
     /// Back to the icon on the home screen, as when the picker opens.
     func discardDraft() {
+        current = AppIconChoice(alternateName: UIApplication.shared.alternateIconName)
         draft = current
         if case .classic(let background, let tick) = current {
             self.background = background
@@ -506,14 +543,15 @@ struct AppIconView: View {
                     }
                     .pickerStyle(.segmented)
                     .padding(.top, 10)
-                    Text("Elige el tema de tus iconos para ver cómo quedaría en tu iPhone.")
+                    Text("Cómo se verá en tu pantalla de inicio.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
                 }
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, 12)
+                .padding(.top, 12)
                 .listRowBackground(Color.clear)
+                .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
             }
 
             Section("Diseño") {
@@ -548,6 +586,8 @@ struct AppIconView: View {
                 }
             }
         }
+        // Room under the last footer, so it doesn't end against the tab bar.
+        .contentMargins(.bottom, 32, for: .scrollContent)
         .animation(.snappy(duration: 0.25), value: store.draft)
         .animation(.snappy(duration: 0.25), value: previewStyle)
         .navigationTitle("Icono")

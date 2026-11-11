@@ -29,8 +29,21 @@ struct GradeBackup: Codable {
     var scope: String?
     /// Archived studies, only in a full copy that asked for them.
     var archives: [ArchivedStudy]?
+    /// The app's colour and icon, when the copy asked for them. Absent in older copies.
+    var appearance: AppearanceBackup?
 
     var subjectCount: Int { courses.reduce(0) { $0 + $1.subjects.count } }
+}
+
+/// Cuenta → Personalización in a copy: the raw stored values, so a copy from a newer version with
+/// colours or icons this one lacks is read without failing (unknown ones are just ignored).
+struct AppearanceBackup: Codable, Equatable, Sendable {
+    /// `AccentChoice`'s raw value.
+    var accent: String?
+    /// The custom colour as `#RRGGBB`, for `accent == "custom"`.
+    var customAccent: String?
+    /// The home-screen icon's alternate name; nil is the main icon. Only the iPhone has one.
+    var icon: String?
 }
 
 /// The part of the degree an export or a delete works on.
@@ -64,6 +77,8 @@ struct BackupOptions: Equatable, Sendable {
     var includesGrades = true
     var includesGuides = true
     var includesViews = true
+    /// The app's colour and icon (Cuenta → Personalización).
+    var includesAppearance = true
     /// Archived studies left out; every one goes in otherwise. Only with the whole study in scope.
     var excludedArchives: Set<ArchivedStudy.ID> = []
 }
