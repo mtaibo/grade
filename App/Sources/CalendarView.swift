@@ -692,7 +692,7 @@ private struct MonthCalendar: View {
         #if os(macOS)
         // Bare and blue as on the iPhone, not a grey push button in the Mac's accent colour.
         .buttonStyle(.plain)
-        .foregroundStyle(.blue)
+        .foregroundStyle(.tint)
         #endif
         .accessibilityLabel(label)
     }

@@ -133,6 +133,7 @@ private struct SelectableRow: View {
 
 /// Creates or edits a custom view: what it's called on the home screen and which subjects it holds.
 struct CustomSelectionEditor: View {
+    @Environment(\.accent) private var accent
     @Environment(Library.self) private var library
     @Environment(\.dismiss) private var dismiss
 
@@ -311,7 +312,7 @@ struct CustomSelectionEditor: View {
                         onSaved(draft)
                         dismiss()
                     }
-                    .tint(.blue)
+                    .tint(accent)
                     .disabled(draft.subjectIDs.isEmpty)
                 }
             }

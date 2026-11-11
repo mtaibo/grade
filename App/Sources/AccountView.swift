@@ -3,7 +3,7 @@ import SwiftUI
 import TipKit
 
 /// The account tab, top to bottom: your studies (with the archive once something's been archived),
-/// your record, your data (backups and deletes), the tips and about the app.
+/// your record, your data (backups and deletes), the icon and colour, the tips and about the app.
 struct AccountView: View {
     /// Whether Cuenta is the tab on screen: its tip waits for the user to come back to it.
     let isCurrentTab: Bool
@@ -125,6 +125,8 @@ struct AccountView: View {
                         AccountRow(title: "Borrar datos", detail: "Notas o asignaturas", symbol: "trash")
                     }
                 }
+
+                PersonalizationSection()
 
                 Section {
                     Button {

@@ -15,6 +15,7 @@ enum SubjectPlacement: Identifiable {
 
 /// A small form: name (when creating) plus the year and term the subject belongs to.
 struct NewSubjectView: View {
+    @Environment(\.accent) private var accent
     @Environment(Library.self) private var library
     @Environment(\.dismiss) private var dismiss
 
@@ -101,7 +102,7 @@ struct NewSubjectView: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button(role: .confirm, action: save)
-                        .tint(.blue)
+                        .tint(accent)
                         .disabled(!canSave)
                         .accessibilityLabel(isCreating ? "Añadir" : "Mover")
                 }

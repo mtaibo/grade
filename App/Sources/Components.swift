@@ -135,6 +135,7 @@ struct CloseToolbarButton: View {
 }
 
 struct SaveToolbarButton: View {
+    @Environment(\.accent) private var accent
     let action: () -> Void
 
     var body: some View {
@@ -143,10 +144,10 @@ struct SaveToolbarButton: View {
             .labelStyle(.iconOnly)
             .buttonStyle(.glassProminent)
             .buttonBorderShape(.circle)
-            .tint(.blue)
+            .tint(accent)
         #else
         Button(role: .confirm, action: action)
-            .tint(.blue)
+            .tint(accent)
         #endif
     }
 }

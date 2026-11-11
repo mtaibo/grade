@@ -93,7 +93,7 @@ struct CompletionRing: View {
             Circle().stroke(.quaternary, lineWidth: 4)
             Circle()
                 .trim(from: 0, to: fraction)
-                .stroke(isComplete ? Color.green : Color.accentColor, style: StrokeStyle(lineWidth: 4, lineCap: .round))
+                .stroke(isComplete ? AnyShapeStyle(.green) : AnyShapeStyle(.tint), style: StrokeStyle(lineWidth: 4, lineCap: .round))
                 .rotationEffect(.degrees(-90))
             if isComplete {
                 Image(systemName: "checkmark")

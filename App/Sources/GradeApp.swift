@@ -99,6 +99,7 @@ struct GradeApp: App {
             }
         }
         .animation(.smooth(duration: 0.4), value: isOnboarding)
+        .modifier(AppAccent())
         .modifier(BackupImportHost(center: backupCenter, library: library))
         .environment(library)
         .environment(backupCenter)

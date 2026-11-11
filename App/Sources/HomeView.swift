@@ -697,7 +697,7 @@ private struct AddTile: View {
                 .font(.title2.weight(.bold))
                 .foregroundStyle(.white)
                 .frame(width: isCompact ? 44 : 56, height: isCompact ? 44 : 56)
-                .background(Color.accentColor, in: .circle)
+                .background(.tint, in: .circle)
                 .frame(maxWidth: .infinity, minHeight: isCompact ? 68 : 156)
         }
         .buttonStyle(TilePressStyle())

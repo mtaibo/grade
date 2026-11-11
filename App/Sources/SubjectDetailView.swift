@@ -545,6 +545,7 @@ private struct AnnotationsSection: View {
 /// The grade up front with its bar; tap to unfold what's secured, what's still reachable, the pass
 /// mark and what's needed.
 private struct GradeCard: View {
+    @Environment(\.accent) private var accent
     let progress: SubjectProgress
     let session: Convocatoria
     let formula: Formula?
@@ -556,7 +557,7 @@ private struct GradeCard: View {
 
     /// Blue while grades are missing; once everything is in, the colour of the final grade.
     private var barTint: Color {
-        progress.isComplete ? GradeBand.color(for: progress.worst) : .accentColor
+        progress.isComplete ? GradeBand.color(for: progress.worst) : accent
     }
 
     /// For the verdict sentence: a sure pass or a lost one get a colour of their own.
@@ -565,7 +566,7 @@ private struct GradeCard: View {
         guard hasGrades else { return .secondary }
         switch progress.status {
         case .guaranteed: return .green
-        case .possible: return .accentColor
+        case .possible: return accent
         case .impossible: return .red
         }
     }
@@ -735,11 +736,11 @@ private struct NeedsList: View {
             // Only the title is blue, on a faint band behind its one line.
             Label("Para aprobar", systemImage: "target")
                 .font(.subheadline.weight(.semibold))
-                .foregroundStyle(Color.accentColor)
+                .foregroundStyle(.tint)
                 .padding(.vertical, 7)
                 .padding(.leading, 12)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color.accentColor.opacity(0.12), in: .rect(cornerRadius: 8))
+                .background(.tint.opacity(0.12), in: .rect(cornerRadius: 8))
             ForEach(needs) { need in
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
                     Text(need.title)
@@ -874,6 +875,7 @@ private struct ExamCard: View {
 }
 
 private struct ExamSlot: View {
+    @Environment(\.accent) private var accent
     let session: Convocatoria
     let date: Date?
     let summary: PartSummary?
@@ -899,7 +901,7 @@ private struct ExamSlot: View {
                 }
             }
             if let summary {
-                ProgressBar(fraction: summary.fraction, tint: summary.tint)
+                ProgressBar(fraction: summary.fraction, tint: summary.tint ?? accent)
             }
         }
         .contentShape(.rect)
@@ -1045,7 +1047,8 @@ private struct DateToggleRow: View {
 private struct PartSummary {
     let text: String
     let fraction: Double
-    let tint: Color
+    /// Nil while grades are missing: the app's colour, which the view knows.
+    let tint: Color?
     let hasAnyGrade: Bool
 
     init(node: Node, record: SubjectRecord, session: Convocatoria) {
@@ -1057,14 +1060,14 @@ private struct PartSummary {
         if record.isUndecided, node.asGrade == nil {
             // Nothing is combined: the bar and the text say how many notes are in, not a grade.
             fraction = leaves.isEmpty ? 0 : Double(entered) / Double(leaves.count)
-            tint = .accentColor
+            tint = nil
             text = leaves.isEmpty ? "—" : "\(entered) de \(leaves.count)"
             return
         }
         let max = node.scaleMax
         let value = node.evaluate(inputs, pendingFraction: 0)
         fraction = max > 0 ? Swift.min(Swift.max(value / max, 0), 1) : 0
-        tint = complete ? GradeBand.color(for: fraction * 10) : .accentColor
+        tint = complete ? GradeBand.color(for: fraction * 10) : nil
         if let grade = node.asGrade {
             text = Self.display(of: grade, record: record, session: session)
         } else if complete {
@@ -1128,6 +1131,7 @@ private struct WeightChip: View {
 
 /// A part at a glance: name, weight, what's in so far and a thin bar. Read-only.
 private struct PartCard: View {
+    @Environment(\.accent) private var accent
     let item: PartItem
     let record: SubjectRecord
     let session: Convocatoria
@@ -1154,7 +1158,7 @@ private struct PartCard: View {
                     .font(.footnote.weight(.semibold))
                     .foregroundStyle(.tertiary)
             }
-            ProgressBar(fraction: summary.fraction, tint: summary.tint)
+            ProgressBar(fraction: summary.fraction, tint: summary.tint ?? accent)
             if let group = item.node.asGroup, group.children.allSatisfy({ $0.node.asGrade != nil }) {
                 // A grid, so the dates and the values line up in columns whatever their width
                 // ("8,3" above "0,83 / 2").
@@ -1503,7 +1507,7 @@ private struct LeafInput: View {
             .background(Color(.tertiarySystemFill), in: .rect(cornerRadius: 14))
             .overlay {
                 RoundedRectangle(cornerRadius: 14)
-                    .strokeBorder(Color.accentColor.opacity(isFocused ? 0.8 : 0), lineWidth: 1.5)
+                    .strokeBorder(.tint.opacity(isFocused ? 0.8 : 0), lineWidth: 1.5)
             }
             .accessibilityLabel(grade.name)
             .focused(context.focus, equals: fieldID)
@@ -1585,7 +1589,7 @@ private struct LetterInput: View {
                             .font(.headline)
                             .frame(minWidth: 36, minHeight: 36)
                             .foregroundStyle(isSelected ? Color.white : Color.primary)
-                            .background(isSelected ? Color.accentColor : Color(.tertiarySystemFill), in: .rect(cornerRadius: 10))
+                            .background(isSelected ? AnyShapeStyle(.tint) : AnyShapeStyle(Color(.tertiarySystemFill)), in: .rect(cornerRadius: 10))
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("\(letter.letter), \(letter.value.formatted()) sobre 10")
