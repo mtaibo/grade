@@ -5,3 +5,6 @@ App/Config/Local.xcconfig
 App/build/
 .DS_Store
 build/
+
+# Wrangler's local state (wrangler dev): carries the connection's location
+.wrangler/
