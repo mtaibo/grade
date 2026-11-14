@@ -165,10 +165,10 @@ make testflight                                        # archives and uploads a 
 
 ### Website
 
-[`web/`](web/) is the small site at [grade.migueltaibo.com](https://grade.migueltaibo.com): what the app does, with a live "what do you need in the exam" example, plus the privacy policy and support pages the App Store asks for. Plain HTML and CSS served by nginx in a container that joins [tpcloud](https://github.com/mtaibo/tpcloud)'s gateway network, whose Caddy proxies the subdomain to it. On the Pi, with tpcloud up:
+[`web/`](web/) is the small site at [grade.migueltaibo.com](https://grade.migueltaibo.com): what the app does, with a live "what do you need in the exam" example, plus the privacy policy and support pages the App Store asks for. Plain HTML and CSS served by Cloudflare as a Worker's static assets ([`web/wrangler.jsonc`](web/wrangler.jsonc), security headers in [`web/site/_headers`](web/site/_headers)): every push to `main` that touches `web/` deploys it, and nothing else in the repo does. To see it locally:
 
 ```bash
-make web                                               # docker compose -f web/docker-compose.yml up -d --build
+make web                                               # cd web && npx wrangler dev, at localhost:8787
 ```
 
 The full brief and roadmap are in [`guide/proyect.md`](guide/proyect.md) (in Spanish). The first milestone is a TestFlight build tried with ~20 students before the January exams.

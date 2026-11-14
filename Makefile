@@ -75,7 +75,7 @@ testflight: generate
 	xcodebuild -exportArchive -archivePath $(MAC_ARCHIVE) -exportOptionsPlist build/ExportOptions.plist \
 		-allowProvisioningUpdates
 
-# The site at grade.migueltaibo.com, run on the Pi: tpcloud must be up first (its gateway network
-# and Caddy, which proxies the subdomain to this container).
+# The site at grade.migueltaibo.com, on Cloudflare: every push to main that touches web/ deploys it.
+# This serves it locally the same way, at http://localhost:8787.
 web:
-	docker compose -f web/docker-compose.yml up -d --build
+	cd web && npx wrangler dev
